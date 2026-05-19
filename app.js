@@ -153,28 +153,12 @@ async function tennisFetch(method, params = {}) {
   url.searchParams.set('method', method);
   url.searchParams.set('APIkey', CFG.tennis.key);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const target = url.toString();
-
-  // allorigins.win is the reliable free proxy; corsproxy.io now requires paid plan
-  const proxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
-    CFG.tennis.proxy + target
-  ];
-
-  let lastErr;
-  for (const proxied of proxies) {
-    try {
-      const res = await fetch(proxied);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      if (json.success === 0) throw new Error(json.errors || 'API error');
-      return json.result || [];
-    } catch (err) {
-      lastErr = err;
-      console.warn(`Tennis proxy attempt failed (${err.message}), trying next…`);
-    }
-  }
-  throw lastErr;
+  // api-tennis.com sends Access-Control-Allow-Origin: * so no proxy needed
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  if (json.success === 0) throw new Error(json.errors || 'API error');
+  return json.result || [];
 }
 
 async function loadFixtures(offset = 0) {
