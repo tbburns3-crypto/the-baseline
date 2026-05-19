@@ -657,6 +657,9 @@ input { font: inherit; }
   font-size: 0.78rem;
   text-align: right;
 }
+.rank-up   { color: #4caf50; font-size: 0.7rem; }
+.rank-down { color: #f44336; font-size: 0.7rem; }
+.rank-same { color: var(--text-muted); font-size: 0.7rem; }
 
 /* ── OTHER SPORTS ── */
 .other-games-list { display: flex; flex-direction: column; gap: 6px; }
