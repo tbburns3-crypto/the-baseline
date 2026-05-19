@@ -1506,8 +1506,10 @@ async function getMLBSchedule() {
 }
 
 async function loadBatterStatsForCard(game) {
-  const gamePk = game.gamePk;
-  const sides  = [game.lineups?.awayPlayers || [], game.lineups?.homePlayers || []];
+  const gamePk  = game.gamePk;
+  const sides   = [game.lineups?.awayPlayers || [], game.lineups?.homePlayers || []];
+  const dueList = [];
+
   for (const players of sides) {
     if (!players.length) continue;
     const results = await Promise.allSettled(players.map(p => fetchBatterPreview(p.id)));
@@ -1515,10 +1517,29 @@ async function loadBatterStatsForCard(game) {
       const st = results[i].status === 'fulfilled' ? results[i].value : null;
       const el = document.getElementById(`bstat-${p.id}-${gamePk}`);
       if (!el) return;
-      el.innerHTML = st
-        ? `<span class="bi-avg">${st.avg || '.---'}</span><span class="bi-hr">${st.homeRuns ?? 0}HR</span><span class="bi-rbi">${st.rbi ?? 0}RBI</span>`
-        : '';
+      if (st) {
+        const babip = calcBABIP(st);
+        el.innerHTML = `<span class="bi-avg">${st.avg || '.---'}</span><span class="bi-hr">${st.homeRuns ?? 0}HR</span><span class="bi-rbi">${st.rbi ?? 0}RBI</span>${babipTag(babip)}`;
+        if (babip !== null && babip < 0.270) {
+          dueList.push({ name: p.fullName, pos: i + 1, babip, avg: st.avg || '.---' });
+        }
+      } else {
+        el.innerHTML = '';
+      }
     });
+  }
+
+  const dueEl = document.getElementById(`due-hits-${gamePk}`);
+  if (!dueEl) return;
+  if (dueList.length) {
+    dueList.sort((a, b) => a.babip - b.babip);
+    dueEl.innerHTML = `<div class="lineup-due-hdr">🍀 Due for Hits</div>` +
+      dueList.map(p =>
+        `<span class="lineup-due-tag">#${p.pos} ${esc(p.name.split(' ').pop())} ${babipTag(p.babip)}</span>`
+      ).join('');
+    dueEl.style.display = '';
+  } else {
+    dueEl.style.display = 'none';
   }
 }
 
@@ -1651,6 +1672,7 @@ function renderMLBLineups(games) {
             ${renderOrder(homeLineup, homePitcher, awayPitcherId, awayPitcher, gamePk)}
           </div>
         </div>
+        <div class="lineup-due-section" id="due-hits-${gamePk}" style="display:none"></div>
       </div>`;
   }).join('');
 
