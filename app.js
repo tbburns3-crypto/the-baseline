@@ -30,6 +30,7 @@ const S = {
   dateOffset:  0,
   filter:      'all',
   matches:     new Map(),   // event_key → match object
+  rankIndex:   new Map(),   // player_key → {rank, points, league} built from loaded rankings
   ws:          null,
   wsRetries:   0,
   wsMax:       3,
@@ -203,6 +204,11 @@ async function loadRankings() {
     ]);
     const atp = atpR.status === 'fulfilled' ? atpR.value : [];
     const wta = wtaR.status === 'fulfilled' ? wtaR.value : [];
+    // Build rank index for cross-referencing in player search
+    S.rankIndex.clear();
+    for (const p of [...atp, ...wta]) {
+      if (p.player_key) S.rankIndex.set(String(p.player_key), { rank: p.place, points: p.points, league: p.league || (atp.includes(p) ? 'ATP' : 'WTA') });
+    }
     renderRankings(atp, wta);
   } catch (err) {
     showError('rankings-area', `Could not load rankings — ${err.message}`, 'loadRankings()');
@@ -606,6 +612,7 @@ async function doPlayerSearch(q) {
   const resultsEl = document.getElementById('player-search-results');
   try {
     const results = await tennisFetch('get_players', { player_name: q });
+    console.log('[PlayerSearch] raw sample:', JSON.stringify(results.slice(0,2), null, 2));
     renderPlayerResults(results, q);
   } catch (err) {
     resultsEl.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Search failed: ${esc(err.message)}</p></div>`;
@@ -618,19 +625,34 @@ function renderPlayerResults(players, q) {
     resultsEl.innerHTML = `<div class="empty-state">No players found for "<strong>${esc(q)}</strong>"</div>`;
     return;
   }
+
+  // Filter to players whose name contains the query (first or last name)
+  const qLow = q.toLowerCase();
+  const filtered = players.filter(p => {
+    const name = (p.player || p.player_name || p.team_name || p.name || '').toLowerCase();
+    return name.includes(qLow);
+  });
+  const display = filtered.length ? filtered : players; // fall back to all if filter removes everything
+
   resultsEl.innerHTML = `
-    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found</div>
-    ${players.map(p => {
+    <div class="player-results-header">${display.length} player${display.length !== 1 ? 's' : ''} found</div>
+    ${display.map(p => {
       const name    = p.player || p.player_name || p.team_name || p.name || '—';
-      const rank    = p.place || p.ranking || p.player_rank || '';
-      const pts     = p.points || p.standing_points || '';
       const country = p.country || p.player_country || '';
       const type    = p.league || p.player_type || p.event_type || '';
+
+      // Rank: first try the API response fields, then cross-reference our loaded rankings
+      const apiRank = p.place || p.ranking || p.player_rank || p.current_ranking || null;
+      const cached  = S.rankIndex.get(String(p.player_key || ''));
+      const rank    = apiRank || (cached ? cached.rank : null);
+      const pts     = p.points || p.standing_points || (cached ? cached.points : null);
+      const league  = type || (cached ? cached.league : '');
+
       return `<div class="player-result-row">
         <div class="player-result-name">${esc(name)}</div>
         <div class="player-result-meta">
-          ${rank ? `<span class="player-rank-badge">#${esc(rank)}</span>` : '<span class="player-unranked">Unranked</span>'}
-          ${type ? `<span class="player-type-badge">${esc(type)}</span>` : ''}
+          ${rank ? `<span class="player-rank-badge">#${esc(rank)}</span>` : '<span class="player-unranked">Unranked / Outside Top 100</span>'}
+          ${league ? `<span class="player-type-badge">${esc(league)}</span>` : ''}
           ${country ? `<span class="player-country-tag">${esc(country)}</span>` : ''}
           ${pts ? `<span class="player-pts-tag">${esc(pts)} pts</span>` : ''}
         </div>
