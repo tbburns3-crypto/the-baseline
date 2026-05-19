@@ -333,6 +333,44 @@ input { font: inherit; }
 .chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
 .chip.active { background: var(--accent); color: #0a1a0e; border-color: var(--accent); font-weight: 700; }
 
+/* ── SPORT TABS (scrollable for many tabs) ── */
+#sport-tabs { overflow-x: auto; scrollbar-width: none; flex-shrink: 1; }
+#sport-tabs::-webkit-scrollbar { display: none; }
+
+/* ── TENNIS CATEGORY SECTIONS ── */
+.category-section { margin-bottom: 20px; }
+.category-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-2);
+  border-bottom: 2px solid var(--border);
+}
+.category-section-header::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+[data-cat="atp"]          .category-section-header::before,
+.category-section-header[data-cat="atp"]          { --cat-color: #1565c0; }
+.category-section-header[data-cat="atp"]::before  { background: #1976d2; }
+.category-section-header[data-cat="wta"]::before  { background: #c62828; }
+.category-section-header[data-cat="doubles"]::before      { background: #00838f; }
+.category-section-header[data-cat="challenger-m"]::before { background: #2e7d32; }
+.category-section-header[data-cat="challenger-w"]::before { background: #ad1457; }
+.category-section-header[data-cat="itf-m"]::before        { background: #e65100; }
+.category-section-header[data-cat="itf-w"]::before        { background: #6a1b9a; }
+
 /* ── LIVE NOW SECTION ── */
 .live-now-section {
   background: rgba(244,67,54,0.06);
