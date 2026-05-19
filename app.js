@@ -1175,60 +1175,102 @@ function parseWinPct(recStr) {
 }
 
 function buildPickSection(awayName, homeName, opts) {
-  const { awayRec='', homeRec='', awayERA=null, homeERA=null,
-          seriesSummary='', seriesTitle='', awayAbbr='', homeAbbr='' } = opts || {};
-  const hasData = awayRec || homeRec || awayERA !== null || seriesSummary;
+  const {
+    awayRec = '', homeRec = '', awayERA = null, homeERA = null,
+    seriesSummary = '', seriesTitle = '', awayAbbr = '', homeAbbr = '',
+    awayForm = null, homeForm = null, awayH2H = 0, homeH2H = 0, h2hTotal = 0
+  } = opts || {};
+
+  const aShort = awayAbbr || awayName.split(' ').pop();
+  const hShort = homeAbbr || homeName.split(' ').pop();
+
   const seriesHTML = seriesSummary
     ? `<div class="gp-series-badge">🏆 ${seriesTitle ? `<span class="gp-series-title">${esc(seriesTitle)}</span> · ` : ''}${esc(seriesSummary)}</div>`
     : '';
+
+  const hasData = awayRec || homeRec || awayERA !== null || seriesSummary || awayForm;
   if (!hasData) return seriesHTML;
 
-  let aScore = parseWinPct(awayRec);
-  let hScore = parseWinPct(homeRec) + 0.03;
+  const factors = []; // { label, detail, winner: 'away'|'home'|'tie' }
+  let aScore = 0, hScore = 0;
 
-  if (awayERA !== null && homeERA !== null) {
-    const ae = parseFloat(awayERA), he = parseFloat(homeERA);
-    if (ae > 0 && he > 0) {
-      aScore += Math.max(0, 5.5 - ae) * 0.03;
-      hScore += Math.max(0, 5.5 - he) * 0.03;
-    }
-  }
+  // 1. Season record (30%)
+  const aWP = parseWinPct(awayRec), hWP = parseWinPct(homeRec);
+  if (awayRec || homeRec) {
+    aScore += aWP * 0.30; hScore += hWP * 0.30;
+    const w = aWP > hWP + 0.02 ? 'away' : hWP > aWP + 0.02 ? 'home' : 'tie';
+    factors.push({ label: 'Record', detail: `${esc(aShort)} ${awayRec||'—'} · ${esc(hShort)} ${homeRec||'—'}`, winner: w });
+  } else { aScore += 0.15; hScore += 0.15; }
 
+  // 2. Home advantage (fixed 4% bump)
+  hScore += 0.04;
+  factors.push({ label: 'Home court', detail: `${esc(hShort)} at home`, winner: 'home' });
+
+  // 3. Recent form — last 5 games (25%)
+  if (awayForm?.recentPlayed >= 3 || homeForm?.recentPlayed >= 3) {
+    const aFP = awayForm?.recentPlayed || 0, hFP = homeForm?.recentPlayed || 0;
+    const aPct = aFP > 0 ? awayForm.recentWins / aFP : 0.5;
+    const hPct = hFP > 0 ? homeForm.recentWins / hFP : 0.5;
+    aScore += aPct * 0.25; hScore += hPct * 0.25;
+    const w = aPct > hPct + 0.15 ? 'away' : hPct > aPct + 0.15 ? 'home' : 'tie';
+    const aStr = aFP > 0 ? `${esc(aShort)} ${awayForm.recentWins}-${aFP - awayForm.recentWins}` : '';
+    const hStr = hFP > 0 ? `${esc(hShort)} ${homeForm.recentWins}-${hFP - homeForm.recentWins}` : '';
+    factors.push({ label: `Last ${Math.max(aFP, hFP)}`, detail: [aStr, hStr].filter(Boolean).join(' · '), winner: w });
+  } else { aScore += 0.125; hScore += 0.125; }
+
+  // 4. H2H this season (15%)
+  if (h2hTotal >= 2) {
+    const aH = awayH2H / h2hTotal, hH = homeH2H / h2hTotal;
+    aScore += aH * 0.15; hScore += hH * 0.15;
+    const w = awayH2H > homeH2H ? 'away' : homeH2H > awayH2H ? 'home' : 'tie';
+    factors.push({ label: `H2H '${String(new Date().getFullYear()).slice(-2)}`, detail: `${esc(aShort)} ${awayH2H}W · ${esc(hShort)} ${homeH2H}W (${h2hTotal} games)`, winner: w });
+  } else { aScore += 0.075; hScore += 0.075; }
+
+  // 5. Playoff series
   if (seriesSummary) {
     const sm = seriesSummary.match(/^(\S+)\s+leads/i);
     if (sm) {
       const leader = sm[1].toUpperCase();
       const matchAway = leader === awayAbbr.toUpperCase() ||
                         awayName.toUpperCase().split(' ').some(w => w.startsWith(leader));
-      if (matchAway) aScore += 0.10; else hScore += 0.10;
+      if (matchAway) aScore += 0.18; else hScore += 0.18;
+      factors.push({ label: 'Series', detail: esc(seriesSummary), winner: matchAway ? 'away' : 'home' });
+    } else {
+      factors.push({ label: 'Series', detail: esc(seriesSummary), winner: 'tie' });
     }
   }
 
+  // 6. MLB pitcher ERA
+  if (awayERA !== null && homeERA !== null) {
+    const ae = parseFloat(awayERA), he = parseFloat(homeERA);
+    if (ae > 0 && he > 0) {
+      aScore += Math.max(0, 5.5 - ae) * 0.025;
+      hScore += Math.max(0, 5.5 - he) * 0.025;
+      if (Math.abs(ae - he) > 0.4) {
+        factors.push({ label: 'Starter ERA', detail: `${esc(aShort)} ${ae.toFixed(2)} · ${esc(hShort)} ${he.toFixed(2)}`, winner: ae < he ? 'away' : 'home' });
+      }
+    }
+  }
+
+  // ── Verdict ──
   const gap = Math.abs(aScore - hScore);
-  if (gap < 0.03) return `${seriesHTML}<div class="gp-pick gp-pick-toss">🎲 Too close to call — toss-up</div>`;
-
   const pickIsHome = hScore > aScore;
-  const pickTeam   = pickIsHome ? homeName : awayName;
-  const pickRec    = pickIsHome ? homeRec  : awayRec;
-  const oppRec     = pickIsHome ? awayRec  : homeRec;
-  const favERA     = awayERA !== null ? (pickIsHome ? homeERA : awayERA) : null;
-  const oppERA     = awayERA !== null ? (pickIsHome ? awayERA : homeERA) : null;
+  const pickTeam = pickIsHome ? hShort : aShort;
+  const fWins = factors.filter(f => pickIsHome ? f.winner === 'home' : f.winner === 'away').length;
+  const fTotal = factors.filter(f => f.winner !== 'tie').length;
 
-  let reason = '';
-  if (seriesSummary && gap >= 0.08) {
-    reason = 'Up in series';
-  } else if (favERA !== null && oppERA !== null) {
-    const fe = parseFloat(favERA), oe = parseFloat(oppERA);
-    if (Math.abs(fe - oe) > 0.6) reason = `Starter edge (${fe.toFixed(2)} ERA)`;
-  }
-  if (!reason) {
-    if (Math.abs(parseWinPct(pickRec) - parseWinPct(oppRec)) > 0.08) reason = `Better record (${pickRec})`;
-    else if (pickIsHome) reason = 'Home advantage';
-    else reason = 'Slight edge';
-  }
+  const verdictHTML = gap < 0.025
+    ? `<div class="gp-pick-verdict gp-verdict-toss">🎲 Toss-up — factors split evenly</div>`
+    : `<div class="gp-pick-verdict">📌 ${gap > 0.14 ? 'Strong lean' : gap > 0.08 ? 'Lean' : 'Slight lean'}: <span class="gp-pick-team">${esc(pickTeam)}</span>${fTotal > 0 ? ` <span class="gp-pick-count">${fWins}/${fTotal} factors</span>` : ''}</div>`;
 
-  const conf = gap > 0.12 ? 'Strong lean' : gap > 0.07 ? 'Lean' : 'Slight lean';
-  return `${seriesHTML}<div class="gp-pick">📌 ${conf}: <span class="gp-pick-team">${esc(pickTeam)}</span> <span class="gp-pick-reason">— ${esc(reason)}</span></div>`;
+  const factorsHTML = factors.map(f => {
+    const myWin = pickIsHome ? f.winner === 'home' : f.winner === 'away';
+    const cls  = f.winner === 'tie' ? 'gp-pf-tie' : myWin ? 'gp-pf-win' : 'gp-pf-loss';
+    const icon = f.winner === 'tie' ? '~' : myWin ? '✓' : '✗';
+    return `<div class="gp-pfactor ${cls}"><span class="gp-pf-icon">${icon}</span><span class="gp-pf-label">${esc(f.label)}</span><span class="gp-pf-detail">${f.detail}</span></div>`;
+  }).join('');
+
+  return `${seriesHTML}<div class="gp-pick-box">${verdictHTML}<div class="gp-pick-factors">${factorsHTML}</div></div>`;
 }
 
 async function renderMLBGamePreview(espnGame, panel) {
@@ -1440,9 +1482,33 @@ async function renderESPNGamePreview(game, panel) {
     const seriesTitle   = comp?.series?.title   || '';
     const awayAbbr2 = awayC?.team?.abbreviation || game.awayAbbr || '';
     const homeAbbr2 = homeC?.team?.abbreviation || game.homeAbbr || '';
+    const awayTeamId = awayC?.team?.id;
+    const homeTeamId = homeC?.team?.id;
+
+    // Fetch team schedules for recent form + H2H
+    let awayForm = null, homeForm = null, awayH2H = 0, homeH2H = 0, h2hTotal = 0;
+    if (awayTeamId && homeTeamId) {
+      const [aRes, hRes] = await Promise.allSettled([
+        fetchTeamSched(game.sport, awayTeamId),
+        fetchTeamSched(game.sport, homeTeamId)
+      ]);
+      if (aRes.status === 'fulfilled' && aRes.value) {
+        const ai = parseScheduleInsights(aRes.value, awayTeamId, homeTeamId);
+        awayForm = { recentWins: ai.recentWins, recentPlayed: ai.recentPlayed };
+        awayH2H = ai.h2hWins; h2hTotal = ai.h2hTotal;
+      }
+      if (hRes.status === 'fulfilled' && hRes.value) {
+        const hi = parseScheduleInsights(hRes.value, homeTeamId, awayTeamId);
+        homeForm = { recentWins: hi.recentWins, recentPlayed: hi.recentPlayed };
+        homeH2H = hi.h2hWins;
+        if (hi.h2hTotal > h2hTotal) h2hTotal = hi.h2hTotal;
+      }
+    }
+
     const pickHTML = buildPickSection(game.awayTeam, game.homeTeam, {
       awayRec, homeRec, seriesSummary, seriesTitle,
-      awayAbbr: awayAbbr2, homeAbbr: homeAbbr2
+      awayAbbr: awayAbbr2, homeAbbr: homeAbbr2,
+      awayForm, homeForm, awayH2H, homeH2H, h2hTotal
     });
 
     let html = pickHTML;
@@ -1567,8 +1633,43 @@ async function renderESPNGamePreview(game, panel) {
 const _pitcherCache   = new Map();
 const _batterCache    = new Map();
 const _otherGamesMap  = new Map(); // espn event id → game object
+const _schedCache     = new Map(); // `${sport}_${teamId}` → events[]
 let   _mlbSchedCache  = null;
 let   _mlbSchedDate   = null;
+
+async function fetchTeamSched(sport, teamId) {
+  const key = `${sport}_${teamId}`;
+  if (_schedCache.has(key)) return _schedCache.get(key);
+  const paths = { nba:'basketball/nba', wnba:'basketball/wnba', nfl:'football/nfl', nhl:'hockey/nhl' };
+  const path = paths[sport];
+  if (!path) { _schedCache.set(key, null); return null; }
+  try {
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${path}/teams/${teamId}/schedule`);
+    const j = await res.json();
+    const data = j.events || [];
+    _schedCache.set(key, data);
+    return data;
+  } catch { _schedCache.set(key, null); return null; }
+}
+
+function parseScheduleInsights(events, myTeamId, oppTeamId) {
+  if (!events?.length) return { recentWins: 0, recentPlayed: 0, h2hWins: 0, h2hTotal: 0 };
+  const myId = String(myTeamId), oppId = String(oppTeamId);
+  let recentWins = 0, recentPlayed = 0, h2hWins = 0, h2hTotal = 0;
+  const completed = [...events]
+    .filter(e => e.competitions?.[0]?.status?.type?.completed)
+    .reverse();
+  for (const ev of completed) {
+    const comp = ev.competitions[0];
+    const mySlot = comp.competitors?.find(c => c.team?.id === myId);
+    if (!mySlot) continue;
+    const won = mySlot.winner === true;
+    const isH2H = comp.competitors.some(c => c.team?.id === oppId);
+    if (recentPlayed < 5) { if (won) recentWins++; recentPlayed++; }
+    if (isH2H) { if (won) h2hWins++; h2hTotal++; }
+  }
+  return { recentWins, recentPlayed, h2hWins, h2hTotal };
+}
 
 async function fetchPitcherPreview(pitcherId) {
   if (!pitcherId) return null;
