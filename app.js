@@ -153,7 +153,7 @@ async function tennisFetch(method, params = {}) {
   url.searchParams.set('method', method);
   url.searchParams.set('APIkey', CFG.tennis.key);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const proxied = CFG.tennis.proxy + encodeURIComponent(url.toString());
+  const proxied = CFG.tennis.proxy + url.toString();
   const res = await fetch(proxied);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
