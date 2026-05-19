@@ -110,6 +110,10 @@
 
       <!-- ── TENNIS RANKINGS ── -->
       <section id="view-tennis-rankings" class="view-panel">
+        <div id="player-search-box">
+          <input type="text" id="player-search-input" placeholder="Search any player (ranked or unranked)…" autocomplete="off" oninput="onPlayerSearch(this.value)">
+        </div>
+        <div id="player-search-results" style="display:none"></div>
         <div id="rankings-area">
           <div class="loading-spinner"><div class="spinner"></div><p>Loading rankings…</p></div>
         </div>
@@ -132,6 +136,6 @@
     </div><!-- /main-content -->
   </div><!-- /app-layout -->
 
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
