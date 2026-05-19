@@ -65,6 +65,7 @@
       <div id="view-tabs">
         <button class="view-tab active" data-view="scores">Scores</button>
         <button class="view-tab" data-view="secondary" id="secondary-tab">Rankings</button>
+        <button class="view-tab" data-view="players" id="players-tab" style="display:none">Players</button>
       </div>
 
       <!-- ── TENNIS SCORES ── -->
@@ -126,6 +127,16 @@
         </div>
       </section>
 
+      <!-- ── SPORT PLAYERS ── -->
+      <section id="view-sport-players" class="view-panel">
+        <div id="sport-player-search-box">
+          <input type="text" id="sport-player-search-input" placeholder="Search players…" autocomplete="off" oninput="onSportPlayerSearch(this.value)">
+        </div>
+        <div id="sport-player-results">
+          <div class="empty-state">Type a name to search players</div>
+        </div>
+      </section>
+
       <!-- ── OTHER SPORTS STANDINGS ── -->
       <section id="view-other-standings" class="view-panel">
         <div id="other-standings-area">
@@ -136,6 +147,6 @@
     </div><!-- /main-content -->
   </div><!-- /app-layout -->
 
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>
