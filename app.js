@@ -31,9 +31,10 @@ const S = {
   filter:      'all',
   matches:       new Map(),   // event_key → match object
   rankIndex:     new Map(),   // player_key → {rank, points, league} built from loaded rankings
-  playerDB:      [],          // all ranked ATP/WTA players from Sackmann data
+  playerDB:        [],
   playerDBLoaded:  false,
   playerDBLoading: false,
+  lineupsTimer:    null,
   ws:          null,
   wsRetries:   0,
   wsMax:       3,
@@ -792,6 +793,7 @@ async function searchMLBPlayers(q) {
       p.batSide?.description ? `Bats ${p.batSide.description}` : '',
       p.pitchHand?.description ? `Throws ${p.pitchHand.description}` : '',
     ].filter(Boolean).join(' · '),
+    mlbId:    p.id,
   }));
 }
 
@@ -841,11 +843,13 @@ function renderSportPlayerResults(players, q) {
     resultsEl.innerHTML = `<div class="empty-state">No players found for "<strong>${esc(q)}</strong>"</div>`;
     return;
   }
+  const isMLB = S.sport === 'mlb';
   resultsEl.innerHTML = `
-    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found</div>
-    ${players.map(p => `
-      <div class="player-result-row">
-        <div class="player-result-name">${esc(p.name)}</div>
+    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found${isMLB ? ' — click for 2025 stats' : ''}</div>
+    ${players.map((p, i) => `
+      <div class="player-result-row ${isMLB && p.mlbId ? 'clickable' : ''}" id="spr-${i}"
+           ${isMLB && p.mlbId ? `onclick="loadMLBPlayerStats(${p.mlbId}, '${esc(p.name).replace(/'/g,"\\'")}', this)"` : ''}>
+        <div class="player-result-name">${esc(p.name)}${isMLB && p.mlbId ? ' <span class="stats-hint">▸ Stats</span>' : ''}</div>
         <div class="player-result-meta">
           <span class="player-type-badge">${esc(p.position)}</span>
           <span class="player-country-tag">${esc(p.team)}</span>
@@ -893,14 +897,18 @@ function switchSport(sport) {
   const isTennis = sport === 'tennis';
   document.querySelectorAll('.tennis-only').forEach(el => el.style.display = isTennis ? '' : 'none');
 
-  const secTab     = document.getElementById('secondary-tab');
-  const playersTab = document.getElementById('players-tab');
+  const secTab      = document.getElementById('secondary-tab');
+  const playersTab  = document.getElementById('players-tab');
+  const lineupsTab  = document.getElementById('lineups-tab');
+  if (S.lineupsTimer) { clearInterval(S.lineupsTimer); S.lineupsTimer = null; }
   if (isTennis) {
     secTab.textContent = 'Rankings'; secTab.dataset.view = 'secondary';
-    playersTab.style.display = 'none';
+    playersTab.style.display  = 'none';
+    lineupsTab.style.display  = 'none';
   } else {
     secTab.textContent = 'Standings'; secTab.dataset.view = 'secondary';
-    playersTab.style.display = '';
+    playersTab.style.display  = '';
+    lineupsTab.style.display  = sport === 'mlb' ? '' : 'none';
   }
 
   switchView('scores');
@@ -931,13 +939,19 @@ function switchView(view) {
     if (view === 'scores') {
       document.getElementById('view-other-scores').classList.add('active');
       loadOtherScores(S.sport);
+    } else if (view === 'lineups') {
+      document.getElementById('view-mlb-lineups').classList.add('active');
+      loadMLBLineups();
+      if (S.lineupsTimer) clearInterval(S.lineupsTimer);
+      S.lineupsTimer = setInterval(loadMLBLineups, 5 * 60 * 1000);
     } else if (view === 'players') {
       document.getElementById('view-sport-players').classList.add('active');
       document.getElementById('sport-player-search-input').value = '';
       document.getElementById('sport-player-results').innerHTML = '<div class="empty-state">Type a name to search players</div>';
     } else {
       document.getElementById('view-other-standings').classList.add('active');
-      loadOtherStandings(S.sport);
+      if (S.sport === 'mlb') loadMLBFullStandings();
+      else loadOtherStandings(S.sport);
     }
   }
 }
@@ -1100,6 +1114,201 @@ function renderOtherScores(games, sport, src) {
       </div>`;
   }
   area.innerHTML = html;
+}
+
+// ── MLB LINEUPS ──────────────────────────────────────────────
+async function loadMLBLineups() {
+  showLoading('mlb-lineups-area', 'Loading today\'s lineups…');
+  try {
+    const res = await fetch(
+      `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr(0)}&hydrate=lineups,probablePitcher,team,linescore`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    renderMLBLineups(json.dates?.[0]?.games || []);
+  } catch (err) {
+    showError('mlb-lineups-area', `Could not load lineups — ${err.message}`, 'loadMLBLineups()');
+  }
+}
+
+function renderMLBLineups(games) {
+  const area = document.getElementById('mlb-lineups-area');
+  if (!games.length) { area.innerHTML = '<div class="empty-state">No games scheduled today</div>'; return; }
+
+  const renderOrder = (players, pitcherName) => {
+    const pitcherRow = `<div class="lineup-pitcher-row"><span class="lineup-pos-tag">SP</span><span class="lineup-name">${esc(pitcherName)}</span></div>`;
+    if (!players.length) return pitcherRow + `<div class="lineup-tbd">Lineup not yet posted</div>`;
+    return pitcherRow + players.map((p, i) =>
+      `<div class="lineup-player-row">
+        <span class="lineup-order">${i+1}</span>
+        <span class="lineup-pos-tag">${esc(p.position?.abbreviation || '—')}</span>
+        <span class="lineup-name">${esc(p.fullName || '—')}</span>
+      </div>`
+    ).join('');
+  };
+
+  area.innerHTML = games.map(g => {
+    const away = g.teams.away, home = g.teams.home;
+    const awayName    = away.team?.name || '—';
+    const homeName    = home.team?.name || '—';
+    const awayPitcher = away.probablePitcher?.fullName || 'TBD';
+    const homePitcher = home.probablePitcher?.fullName || 'TBD';
+    const awayLineup  = g.lineups?.awayPlayers || [];
+    const homeLineup  = g.lineups?.homePlayers || [];
+    const status      = g.status?.detailedState || '';
+    const isLive      = g.status?.abstractGameState === 'Live';
+    const isFinal     = g.status?.abstractGameState === 'Final';
+    const gameTime    = g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) : '—';
+    const inning      = g.linescore?.currentInning ? `${g.linescore.inningHalf || ''} ${g.linescore.currentInning}` : '';
+    const statusBadge = isLive  ? `<span class="live-badge pulse">LIVE ${esc(inning)}</span>`
+                      : isFinal ? `<span class="fin-badge">FINAL</span>`
+                      : `<span class="lineup-time">${esc(gameTime)}</span>`;
+    const score = (isLive || isFinal) ? `<span class="lineup-score">${away.score ?? 0}–${home.score ?? 0}</span>` : '';
+    const lineupStatus = awayLineup.length ? '<span class="lineup-confirmed">✓ Confirmed</span>' : '<span class="lineup-pending">Probable only</span>';
+    return `
+      <div class="lineup-card">
+        <div class="lineup-card-header">
+          <span class="lineup-matchup">${esc(awayName)} @ ${esc(homeName)}</span>
+          ${score}
+          <span>${statusBadge}</span>
+          ${lineupStatus}
+        </div>
+        <div class="lineup-grid">
+          <div class="lineup-col">
+            <div class="lineup-col-header">${esc(awayName)}</div>
+            ${renderOrder(awayLineup, awayPitcher)}
+          </div>
+          <div class="lineup-col">
+            <div class="lineup-col-header">${esc(homeName)}</div>
+            ${renderOrder(homeLineup, homePitcher)}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── MLB FULL STANDINGS + STAT LEADERS ───────────────────────
+async function loadMLBFullStandings() {
+  showLoading('other-standings-area', 'Loading MLB standings & leaders…');
+  try {
+    const [standRes, leadRes] = await Promise.all([
+      fetch('https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=2025&standingsTypes=regularSeason&hydrate=division,team,record'),
+      fetch('https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=homeRuns,battingAverage,rbi,stolenBases,hits,earnedRunAverage,strikeouts,wins,saves&season=2025&sportId=1&limit=10&hydrate=person,team')
+    ]);
+    if (!standRes.ok) throw new Error(`Standings HTTP ${standRes.status}`);
+    if (!leadRes.ok)  throw new Error(`Leaders HTTP ${leadRes.status}`);
+    renderMLBFullStandings(await standRes.json(), await leadRes.json());
+  } catch (err) {
+    showError('other-standings-area', `Could not load MLB stats — ${err.message}`, "loadMLBFullStandings()");
+  }
+}
+
+function renderMLBFullStandings(standData, leadData) {
+  const area = document.getElementById('other-standings-area');
+  let html = '';
+
+  // ── Division Standings ──
+  const divOrder = ['American League East','American League Central','American League West','National League East','National League Central','National League West'];
+  const byDiv = {};
+  for (const rec of (standData.records || [])) {
+    const name = rec.division?.name || rec.league?.name || 'Other';
+    byDiv[name] = rec.teamRecords || [];
+  }
+  html += '<div class="mlb-section-title">Division Standings</div>';
+  for (const divName of divOrder) {
+    const teams = byDiv[divName];
+    if (!teams?.length) continue;
+    html += `<div class="league-group"><div class="league-header">${esc(divName)}</div>
+      <div class="standings-list">
+        <div class="standing-row standing-head"><span>#</span><span>Team</span><span>W–L</span><span>GB</span><span>Streak</span></div>
+        ${teams.map((t,i) => `<div class="standing-row">
+          <span class="standing-rank">${i+1}</span>
+          <span class="standing-team">${esc(t.team?.name || '—')}</span>
+          <span class="standing-record">${t.wins}–${t.losses}</span>
+          <span class="standing-gb">${esc(t.gamesBack || '—')}</span>
+          <span class="standing-streak">${esc(t.streak?.streakCode || '—')}</span>
+        </div>`).join('')}
+      </div></div>`;
+  }
+
+  // ── Stat Leaders ──
+  const LEADER_LABELS = {
+    homeRuns: 'Home Runs', battingAverage: 'Batting Average', rbi: 'RBI',
+    stolenBases: 'Stolen Bases', hits: 'Hits',
+    earnedRunAverage: 'ERA', strikeouts: 'Strikeouts (P)', wins: 'Wins', saves: 'Saves'
+  };
+  html += '<div class="mlb-section-title" style="margin-top:24px">Leaderboards</div>';
+  html += '<div class="leaders-grid">';
+  for (const cat of (leadData.leagueLeaders || [])) {
+    const label = LEADER_LABELS[cat.leaderCategory] || cat.leaderCategory;
+    html += `<div class="leader-block">
+      <div class="leader-block-title">${esc(label)}</div>
+      ${(cat.leaders || []).slice(0,10).map(l => `
+        <div class="leader-row">
+          <span class="leader-rank">${l.rank}</span>
+          <span class="leader-name">${esc(l.person?.fullName || '—')}</span>
+          <span class="leader-team">${esc(l.team?.abbreviation || l.team?.name || '—')}</span>
+          <span class="leader-val">${esc(l.value)}</span>
+        </div>`).join('')}
+    </div>`;
+  }
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+// ── MLB PLAYER STATS ─────────────────────────────────────────
+async function loadMLBPlayerStats(playerId, playerName, rowEl) {
+  const existingPanel = rowEl.nextElementSibling;
+  if (existingPanel?.classList.contains('mlb-stats-panel')) {
+    existingPanel.remove(); return;
+  }
+  const panel = document.createElement('div');
+  panel.className = 'mlb-stats-panel';
+  panel.innerHTML = '<div class="loading-spinner" style="padding:12px"><div class="spinner"></div></div>';
+  rowEl.after(panel);
+  try {
+    const res = await fetch(
+      `https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=stats(group=[hitting,pitching],type=season,season=2025),currentTeam,position`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const person = json.people?.[0];
+    const allStats = person?.stats || [];
+    const hitting  = allStats.find(s => s.group?.displayName === 'hitting')?.splits?.[0]?.stat;
+    const pitching = allStats.find(s => s.group?.displayName === 'pitching')?.splits?.[0]?.stat;
+    let inner = `<div class="mlb-stats-name">${esc(playerName)} — 2025 Season Stats</div>`;
+    if (hitting) {
+      inner += `<div class="mlb-stats-group">
+        <div class="mlb-stats-label">Batting</div>
+        <div class="mlb-stats-row">
+          ${statCell('AVG', hitting.avg)} ${statCell('HR', hitting.homeRuns)} ${statCell('RBI', hitting.rbi)}
+          ${statCell('H', hitting.hits)} ${statCell('R', hitting.runs)} ${statCell('2B', hitting.doubles)}
+          ${statCell('3B', hitting.triples)} ${statCell('BB', hitting.baseOnBalls)} ${statCell('SO', hitting.strikeOuts)}
+          ${statCell('SB', hitting.stolenBases)} ${statCell('OBP', hitting.obp)} ${statCell('SLG', hitting.slg)}
+          ${statCell('OPS', hitting.ops)} ${statCell('AB', hitting.atBats)} ${statCell('G', hitting.gamesPlayed)}
+        </div>
+      </div>`;
+    }
+    if (pitching) {
+      inner += `<div class="mlb-stats-group">
+        <div class="mlb-stats-label">Pitching</div>
+        <div class="mlb-stats-row">
+          ${statCell('ERA', pitching.era)} ${statCell('W', pitching.wins)} ${statCell('L', pitching.losses)}
+          ${statCell('IP', pitching.inningsPitched)} ${statCell('SO', pitching.strikeOuts)} ${statCell('BB', pitching.baseOnBalls)}
+          ${statCell('H', pitching.hits)} ${statCell('HR', pitching.homeRuns)} ${statCell('WHIP', pitching.whip)}
+          ${statCell('SV', pitching.saves)} ${statCell('HLD', pitching.holds)} ${statCell('G', pitching.gamesPlayed)}
+        </div>
+      </div>`;
+    }
+    if (!hitting && !pitching) inner += '<div class="empty-state" style="padding:10px">No 2025 stats found</div>';
+    panel.innerHTML = inner;
+  } catch (err) {
+    panel.innerHTML = `<div class="error-state" style="padding:10px">Could not load stats: ${esc(err.message)}</div>`;
+  }
+}
+
+function statCell(label, val) {
+  return `<div class="stat-cell"><div class="stat-val">${val != null ? esc(String(val)) : '—'}</div><div class="stat-lbl">${label}</div></div>`;
 }
 
 async function loadOtherStandings(sport) {
