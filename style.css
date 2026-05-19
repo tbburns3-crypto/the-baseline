@@ -606,6 +606,19 @@ input { font: inherit; }
 }
 .other-period { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 
+/* ── LEAGUE GROUPS (other sports) ── */
+.league-group { margin-bottom: 20px; }
+.league-header {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  padding: 6px 4px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
 /* ── STANDINGS ── */
 .standings-list { display: flex; flex-direction: column; }
 .standing-row {
