@@ -1315,6 +1315,9 @@ input { font: inherit; }
 .gp-pf-tie  .gp-pf-icon { color: var(--text-muted); }
 .gp-pf-label { font-weight: 700; color: var(--text); white-space: nowrap; min-width: 72px; flex-shrink: 0; }
 .gp-pf-detail { color: var(--text-muted); }
+.gp-pf-weather      { background: rgba(100,180,255,.06); }
+.gp-pf-weather-warn { background: rgba(255,140,0,.08); }
+.gp-pf-weather-warn .gp-pf-label { color: #ffb300; }
 .gp-bench-tag {
   font-size: .62rem; font-weight: 700;
   background: rgba(255,179,0,.18); color: #ffb300;
