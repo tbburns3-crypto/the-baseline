@@ -1212,9 +1212,15 @@ input { font: inherit; }
 
 /* Misc */
 .gp-hand-legend { font-size: .7rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.gp-records { font-size: .84rem; font-weight: 600; }
-.gp-at { color: var(--text-muted); margin: 0 6px; }
+.gp-records { font-size: .84rem; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.gp-at { color: var(--text-muted); margin: 0 4px; }
 .gp-no-lineup { font-size: .8rem; color: var(--text-muted); font-style: italic; padding: 4px 0; }
+.gp-stat-cat { margin-bottom: 8px; }
+.gp-stat-cat:last-child { margin-bottom: 0; }
+.gp-cat-lbl {
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-muted); margin-bottom: 3px; font-weight: 600;
+}
 
 /* ── VS PITCHER SEARCH ── */
 .vsp-area { padding: 10px 4px; }
