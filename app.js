@@ -203,9 +203,6 @@ async function loadRankings() {
     ]);
     const atp = atpR.status === 'fulfilled' ? atpR.value : [];
     const wta = wtaR.status === 'fulfilled' ? wtaR.value : [];
-    console.log('[Rankings] ATP sample:', JSON.stringify(atp.slice(0,2), null, 2));
-    console.log('[Rankings] WTA sample:', JSON.stringify(wta.slice(0,2), null, 2));
-    console.log('[Rankings] ATP keys:', atp.length ? Object.keys(atp[0]) : 'empty');
     renderRankings(atp, wta);
   } catch (err) {
     showError('rankings-area', `Could not load rankings — ${err.message}`, 'loadRankings()');
@@ -566,18 +563,19 @@ function renderRankings(atp, wta) {
       <h3>${title}</h3>
       <div class="ranking-header-row"><span>#</span><span>Player</span><span>Pts</span><span>Country</span></div>
       ${data.slice(0,30).map((p,i) => {
-        const rank    = p.standing_place ?? p.ranking ?? p.place ?? (i+1);
-        const name    = p.team_name || p.player_name || p.name || p.full_name ||
-                        p.team?.name || p.player?.name ||
-                        (p.first_name ? `${p.first_name} ${p.last_name||''}`.trim() : null) || '—';
-        const pts     = p.standing_points ?? p.ranking_points ?? p.points ?? p.race_points ?? '—';
-        const country = p.player_country || p.nationality || p.team_country || p.country || p.team?.country || '';
+        const rank    = p.place ?? p.standing_place ?? p.ranking ?? (i+1);
+        const name    = p.player || p.team_name || p.player_name || p.name || '—';
+        const pts     = p.points ?? p.standing_points ?? p.ranking_points ?? '—';
+        const country = p.country || p.player_country || p.nationality || '';
+        const mov     = p.movement === 'up' ? '<span class="rank-up">▲</span>'
+                      : p.movement === 'down' ? '<span class="rank-down">▼</span>'
+                      : '<span class="rank-same">–</span>';
         return `
           <div class="ranking-row">
             <span class="rank-num">${esc(rank)}</span>
             <span class="rank-name">${esc(name)}</span>
             <span class="rank-pts">${esc(pts)}</span>
-            <span class="rank-country">${esc(country)}</span>
+            <span class="rank-country">${mov} ${esc(country)}</span>
           </div>`;
       }).join('')}
     </div>`;
