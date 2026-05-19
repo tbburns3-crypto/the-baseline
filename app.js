@@ -315,11 +315,11 @@ function renderMatches(all) {
   // Group by category then tournament
   const catMap = new Map();
   for (const m of filtered) {
-    const cat = matchCategory(m.event_type || '');
+    const cat = matchCategory(m.event_type_type || '');
     if (!catMap.has(cat)) catMap.set(cat, new Map());
-    const tKey = m.league_name || m.tournament_name || m.event_type || 'Other';
+    const tKey = m.tournament_name || m.league_name || m.event_type_type || 'Other';
     const tMap = catMap.get(cat);
-    if (!tMap.has(tKey)) tMap.set(tKey, { name: tKey, surface: m.tournament_surface || '', type: m.event_type || '', matches: [] });
+    if (!tMap.has(tKey)) tMap.set(tKey, { name: tKey, surface: m.tournament_surface || '', type: m.event_type_type || '', matches: [] });
     tMap.get(tKey).matches.push(m);
   }
 
@@ -415,7 +415,7 @@ function buildMatchRow(m, liteMode = false) {
   return `
     <div class="match-row ${live?'live':''} ${finished?'finished':''}"
          data-key="${key}"
-         onclick="${liteMode ? `jumpTo('${slugify(m.league_name||m.tournament_name||'')}')` : `toggleDetail('${key}')`}">
+         onclick="${liteMode ? `jumpTo('${slugify(m.tournament_name||m.league_name||'')}')` : `toggleDetail('${key}')`}">
       <div class="match-status">${statusHTML}</div>
       <div class="match-players">
         <div class="player p1 ${serve==='1'?'serving':''}">
@@ -522,7 +522,7 @@ function renderOverview(matches) {
   const counts = { atp:0, wta:0, chal:0, itf:0 };
   const lives  = { atp:0, wta:0, chal:0, itf:0 };
   for (const m of matches) {
-    const cat = matchCategory(m.event_type || '');
+    const cat = matchCategory(m.event_type_type || '');
     const live = isLive(m.event_status);
     if (cat === 'atp' || cat === 'doubles') { counts.atp++; if (live) lives.atp++; }
     else if (cat === 'wta')        { counts.wta++; if (live) lives.wta++; }
@@ -541,7 +541,7 @@ function renderOverview(matches) {
 function renderSidebar(matches) {
   const groups = new Map();
   for (const m of matches) {
-    const name = m.league_name || m.tournament_name || 'Unknown';
+    const name = m.tournament_name || m.league_name || 'Unknown';
     if (!groups.has(name)) groups.set(name, { name, surface: m.tournament_surface || '', count: 0, live: 0 });
     const g = groups.get(name);
     g.count++;
@@ -578,7 +578,7 @@ function renderRankings(atp, wta) {
 // ── FILTER ───────────────────────────────────────────────────
 function filterPasses(m) {
   if (S.filter === 'all') return true;
-  return matchCategory(m.event_type || '') === S.filter;
+  return matchCategory(m.event_type_type || '') === S.filter;
 }
 
 function applyFilter(filter) {
