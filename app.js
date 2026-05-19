@@ -895,10 +895,16 @@ function stopScoresTimer() {
   if (S.scoresTimer) { clearInterval(S.scoresTimer); S.scoresTimer = null; }
 }
 
+function loadSportScores(sport) {
+  if (sport === 'soccer') loadSoccerScores();
+  else if (sport === 'golf') loadGolfLeaderboard();
+  else loadOtherScores(sport);
+}
+
 function startScoresTimer(sport) {
   stopScoresTimer();
   S.scoresTimer = setInterval(() => {
-    if (S.sport === sport && S.view === 'scores') loadOtherScores(sport);
+    if (S.sport === sport && S.view === 'scores') loadSportScores(sport);
   }, 30000);
 }
 
@@ -916,10 +922,21 @@ function switchSport(sport) {
   stopScoresTimer();
   if (isTennis) {
     secTab.textContent = 'Rankings'; secTab.dataset.view = 'secondary';
+    secTab.style.display   = '';
     playersTab.style.display  = 'none';
+    lineupsTab.style.display  = 'none';
+  } else if (sport === 'golf') {
+    secTab.style.display   = 'none';
+    playersTab.style.display  = 'none';
+    lineupsTab.style.display  = 'none';
+  } else if (sport === 'soccer') {
+    secTab.textContent = 'Tables'; secTab.dataset.view = 'secondary';
+    secTab.style.display   = '';
+    playersTab.style.display  = '';
     lineupsTab.style.display  = 'none';
   } else {
     secTab.textContent = 'Standings'; secTab.dataset.view = 'secondary';
+    secTab.style.display   = '';
     playersTab.style.display  = '';
     lineupsTab.style.display  = sport === 'mlb' ? '' : 'none';
   }
@@ -932,7 +949,7 @@ function switchSport(sport) {
   } else {
     wsDisconnect();
     setConn('disconnected', `${sport.toUpperCase()} — updating every 30s`);
-    loadOtherScores(sport);
+    loadSportScores(sport);
   }
 }
 
@@ -950,8 +967,9 @@ function switchView(view) {
     }
   } else {
     if (view === 'scores') {
-      document.getElementById('view-other-scores').classList.add('active');
-      loadOtherScores(S.sport);
+      const panelId = S.sport === 'golf' ? 'view-golf-leaderboard' : 'view-other-scores';
+      document.getElementById(panelId).classList.add('active');
+      loadSportScores(S.sport);
       startScoresTimer(S.sport);
     } else if (view === 'lineups') {
       stopScoresTimer();
@@ -968,6 +986,7 @@ function switchView(view) {
       stopScoresTimer();
       document.getElementById('view-other-standings').classList.add('active');
       if (S.sport === 'mlb') loadMLBFullStandings();
+      else if (S.sport === 'soccer') loadSoccerTables();
       else loadOtherStandings(S.sport);
     }
   }
@@ -1091,8 +1110,10 @@ function gameRowState(g) {
   const live = /^(Q[1-4]|OT)\s+\d/i.test(st)
     || /^(Top|Bot|Mid)\s+\d/i.test(st)
     || /^(In.Progress|live|ongoing|H[1-2])$/i.test(st)
-    || /^\d+(st|nd|rd|th)\s*(quarter|period|inning)/i.test(st);
-  const fin  = /^Final/i.test(st) || /^F(\/|$)/i.test(st) || ['FT','Finished','Complete'].includes(st);
+    || /^\d+(st|nd|rd|th)\s*(quarter|period|inning)/i.test(st)
+    || /^\d+['′]/.test(st)                               // soccer: "45'"
+    || /^(Halftime|HT|Half Time|Extra Time|ET)$/i.test(st); // soccer periods
+  const fin  = /^Final/i.test(st) || /^F(\/|$)/i.test(st) || ['FT','Finished','Complete','Full Time','AET'].includes(st);
   const periodLabel = g.period ? `${g.period}${ordinal(+g.period || 0)}` : '';
   return { live, fin, periodLabel };
 }
@@ -1193,6 +1214,11 @@ async function toggleGamePreview(gameId) {
 
 function parseWinPct(recStr) {
   if (!recStr) return 0.5;
+  const m3 = recStr.match(/(\d+)-(\d+)-(\d+)/);
+  if (m3) { // W-D-L (soccer)
+    const w = +m3[1], d = +m3[2], l = +m3[3], t = w + d + l;
+    return t > 0 ? (w + d * 0.4) / t : 0.5;
+  }
   const m = recStr.match(/(\d+)-(\d+)/);
   if (!m) return 0.5;
   const w = +m[1], l = +m[2];
@@ -1310,7 +1336,7 @@ function buildPickSection(awayName, homeName, opts) {
   }
 
   // 7. Weather — outdoor sports only (NFL, MLB); shown when API returns it
-  if (weather && (sport === 'nfl' || sport === 'mlb')) {
+  if (weather && (sport === 'nfl' || sport === 'mlb' || sport === 'soccer')) {
     const wf = parseWeatherFactor(weather, weatherFmt);
     if (wf) {
       factors.push({ label: 'Weather', detail: wf.display, winner: 'tie', extreme: wf.isExtreme });
@@ -1526,14 +1552,16 @@ async function renderESPNGamePreview(game, panel) {
 
   // Sport config: which categories to highlight (pre-game) + which labels to show (live)
   const SPORT_CFG = {
-    nba:  { cats: ['Points','Rebounds','Assists'],
-            live: { sort:'PTS', show:['PTS','REB','AST','BLK','STL'] }, icon:'🏀' },
-    wnba: { cats: ['Points','Rebounds','Assists'],
-            live: { sort:'PTS', show:['PTS','REB','AST'] }, icon:'🏀' },
-    nfl:  { cats: ['Passing Yards','Rushing Yards','Receiving Yards','Sacks'],
-            live: { sort:'YDS', show:['YDS','TD','INT'] }, icon:'🏈' },
-    nhl:  { cats: ['Points','Goals','Assists','Save Percentage'],
-            live: { sort:'PTS', show:['G','A','PTS','+/-'] }, icon:'🏒' }
+    nba:    { cats: ['Points','Rebounds','Assists'],
+              live: { sort:'PTS', show:['PTS','REB','AST','BLK','STL'] }, icon:'🏀' },
+    wnba:   { cats: ['Points','Rebounds','Assists'],
+              live: { sort:'PTS', show:['PTS','REB','AST'] }, icon:'🏀' },
+    nfl:    { cats: ['Passing Yards','Rushing Yards','Receiving Yards','Sacks'],
+              live: { sort:'YDS', show:['YDS','TD','INT'] }, icon:'🏈' },
+    nhl:    { cats: ['Points','Goals','Assists','Save Percentage'],
+              live: { sort:'PTS', show:['G','A','PTS','+/-'] }, icon:'🏒' },
+    soccer: { cats: ['Goals','Assists','Shots on Target'],
+              live: { sort:'G',   show:['G','A','SH'] }, icon:'⚽' }
   };
   const cfg = SPORT_CFG[game.sport] || { cats:[], live:{ sort:'', show:[] }, icon:'' };
 
@@ -1962,6 +1990,211 @@ function renderMLBLineups(games) {
       loadBatterStatsForCard(g);
     }
   }
+}
+
+// ── SOCCER ───────────────────────────────────────────────────
+const SOCCER_LEAGUES = [
+  { id:'eng.1',           name:'Premier League',     icon:'🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+  { id:'esp.1',           name:'La Liga',             icon:'🇪🇸' },
+  { id:'ger.1',           name:'Bundesliga',          icon:'🇩🇪' },
+  { id:'ita.1',           name:'Serie A',             icon:'🇮🇹' },
+  { id:'fra.1',           name:'Ligue 1',             icon:'🇫🇷' },
+  { id:'usa.1',           name:'MLS',                 icon:'🇺🇸' },
+  { id:'uefa.champions',  name:'Champions League',    icon:'⭐' },
+  { id:'uefa.europa',     name:'Europa League',       icon:'🟠' },
+  { id:'uefa.europa_conf',name:'Conference League',   icon:'🔵' },
+  { id:'ned.1',           name:'Eredivisie',          icon:'🇳🇱' },
+  { id:'mex.1',           name:'Liga MX',             icon:'🇲🇽' },
+  { id:'por.1',           name:'Primeira Liga',       icon:'🇵🇹' }
+];
+
+async function loadSoccerScores() {
+  showLoading('other-scores-area', 'Loading soccer matches…');
+  try {
+    const results = await Promise.allSettled(
+      SOCCER_LEAGUES.map(l =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${l.id}/scoreboard`)
+          .then(r => r.json())
+      )
+    );
+    const allGames = [];
+    for (let i = 0; i < SOCCER_LEAGUES.length; i++) {
+      if (results[i].status !== 'fulfilled') continue;
+      const d   = results[i].value;
+      const lg  = SOCCER_LEAGUES[i];
+      for (const ev of (d.events || [])) {
+        const comp = ev.competitions?.[0]; if (!comp) continue;
+        const home = comp.competitors?.find(c => c.homeAway === 'home') || comp.competitors?.[0];
+        const away = comp.competitors?.find(c => c.homeAway === 'away') || comp.competitors?.[1];
+        const st   = comp.status || ev.status || {};
+        const state = st.type?.state || '';
+        allGames.push({
+          id:        ev.id,
+          league:    `${lg.icon} ${lg.name}`,
+          leagueId:  lg.id,
+          sport:     'soccer',
+          homeTeam:  home?.team?.shortDisplayName || home?.team?.name || '—',
+          awayTeam:  away?.team?.shortDisplayName || away?.team?.name || '—',
+          homeAbbr:  home?.team?.abbreviation || '',
+          awayAbbr:  away?.team?.abbreviation || '',
+          homeRec:   home?.record?.[0]?.summary || '',
+          awayRec:   away?.record?.[0]?.summary || '',
+          series:    comp.series ? { summary: comp.series.summary||'', title: comp.series.title||'' } : null,
+          homeScore: state !== 'pre' ? (home?.score ?? '') : '',
+          awayScore: state !== 'pre' ? (away?.score ?? '') : '',
+          status:    st.type?.shortDetail || st.type?.description || '—',
+          period:    st.period || '',
+          time:      st.displayClock || ''
+        });
+      }
+    }
+    if (!allGames.length) {
+      document.getElementById('other-scores-area').innerHTML = '<div class="empty-state"><p>No soccer matches today.</p><p class="muted">Check back later — fixtures are loaded day-of.</p></div>';
+      setConn('connected', 'Soccer — no matches today');
+      return;
+    }
+    renderOtherScores(allGames, 'soccer', 'ESPN');
+    const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    setConn('connected', `Soccer — updated ${t} · refreshes every 30s`);
+  } catch (err) {
+    setConn('disconnected', 'Soccer — update failed');
+    showError('other-scores-area', `Could not load soccer — ${err.message}`, 'loadSoccerScores()');
+  }
+}
+
+async function loadSoccerTables() {
+  showLoading('other-standings-area', 'Loading league tables…');
+  try {
+    const leagues = SOCCER_LEAGUES.filter(l => ['eng.1','esp.1','ger.1','ita.1','fra.1','usa.1'].includes(l.id));
+    const results = await Promise.allSettled(
+      leagues.map(l =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${l.id}/standings`).then(r => r.json())
+      )
+    );
+    const area = document.getElementById('other-standings-area');
+    let html = '<div class="source-badge">Source: ESPN</div>';
+    for (let i = 0; i < leagues.length; i++) {
+      if (results[i].status !== 'fulfilled') continue;
+      const data = results[i].value;
+      const lg   = leagues[i];
+      const entries = data.standings?.entries || data.children?.[0]?.standings?.entries || [];
+      if (!entries.length) continue;
+      html += `<div class="league-group"><div class="league-header">${lg.icon} ${esc(lg.name)}</div><div class="standings-list">`;
+      entries.forEach((e, idx) => {
+        const team = e.team?.shortDisplayName || e.team?.name || '—';
+        const stats = {};
+        (e.stats || []).forEach(s => { stats[s.name] = s.displayValue; });
+        const pts = stats.points || stats.pts || '—';
+        const w   = stats.wins   || stats.W   || '—';
+        const d   = stats.ties   || stats.D   || stats.draws || '—';
+        const l2  = stats.losses || stats.L   || '—';
+        html += `<div class="standing-row">
+          <span class="standing-rank">${idx+1}</span>
+          <span class="standing-team">${esc(team)}</span>
+          <span class="standing-record">${w}-${d}-${l2}</span>
+          <span class="standing-pts">${pts} pts</span>
+        </div>`;
+      });
+      html += '</div></div>';
+    }
+    area.innerHTML = html || '<div class="empty-state">No table data available.</div>';
+  } catch (err) {
+    showError('other-standings-area', `Could not load tables — ${err.message}`, 'loadSoccerTables()');
+  }
+}
+
+// ── GOLF ─────────────────────────────────────────────────────
+const GOLF_TOURS = [
+  { key:'pga',  label:'PGA Tour',      icon:'🏌️' },
+  { key:'lpga', label:'LPGA Tour',     icon:'🏌️‍♀️' },
+  { key:'dpwt', label:'DP World Tour', icon:'🏌️' },
+  { key:'liv',  label:'LIV Golf',      icon:'🏌️' }
+];
+
+async function loadGolfLeaderboard() {
+  const area = document.getElementById('golf-leaderboard-area');
+  if (!area) return;
+  area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf…</p></div>';
+  try {
+    const results = await Promise.allSettled(
+      GOLF_TOURS.map(t =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard`).then(r => r.json())
+      )
+    );
+    let html = '';
+    for (let i = 0; i < GOLF_TOURS.length; i++) {
+      if (results[i].status !== 'fulfilled') continue;
+      const data = results[i].value;
+      const tour = GOLF_TOURS[i];
+      for (const ev of (data.events || [])) {
+        const comp    = ev.competitions?.[0]; if (!comp) continue;
+        const state   = comp.status?.type?.state || '';
+        const round   = comp.status?.period || 1;
+        const isLive  = state === 'in';
+        const isFinal = state === 'post' || comp.status?.type?.completed;
+        const venue   = comp.venue?.fullName ? `${comp.venue.fullName}` : '';
+        const city    = comp.venue?.address?.city || '';
+        const statusTxt = isLive  ? `<span class="live-badge pulse">LIVE</span> Round ${round}`
+                        : isFinal ? `<span class="fin-badge">FINAL</span>`
+                        :           `Round ${round} · Upcoming`;
+        const players = [...(comp.competitors || [])]
+          .sort((a, b) => (+a.sortOrder||99) - (+b.sortOrder||99))
+          .slice(0, 25);
+        if (!players.length) continue;
+        html += `<div class="golf-tournament">
+          <div class="golf-tourn-header">
+            <div class="golf-tourn-name">${tour.icon} ${esc(ev.name || ev.shortName || tour.label)}</div>
+            <div class="golf-tourn-meta">${statusTxt}${venue ? ` · ${esc(venue)}` : ''}${city ? `, ${esc(city)}` : ''}</div>
+          </div>
+          <div class="golf-leaderboard">
+            <div class="golf-lb-hdr">
+              <span class="gc-pos">POS</span>
+              <span class="gc-name">PLAYER</span>
+              <span class="gc-score">SCORE</span>
+              <span class="gc-today">TODAY</span>
+              <span class="gc-thru">THRU</span>
+            </div>
+            ${players.map(p => renderGolfRow(p, round)).join('')}
+          </div>
+        </div>`;
+      }
+    }
+    area.innerHTML = html || '<div class="empty-state"><p>No active golf tournaments right now.</p><p class="muted">Check back when a PGA/LPGA/DP World Tour event is in progress.</p></div>';
+    const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    setConn('connected', `Golf — updated ${t} · refreshes every 30s`);
+  } catch (err) {
+    setConn('disconnected', 'Golf — update failed');
+    area.innerHTML = `<div class="pp-error" style="padding:16px">Could not load golf — ${esc(err.message)}</div>`;
+  }
+}
+
+function renderGolfRow(p, round) {
+  const name     = p.athlete?.shortName || p.athlete?.displayName || '—';
+  const total    = p.score || 'E';
+  const totalNum = total === 'E' ? 0 : parseInt(total);
+  const scoreCls = isNaN(totalNum) ? '' : totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
+  const thru     = p.status?.displayValue || '—';
+  const status   = (p.status?.type?.name || '').toLowerCase();
+  const isCut    = status === 'cut' || thru === 'CUT' || status === 'wd' || status === 'dq';
+  const today    = p.linescores?.[round - 1]?.displayValue || (p.statistics?.find?.(s => s.name === 'scoringPlayByPlay')?.displayValue) || '—';
+  const pos      = p.sortOrder ? String(p.sortOrder) : '—';
+
+  if (isCut) {
+    return `<div class="golf-player-row golf-row-cut">
+      <span class="gc-pos golf-cut-lbl">${esc(status.toUpperCase() || 'CUT')}</span>
+      <span class="gc-name">${esc(name)}</span>
+      <span class="gc-score golf-over">${esc(total)}</span>
+      <span class="gc-today">—</span>
+      <span class="gc-thru">—</span>
+    </div>`;
+  }
+  return `<div class="golf-player-row">
+    <span class="gc-pos">${esc(pos)}</span>
+    <span class="gc-name">${esc(name)}</span>
+    <span class="gc-score ${scoreCls}">${esc(total)}</span>
+    <span class="gc-today">${esc(today)}</span>
+    <span class="gc-thru ${thru === 'F' ? 'golf-thru-done' : ''}">${esc(thru)}</span>
+  </div>`;
 }
 
 // ── MLB FULL STANDINGS + STAT LEADERS ───────────────────────
