@@ -1074,6 +1074,55 @@ input { font: inherit; }
   margin-left: 6px;
 }
 
+/* ── VS PITCHER SEARCH ── */
+.vsp-area { padding: 10px 4px; }
+.vsp-prompt { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px; }
+.vsp-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px;
+  padding: 7px 10px; font-size: 0.9rem; outline: none;
+}
+.vsp-input:focus { border-color: var(--accent); }
+.vsp-results { margin-top: 6px; }
+.vsp-pitcher-option {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 10px; cursor: pointer; border-radius: 5px;
+  transition: background 0.15s;
+}
+.vsp-pitcher-option:hover { background: rgba(0,230,118,0.08); }
+.vsp-no-results { padding: 6px; font-size: 0.8rem; color: var(--text-muted); }
+.vsp-matchup { margin-top: 10px; }
+
+/* ── LINEUP MATCHUP INLINE ── */
+.matchup-clickable { cursor: pointer; transition: background 0.15s; }
+.matchup-clickable:hover { background: rgba(0,230,118,0.06); }
+.matchup-hint {
+  font-size: 0.7rem; color: var(--accent);
+  opacity: 0.65; margin-left: 6px; font-style: italic;
+}
+.matchup-inline {
+  background: rgba(0,230,118,0.05);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  padding: 10px 12px; margin: 2px 0 6px 0;
+  animation: slide-down 0.2s ease;
+}
+.matchup-vs {
+  font-size: 0.82rem; color: var(--accent);
+  font-weight: 600; margin-bottom: 8px;
+}
+.matchup-stats-row {
+  display: flex; flex-wrap: wrap; gap: 8px 14px;
+}
+.matchup-stat { text-align: center; min-width: 36px; }
+.matchup-val { font-size: 1rem; font-weight: 700; color: var(--text); }
+.matchup-lbl { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; margin-top: 1px; }
+.matchup-no-history {
+  font-size: 0.8rem; color: var(--text-muted);
+  font-style: italic; padding: 4px 0;
+}
+
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-text {
