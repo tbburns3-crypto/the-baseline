@@ -300,21 +300,48 @@ function renderMatches(all) {
       </div>`;
   }
 
-  // ── Tournament groups ──
-  const groups = new Map();
+  // ── Category sections → tournament groups ──
+  const CATS = [
+    { key: 'atp',          label: 'ATP Singles' },
+    { key: 'wta',          label: 'WTA Singles' },
+    { key: 'doubles',      label: 'Doubles' },
+    { key: 'challenger-m', label: 'Challenger Men' },
+    { key: 'challenger-w', label: 'Challenger Women' },
+    { key: 'itf-m',        label: 'ITF Men' },
+    { key: 'itf-w',        label: 'ITF Women' },
+    { key: 'other',        label: 'Other' },
+  ];
+
+  // Group by category then tournament
+  const catMap = new Map();
   for (const m of filtered) {
-    const key = m.league_name || m.tournament_name || m.event_type || 'Other';
-    if (!groups.has(key)) groups.set(key, { name: key, surface: m.tournament_surface || '', type: m.event_type || '', matches: [] });
-    groups.get(key).matches.push(m);
+    const cat = matchCategory(m.event_type || '');
+    if (!catMap.has(cat)) catMap.set(cat, new Map());
+    const tKey = m.league_name || m.tournament_name || m.event_type || 'Other';
+    const tMap = catMap.get(cat);
+    if (!tMap.has(tKey)) tMap.set(tKey, { name: tKey, surface: m.tournament_surface || '', type: m.event_type || '', matches: [] });
+    tMap.get(tKey).matches.push(m);
   }
 
-  const sorted = [...groups.values()].sort((a, b) => {
-    const al = a.matches.some(m => isLive(m.event_status)) ? 0 : 1;
-    const bl = b.matches.some(m => isLive(m.event_status)) ? 0 : 1;
-    return al - bl;
-  });
+  for (const { key, label } of CATS) {
+    const tMap = catMap.get(key);
+    if (!tMap) continue;
+    const hasLive = [...tMap.values()].some(g => g.matches.some(m => isLive(m.event_status)));
+    const sortedGroups = [...tMap.values()].sort((a, b) => {
+      const al = a.matches.some(m => isLive(m.event_status)) ? 0 : 1;
+      const bl = b.matches.some(m => isLive(m.event_status)) ? 0 : 1;
+      return al - bl;
+    });
+    html += `
+      <div class="category-section">
+        <div class="category-section-header" data-cat="${key}">
+          ${label}
+          ${hasLive ? '<span class="live-badge pulse">LIVE</span>' : ''}
+        </div>
+        ${sortedGroups.map(g => buildGroup(g)).join('')}
+      </div>`;
+  }
 
-  html += sorted.map(g => buildGroup(g)).join('');
   area.innerHTML = html;
 }
 
@@ -653,7 +680,13 @@ async function loadOtherScores(sport) {
 }
 
 async function espnGames(sport) {
-  const paths = { nba: 'basketball/nba', mlb: 'baseball/mlb', nfl: 'football/nfl' };
+  const paths = {
+    nba:  'basketball/nba',
+    wnba: 'basketball/wnba',
+    mlb:  'baseball/mlb',
+    nfl:  'football/nfl',
+    nhl:  'hockey/nhl'
+  };
   if (!paths[sport]) throw new Error('unknown sport');
   const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${paths[sport]}/scoreboard`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -785,35 +818,63 @@ function renderOtherScores(games, sport, src) {
 async function loadOtherStandings(sport) {
   showLoading('other-standings-area', 'Loading standings…');
   try {
-    let data = []; let src = 'BallDontLie';
-    if (sport === 'nba') {
-      try {
-        const season = new Date().getFullYear();
-        const res = await fetch(`${CFG.bdl.base}/standings?season=${season}`, { headers: { Authorization: CFG.bdl.key } });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const j = await res.json();
-        data = j.data || [];
-      } catch (e) {
-        src = 'API-Sports';
-        const season = new Date().getFullYear();
-        const res = await fetch(`${CFG.apisports.nba}/standings?season=${season}`, { headers: { 'x-apisports-key': CFG.apisports.key } });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const j = await res.json();
-        data = j.response || [];
-      }
-    } else {
-      src = 'API-Sports';
-      const season = new Date().getFullYear();
-      const base = CFG.apisports[sport];
-      const res = await fetch(`${base}/standings?season=${season}`, { headers: { 'x-apisports-key': CFG.apisports.key } });
+    // ESPN standings (covers all sports we need)
+    const espnPaths = {
+      nba:  'basketball/nba',
+      wnba: 'basketball/wnba',
+      nhl:  'hockey/nhl',
+      mlb:  'baseball/mlb',
+      nfl:  'football/nfl'
+    };
+    const path = espnPaths[sport];
+    if (path) {
+      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${path}/standings`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      data = j.response || [];
+      renderESPNStandings(j, sport);
+      return;
     }
-    renderOtherStandings(data, sport, src);
+    // Fallback: BDL/API-Sports for any unhandled sport
+    throw new Error('No standings source for this sport');
   } catch (err) {
     showError('other-standings-area', `Could not load standings — ${err.message}`, `loadOtherStandings('${sport}')`);
   }
+}
+
+function renderESPNStandings(data, sport) {
+  const area = document.getElementById('other-standings-area');
+  const groups = data.children || data.standings?.entries ? [data] : (data.children || []);
+
+  if (!groups.length && !data.standings) {
+    area.innerHTML = '<div class="empty-state">No standings data available.</div>';
+    return;
+  }
+
+  let html = '<div class="source-badge">Source: ESPN</div>';
+
+  // ESPN wraps standings in conference/division groups
+  const sections = data.children?.length ? data.children : [data];
+  for (const section of sections) {
+    const name = section.name || section.abbreviation || '';
+    const entries = section.standings?.entries || [];
+    if (!entries.length) continue;
+    html += `<div class="league-group"><div class="league-header">${esc(name)}</div><div class="standings-list">`;
+    entries.forEach((entry, i) => {
+      const team = entry.team?.shortDisplayName || entry.team?.name || '—';
+      const stats = {};
+      (entry.stats || []).forEach(s => { stats[s.name] = s.displayValue; });
+      const w = stats.wins || stats.W || '—';
+      const l = stats.losses || stats.L || '—';
+      const pct = stats.winPercent || stats.PCT || '';
+      html += `<div class="standing-row">
+        <span class="standing-rank">${i + 1}</span>
+        <span class="standing-team">${esc(team)}</span>
+        <span class="standing-record">${w}–${l}${pct ? ` (${pct})` : ''}</span>
+      </div>`;
+    });
+    html += '</div></div>';
+  }
+  area.innerHTML = html || '<div class="empty-state">No standings data available.</div>';
 }
 
 function renderOtherStandings(data, sport, src) {
