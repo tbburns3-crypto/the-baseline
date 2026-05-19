@@ -198,13 +198,14 @@ async function loadRankings() {
   showLoading('rankings-area', 'Loading rankings…');
   try {
     const [atpR, wtaR] = await Promise.allSettled([
-      tennisFetch('get_standings', { event_type: 'ATP Singles' }),
-      tennisFetch('get_standings', { event_type: 'WTA Singles' })
+      tennisFetch('get_standings', { event_type: 'ATP' }),
+      tennisFetch('get_standings', { event_type: 'WTA' })
     ]);
-    renderRankings(
-      atpR.status === 'fulfilled' ? atpR.value : [],
-      wtaR.status === 'fulfilled' ? wtaR.value : []
-    );
+    const atp = atpR.status === 'fulfilled' ? atpR.value : [];
+    const wta = wtaR.status === 'fulfilled' ? wtaR.value : [];
+    console.log('[Rankings] ATP sample:', JSON.stringify(atp.slice(0,2)));
+    console.log('[Rankings] WTA sample:', JSON.stringify(wta.slice(0,2)));
+    renderRankings(atp, wta);
   } catch (err) {
     showError('rankings-area', `Could not load rankings — ${err.message}`, 'loadRankings()');
   }
@@ -562,13 +563,20 @@ function renderRankings(atp, wta) {
     if (!data.length) return `<div class="rankings-col"><h3>${title}</h3><div class="empty-state">No data available</div></div>`;
     return `<div class="rankings-col">
       <h3>${title}</h3>
-      <div class="ranking-header"><span>Rank</span><span>Player</span><span>Points</span></div>
-      ${data.slice(0,20).map((p,i) => `
-        <div class="ranking-row">
-          <span class="rank-num">${esc(p.standing_place||i+1)}</span>
-          <span class="rank-name">${esc(p.team_name||p.player_name||'—')}</span>
-          <span class="rank-pts">${esc(p.points||'—')}</span>
-        </div>`).join('')}
+      <div class="ranking-header-row"><span>#</span><span>Player</span><span>Pts</span><span>Country</span></div>
+      ${data.slice(0,30).map((p,i) => {
+        const rank    = p.standing_place ?? p.ranking ?? p.place ?? (i+1);
+        const name    = p.team_name || p.player_name || p.name || p.full_name || '—';
+        const pts     = p.standing_points ?? p.ranking_points ?? p.points ?? p.race_points ?? '—';
+        const country = p.player_country || p.nationality || p.team_country || p.country || '';
+        return `
+          <div class="ranking-row">
+            <span class="rank-num">${esc(rank)}</span>
+            <span class="rank-name">${esc(name)}</span>
+            <span class="rank-pts">${esc(pts)}</span>
+            <span class="rank-country">${esc(country)}</span>
+          </div>`;
+      }).join('')}
     </div>`;
   };
   document.getElementById('rankings-area').innerHTML =
