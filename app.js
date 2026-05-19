@@ -1214,6 +1214,7 @@ async function renderMLBGamePreview(espnGame, panel) {
       const posW = [0,1.1,1.0,1.4,1.5,1.2,1.0,0.9,0.8,0.7][i+1] || 1.0;
       return { name: p.fullName, id: p.id, pos: i+1, stat: st, batSide: st.batSide,
                favorable, team: teamAbbr, hr, h, r, rbi, ops, ab,
+               babip: calcBABIP(st),
                prodScore: (h + r + rbi) * posW,
                watchScore: (ops * 500 + hr * 4 + rbi * 0.6) * posW };
     }).filter(b => b.ab >= 10);
@@ -1224,6 +1225,8 @@ async function renderMLBGamePreview(espnGame, panel) {
 
     const hrThreats   = [...allBatters].filter(b => b.hr > 0).sort((a, b) => b.hr - a.hr).slice(0, 5);
     const topProd     = [...allBatters].sort((a, b) => b.prodScore - a.prodScore).slice(0, 5);
+    const dueForHits  = [...allBatters].filter(b => b.babip !== null && b.babip < 0.270)
+                          .sort((a, b) => a.babip - b.babip).slice(0, 4);
     const topHitters  = [...allBatters].filter(b => b.ab >= 50 && parseFloat(b.stat.avg || 0) > 0)
                           .sort((a, b) => parseFloat(b.stat.avg) - parseFloat(a.stat.avg)).slice(0, 5);
 
@@ -1272,7 +1275,22 @@ async function renderMLBGamePreview(espnGame, panel) {
         <span class="gp-team">${esc(b.team)}</span>
         <span class="gp-stats">
           <span class="gp-avg-val">${b.stat.avg}</span>
-          <span class="gp-muted">${b.stat.obp || '—'} OBP</span>
+          ${babipTag(b.babip)}
+          ${xbaTag(b.id, b.stat.avg)}
+          <span class="gp-muted">${b.stat.ops || '—'} OPS</span>
+        </span>
+      </div>`;
+
+    const dueRow = b => `
+      <div class="gp-player-row">
+        ${posTag(b.pos)}
+        ${handTag(b.batSide, b.favorable, b.team === awayAbbr ? homeHand : awayHand)}
+        <span class="gp-pname">${esc(b.name.split(' ').slice(-1)[0])}</span>
+        <span class="gp-team">${esc(b.team)}</span>
+        <span class="gp-stats">
+          <span class="gp-avg-val">${b.stat.avg}</span>
+          ${babipTag(b.babip)}
+          ${xbaTag(b.id, b.stat.avg)}
           <span class="gp-muted">${b.stat.ops || '—'} OPS</span>
         </span>
       </div>`;
@@ -1302,7 +1320,8 @@ async function renderMLBGamePreview(espnGame, panel) {
         ${noLineup
           ? `<div class="gp-no-lineup">Lineups not posted yet — only pitcher preview available</div>`
           : `
-          <div class="gp-hand-legend"><span class="gp-hand gp-fav">L/R/S</span> = favorable matchup vs today's opposing pitcher &nbsp; <span class="gp-hand gp-unfav">L/R</span> = same side (pitcher has edge)</div>
+          <div class="gp-hand-legend"><span class="gp-hand gp-fav">L/R/S</span> = favorable matchup &nbsp;·&nbsp; <span class="gp-babip gp-babip-due">BABIP .240 ↑</span> = unlucky, hits coming &nbsp;·&nbsp; <span class="gp-babip gp-babip-hot">BABIP .360 ↓</span> = running hot</div>
+          ${dueForHits.length ? `<div class="gp-section"><div class="gp-section-hdr">🍀 Due for Hits <span style="font-size:.65rem;font-weight:400;color:var(--text-muted)">— low BABIP = getting unlucky</span></div>${dueForHits.map(dueRow).join('')}</div>` : ''}
           ${hrThreats.length ? `<div class="gp-section"><div class="gp-section-hdr">💣 HR Threats</div>${hrThreats.map(hrRow).join('')}</div>` : ''}
           ${topProd.length  ? `<div class="gp-section"><div class="gp-section-hdr">⚡ H + R + RBI Leaders</div>${topProd.map(prodRow).join('')}</div>` : ''}
           ${topHitters.length ? `<div class="gp-section"><div class="gp-section-hdr">🎯 Best Hitters by AVG</div>${topHitters.map(hitRow).join('')}</div>` : ''}
@@ -1877,6 +1896,37 @@ function renderStatBlock(label, rows) {
           </div>`).join('')}
       </div>`).join('')}
   </div>`;
+}
+
+// ── HIT PREDICTOR HELPERS ────────────────────────────────────
+function calcBABIP(stat) {
+  const h  = parseInt(stat?.hits       || 0);
+  const hr = parseInt(stat?.homeRuns   || 0);
+  const ab = parseInt(stat?.atBats     || 0);
+  const k  = parseInt(stat?.strikeOuts || 0);
+  const sf = parseInt(stat?.sacFlies   || 0);
+  const denom = ab - k - hr + sf;
+  return denom > 0 ? (h - hr) / denom : null;
+}
+
+function babipTag(babip) {
+  if (babip === null) return '';
+  const val = babip.toFixed(3);
+  if (babip < 0.265) return `<span class="gp-babip gp-babip-due" title="BABIP ${val} — below avg, hits should come">BABIP ${val} ↑</span>`;
+  if (babip > 0.340) return `<span class="gp-babip gp-babip-hot" title="BABIP ${val} — above avg, may cool off">BABIP ${val} ↓</span>`;
+  return                    `<span class="gp-babip gp-babip-avg" title="BABIP ${val} — about average">${val}</span>`;
+}
+
+function xbaTag(playerId, actualAvg) {
+  const cached = _ppCache.get(`${playerId}_statcast`);
+  if (!cached) return '';
+  const xba = parseFloat(cached.estimated_ba_using_speedangle || 0);
+  const ba  = parseFloat(actualAvg || 0);
+  if (!xba || !ba) return '';
+  const gap = xba - ba;
+  if (gap >=  0.020) return `<span class="gp-xba-up"   title="xBA ${xba.toFixed(3)} vs AVG ${ba.toFixed(3)} — contact quality says more hits coming">xBA↑</span>`;
+  if (gap <= -0.020) return `<span class="gp-xba-down" title="xBA ${xba.toFixed(3)} vs AVG ${ba.toFixed(3)} — outperforming contact quality, may cool off">xBA↓</span>`;
+  return '';
 }
 
 function renderGameLog(hLog, pLog) {
