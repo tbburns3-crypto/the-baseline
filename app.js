@@ -1135,24 +1135,32 @@ function renderMLBLineups(games) {
   const area = document.getElementById('mlb-lineups-area');
   if (!games.length) { area.innerHTML = '<div class="empty-state">No games scheduled today</div>'; return; }
 
-  const renderOrder = (players, pitcherName) => {
+  const renderOrder = (players, pitcherName, oppPitcherId, oppPitcherName, gamePk) => {
     const pitcherRow = `<div class="lineup-pitcher-row"><span class="lineup-pos-tag">SP</span><span class="lineup-name">${esc(pitcherName)}</span></div>`;
     if (!players.length) return pitcherRow + `<div class="lineup-tbd">Lineup not yet posted</div>`;
-    return pitcherRow + players.map((p, i) =>
-      `<div class="lineup-player-row">
+    const canMatchup = oppPitcherId && oppPitcherName && oppPitcherName !== 'TBD';
+    return pitcherRow + players.map((p, i) => {
+      const bid  = p.id;
+      const key  = `${bid}-${gamePk}`;
+      const hint = canMatchup ? ` <span class="matchup-hint">tap for vs ${esc(oppPitcherName.split(' ').pop())}</span>` : '';
+      const click = canMatchup ? `onclick="toggleMatchup(${bid},${oppPitcherId},'${esc(p.fullName||'').replace(/'/g,"\\'")}','${esc(oppPitcherName).replace(/'/g,"\\'")}','${gamePk}')"` : '';
+      return `<div class="lineup-player-row${canMatchup?' matchup-clickable':''}" data-batter-key="${key}" ${click}>
         <span class="lineup-order">${i+1}</span>
         <span class="lineup-pos-tag">${esc(p.position?.abbreviation || '—')}</span>
-        <span class="lineup-name">${esc(p.fullName || '—')}</span>
-      </div>`
-    ).join('');
+        <span class="lineup-name">${esc(p.fullName || '—')}${hint}</span>
+      </div>`;
+    }).join('');
   };
 
   area.innerHTML = games.map(g => {
     const away = g.teams.away, home = g.teams.home;
-    const awayName    = away.team?.name || '—';
-    const homeName    = home.team?.name || '—';
-    const awayPitcher = away.probablePitcher?.fullName || 'TBD';
-    const homePitcher = home.probablePitcher?.fullName || 'TBD';
+    const awayName      = away.team?.name || '—';
+    const homeName      = home.team?.name || '—';
+    const awayPitcher   = away.probablePitcher?.fullName || 'TBD';
+    const homePitcher   = home.probablePitcher?.fullName || 'TBD';
+    const awayPitcherId = away.probablePitcher?.id || null;
+    const homePitcherId = home.probablePitcher?.id || null;
+    const gamePk        = g.gamePk || '';
     const awayLineup  = g.lineups?.awayPlayers || [];
     const homeLineup  = g.lineups?.homePlayers || [];
     const status      = g.status?.detailedState || '';
@@ -1176,11 +1184,11 @@ function renderMLBLineups(games) {
         <div class="lineup-grid">
           <div class="lineup-col">
             <div class="lineup-col-header">${esc(awayName)}</div>
-            ${renderOrder(awayLineup, awayPitcher)}
+            ${renderOrder(awayLineup, awayPitcher, homePitcherId, homePitcher, gamePk)}
           </div>
           <div class="lineup-col">
             <div class="lineup-col-header">${esc(homeName)}</div>
-            ${renderOrder(homeLineup, homePitcher)}
+            ${renderOrder(homeLineup, homePitcher, awayPitcherId, awayPitcher, gamePk)}
           </div>
         </div>
       </div>`;
@@ -1302,6 +1310,8 @@ async function loadMLBPlayerStats(playerId, playerName, rowEl) {
       <button class="pp-chip"         onclick="ppView(${playerId},'last14',this)">Last 14</button>
       <button class="pp-chip"         onclick="ppView(${playerId},'last7',this)">Last 7</button>
       <button class="pp-chip"         onclick="ppView(${playerId},'log',this)">Game Log</button>
+      <button class="pp-chip"         onclick="ppView(${playerId},'vsP',this)">vs Pitcher</button>
+      <button class="pp-chip"         onclick="ppView(${playerId},'statcast',this)">Statcast</button>
     </div>
     <div class="pp-content" id="ppcontent-${playerId}">
       <div class="loading-spinner" style="padding:14px"><div class="spinner"></div></div>
@@ -1317,6 +1327,20 @@ async function ppView(playerId, view, chipEl) {
   }
   const contentEl = document.getElementById(`ppcontent-${playerId}`);
   if (!contentEl) return;
+
+  // vs Pitcher: interactive, no fetch until pitcher selected
+  if (view === 'vsP') {
+    contentEl.innerHTML = `
+      <div class="vsp-area">
+        <div class="vsp-prompt">Search a pitcher to see career matchup stats:</div>
+        <input type="text" class="vsp-input" id="vsp-input-${playerId}"
+               placeholder="Pitcher name…" oninput="searchVsPitcher(this,${playerId})" autocomplete="off">
+        <div class="vsp-results"  id="vsp-results-${playerId}"></div>
+        <div class="vsp-matchup"  id="vsp-matchup-${playerId}"></div>
+      </div>`;
+    setTimeout(() => document.getElementById(`vsp-input-${playerId}`)?.focus(), 60);
+    return;
+  }
 
   const key = `${playerId}_${view}`;
   if (_ppCache.has(key)) { renderPPContent(contentEl, _ppCache.get(key), view); return; }
@@ -1343,6 +1367,8 @@ async function ppView(playerId, view, chipEl) {
         hLog: hr.status==='fulfilled' ? hr.value?.stats?.[0]?.splits||[] : [],
         pLog: pr.status==='fulfilled' ? pr.value?.stats?.[0]?.splits||[] : [],
       };
+    } else if (view === 'statcast') {
+      data = await fetchStatcast(playerId);
     } else {
       const days  = view==='last7' ? 7 : view==='last14' ? 14 : 30;
       const start = dateStr(-days), end = dateStr(0);
@@ -1363,8 +1389,16 @@ async function ppView(playerId, view, chipEl) {
 }
 
 function renderPPContent(el, data, view) {
-  if (view === 'log') {
-    el.innerHTML = renderGameLog(data.hLog, data.pLog);
+  if (view === 'log') { el.innerHTML = renderGameLog(data.hLog, data.pLog); return; }
+  if (view === 'statcast') {
+    if (!data) { el.innerHTML = '<div class="pp-empty">No Statcast data available — player may not qualify or Baseball Savant is unavailable</div>'; return; }
+    const f = (v, d=1) => (v && !isNaN(parseFloat(v))) ? parseFloat(v).toFixed(d) : '—';
+    const isPitcher = data.playerType === 'pitcher';
+    el.innerHTML = renderStatBlock(isPitcher ? 'Statcast (Pitching)' : 'Statcast (Hitting)', [
+      [['xBA', f(data.estimated_ba_using_speedangle,3)], ['xSLG', f(data.estimated_slg_using_speedangle,3)], ['xwOBA', f(data.estimated_woba_using_speedangle,3)]],
+      [['Exit Velo', f(data.exit_velocity_avg)+'mph'], ['Hard Hit%', f(data.hard_hit_percent,1)+'%'], ['Barrel%', f(data.barrel_batted_rate,1)+'%'], ['Launch°', f(data.launch_angle_avg)]],
+      ...(data.sprint_speed && !isPitcher ? [[['Sprint', f(data.sprint_speed,1)+' ft/s']]] : []),
+    ]);
     return;
   }
   const { hitting, pitching } = data;
@@ -1441,6 +1475,137 @@ function renderGameLog(hLog, pLog) {
     <div class="gl-head">${head.map(h=>`<span>${h}</span>`).join('')}</div>
     ${rows.join('')}
   </div>`;
+}
+
+// ── STATCAST ────────────────────────────────────────────────
+async function fetchStatcast(playerId) {
+  const BASE   = 'https://baseballsavant.mlb.com/statcast_search/csv';
+  const PARAMS = 'hfGT=R%7C&hfSea=2025%7C&group_by=name&sort_col=pitches&sort_order=desc&min_results=0&type=details';
+  for (const type of ['batter', 'pitcher']) {
+    try {
+      const res = await fetch(`${BASE}?${PARAMS}&player_type=${type}&player_id=${playerId}`);
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (text.startsWith('<!')) continue;
+      const lines = text.trim().split('\n').filter(Boolean);
+      if (lines.length < 2) continue;
+      const headers = parseCSVLine(lines[0]);
+      const values  = parseCSVLine(lines[1]);
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = values[i] || ''; });
+      if (obj.player_id) return { ...obj, playerType: type };
+    } catch {}
+  }
+  return null;
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (const ch of line) {
+    if (ch === '"')             inQ = !inQ;
+    else if (ch === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+    else                         cur += ch;
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+// ── VS PITCHER SEARCH ────────────────────────────────────────
+let _vspTimer = null;
+function searchVsPitcher(inputEl, batterId) {
+  clearTimeout(_vspTimer);
+  const q = inputEl.value.trim();
+  const resultsEl = document.getElementById(`vsp-results-${batterId}`);
+  if (!q) { resultsEl.innerHTML = ''; return; }
+  _vspTimer = setTimeout(async () => {
+    try {
+      const res = await fetch(`https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(q)}&sportId=1&hydrate=currentTeam,position`);
+      const json = await res.json();
+      const pitchers = (json.people || []).filter(p => ['P','SP','RP','CL'].includes(p.primaryPosition?.abbreviation));
+      resultsEl.innerHTML = pitchers.slice(0, 5).map(p =>
+        `<div class="vsp-pitcher-option" onclick="loadVsPitcher(${batterId},${p.id},'${esc(p.fullName||'').replace(/'/g,"\\'")}')">
+          <span>${esc(p.fullName)}</span>
+          <span style="color:var(--text-muted);font-size:.78rem">${esc(p.currentTeam?.name||'')}</span>
+        </div>`
+      ).join('') || '<div class="vsp-no-results">No pitchers found</div>';
+    } catch { resultsEl.innerHTML = '<div class="vsp-no-results">Search failed</div>'; }
+  }, 400);
+}
+
+async function loadVsPitcher(batterId, pitcherId, pitcherName) {
+  document.getElementById(`vsp-results-${batterId}`).innerHTML = '';
+  document.getElementById(`vsp-input-${batterId}`).value = pitcherName;
+  const matchupEl = document.getElementById(`vsp-matchup-${batterId}`);
+  matchupEl.innerHTML = '<div class="loading-spinner" style="padding:8px"><div class="spinner"></div></div>';
+  const cacheKey = `mu_${batterId}_${pitcherId}`;
+  let stat;
+  if (_ppCache.has(cacheKey)) {
+    stat = _ppCache.get(cacheKey);
+  } else {
+    try {
+      const res  = await fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=vsPlayer&opposingPlayerId=${pitcherId}&group=hitting`);
+      const json = await res.json();
+      stat = json.stats?.[0]?.splits?.[0]?.stat || null;
+      _ppCache.set(cacheKey, stat);
+    } catch (err) {
+      matchupEl.innerHTML = `<div class="pp-error">Failed: ${esc(err.message)}</div>`;
+      return;
+    }
+  }
+  if (!stat || !stat.atBats) {
+    matchupEl.innerHTML = `<div class="pp-empty">No career matchup history vs ${esc(pitcherName)}</div>`;
+    return;
+  }
+  matchupEl.innerHTML = renderStatBlock(`Career vs ${esc(pitcherName)}`, [
+    [['AB',stat.atBats],['H',stat.hits],['HR',stat.homeRuns],['RBI',stat.rbi]],
+    [['BB',stat.baseOnBalls],['K',stat.strikeOuts],['AVG',stat.avg],['OPS',stat.ops]],
+  ]);
+}
+
+// ── LINEUP MATCHUP (inline toggle) ──────────────────────────
+async function toggleMatchup(batterId, pitcherId, batterName, pitcherName, gamePk) {
+  const row = document.querySelector(`[data-batter-key="${batterId}-${gamePk}"]`);
+  if (!row) return;
+  const existing = row.nextElementSibling;
+  if (existing?.classList.contains('matchup-inline')) { existing.remove(); return; }
+
+  const div = document.createElement('div');
+  div.className = 'matchup-inline';
+  div.innerHTML = `<div class="matchup-vs">${esc(batterName)} vs ${esc(pitcherName)}</div>
+    <div class="loading-spinner" style="padding:6px"><div class="spinner"></div></div>`;
+  row.after(div);
+
+  const cacheKey = `mu_${batterId}_${pitcherId}`;
+  let stat;
+  if (_ppCache.has(cacheKey)) {
+    stat = _ppCache.get(cacheKey);
+  } else {
+    try {
+      const res  = await fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=vsPlayer&opposingPlayerId=${pitcherId}&group=hitting`);
+      const json = await res.json();
+      stat = json.stats?.[0]?.splits?.[0]?.stat || null;
+      _ppCache.set(cacheKey, stat);
+    } catch (err) {
+      div.innerHTML = `<div class="matchup-vs">${esc(batterName)} vs ${esc(pitcherName)}</div>
+        <div class="matchup-no-history">Failed: ${esc(err.message)}</div>`;
+      return;
+    }
+  }
+  renderMatchupData(div, stat, batterName, pitcherName);
+}
+
+function renderMatchupData(div, stat, batterName, pitcherName) {
+  if (!stat || !stat.atBats) {
+    div.innerHTML = `<div class="matchup-vs">${esc(batterName)} vs ${esc(pitcherName)}</div>
+      <div class="matchup-no-history">No career matchup history</div>`;
+    return;
+  }
+  div.innerHTML = `<div class="matchup-vs">${esc(batterName)} vs ${esc(pitcherName)}</div>
+    <div class="matchup-stats-row">
+      ${[['AB',stat.atBats],['H',stat.hits],['HR',stat.homeRuns],['RBI',stat.rbi],['BB',stat.baseOnBalls],['K',stat.strikeOuts],['AVG',stat.avg],['OPS',stat.ops]]
+        .map(([l,v]) => `<div class="matchup-stat"><div class="matchup-val">${v??'—'}</div><div class="matchup-lbl">${l}</div></div>`).join('')}
+    </div>`;
 }
 
 async function loadOtherStandings(sport) {
