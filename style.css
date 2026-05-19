@@ -1332,6 +1332,40 @@ input { font: inherit; }
 .lineup-due-hdr { font-size: .72rem; font-weight: 700; color: var(--accent); margin-right: 4px; }
 .lineup-due-tag { display: flex; align-items: center; gap: 4px; font-size: .78rem; }
 
+/* ── GOLF LEADERBOARD ── */
+.golf-tournament { margin-bottom: 20px; }
+.golf-tourn-header { padding: 10px 14px 6px; border-bottom: 1px solid var(--border); }
+.golf-tourn-name { font-size: .95rem; font-weight: 700; color: var(--text); }
+.golf-tourn-meta { font-size: .75rem; color: var(--text-muted); margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.golf-leaderboard { }
+.golf-lb-hdr {
+  display: grid; grid-template-columns: 40px 1fr 60px 60px 50px;
+  padding: 5px 14px; font-size: .65rem; font-weight: 700;
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em;
+  border-bottom: 1px solid var(--border); background: var(--bg-card);
+}
+.golf-player-row {
+  display: grid; grid-template-columns: 40px 1fr 60px 60px 50px;
+  padding: 6px 14px; font-size: .82rem;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  transition: background .15s;
+}
+.golf-player-row:hover { background: rgba(255,255,255,.03); }
+.golf-row-cut { opacity: .5; }
+.gc-pos  { color: var(--text-muted); font-size: .78rem; }
+.gc-name { font-weight: 500; }
+.gc-score { font-weight: 700; font-size: .88rem; }
+.gc-today { color: var(--text-muted); font-size: .78rem; }
+.gc-thru  { color: var(--text-muted); font-size: .78rem; }
+.golf-thru-done { color: var(--accent); font-weight: 700; }
+.golf-cut-lbl { font-size: .62rem; font-weight: 700; color: var(--text-muted); }
+.golf-under { color: #e53935; }  /* red = under par (good) */
+.golf-over  { color: var(--text-muted); }
+.golf-even  { color: var(--text); }
+
+/* ── SOCCER STANDING POINTS ── */
+.standing-pts { color: var(--accent); font-weight: 700; font-size: .82rem; margin-left: auto; }
+
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-text {
