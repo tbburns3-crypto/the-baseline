@@ -1222,6 +1222,17 @@ input { font: inherit; }
   color: var(--text-muted); margin-bottom: 3px; font-weight: 600;
 }
 
+/* ── HIT PREDICTOR BADGES ── */
+.gp-babip {
+  font-size: .68rem; font-weight: 700; border-radius: 3px;
+  padding: 1px 5px; white-space: nowrap; flex-shrink: 0;
+}
+.gp-babip-due  { background: rgba(0,230,118,.18); color: var(--accent); }
+.gp-babip-hot  { background: rgba(255,179,0,.18);  color: #ffb300; }
+.gp-babip-avg  { background: rgba(255,255,255,.05); color: var(--text-muted); }
+.gp-xba-up   { font-size: .7rem; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+.gp-xba-down { font-size: .7rem; color: var(--text-muted); flex-shrink: 0; }
+
 /* ── VS PITCHER SEARCH ── */
 .vsp-area { padding: 10px 4px; }
 .vsp-prompt { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px; }
