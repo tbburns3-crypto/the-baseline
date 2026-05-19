@@ -562,7 +562,7 @@ function renderRankings(atp, wta) {
     return `<div class="rankings-col">
       <h3>${title}</h3>
       <div class="ranking-header-row"><span>#</span><span>Player</span><span>Pts</span><span>Country</span></div>
-      ${data.slice(0,30).map((p,i) => {
+      ${data.slice(0,100).map((p,i) => {
         const rank    = p.place ?? p.standing_place ?? p.ranking ?? (i+1);
         const name    = p.player || p.team_name || p.player_name || p.name || '—';
         const pts     = p.points ?? p.standing_points ?? p.ranking_points ?? '—';
@@ -582,6 +582,61 @@ function renderRankings(atp, wta) {
   };
   document.getElementById('rankings-area').innerHTML =
     `<div class="rankings-grid">${col(atp,'ATP Rankings')}${col(wta,'WTA Rankings')}</div>`;
+}
+
+// ── PLAYER SEARCH ───────────────────────────────────────────
+let _playerSearchTimer = null;
+
+function onPlayerSearch(q) {
+  clearTimeout(_playerSearchTimer);
+  const resultsEl  = document.getElementById('player-search-results');
+  const rankingsEl = document.getElementById('rankings-area');
+  if (!q.trim()) {
+    resultsEl.style.display  = 'none';
+    rankingsEl.style.display = '';
+    return;
+  }
+  rankingsEl.style.display = 'none';
+  resultsEl.style.display  = '';
+  resultsEl.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching…</p></div>';
+  _playerSearchTimer = setTimeout(() => doPlayerSearch(q.trim()), 400);
+}
+
+async function doPlayerSearch(q) {
+  const resultsEl = document.getElementById('player-search-results');
+  try {
+    const results = await tennisFetch('get_players', { player_name: q });
+    renderPlayerResults(results, q);
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Search failed: ${esc(err.message)}</p></div>`;
+  }
+}
+
+function renderPlayerResults(players, q) {
+  const resultsEl = document.getElementById('player-search-results');
+  if (!players.length) {
+    resultsEl.innerHTML = `<div class="empty-state">No players found for "<strong>${esc(q)}</strong>"</div>`;
+    return;
+  }
+  resultsEl.innerHTML = `
+    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found</div>
+    ${players.map(p => {
+      const name    = p.player || p.player_name || p.team_name || p.name || '—';
+      const rank    = p.place || p.ranking || p.player_rank || '';
+      const pts     = p.points || p.standing_points || '';
+      const country = p.country || p.player_country || '';
+      const type    = p.league || p.player_type || p.event_type || '';
+      return `<div class="player-result-row">
+        <div class="player-result-name">${esc(name)}</div>
+        <div class="player-result-meta">
+          ${rank ? `<span class="player-rank-badge">#${esc(rank)}</span>` : '<span class="player-unranked">Unranked</span>'}
+          ${type ? `<span class="player-type-badge">${esc(type)}</span>` : ''}
+          ${country ? `<span class="player-country-tag">${esc(country)}</span>` : ''}
+          ${pts ? `<span class="player-pts-tag">${esc(pts)} pts</span>` : ''}
+        </div>
+      </div>`;
+    }).join('')}
+  `;
 }
 
 // ── FILTER ───────────────────────────────────────────────────
