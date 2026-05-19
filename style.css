@@ -1282,6 +1282,14 @@ input { font: inherit; }
   font-style: italic; padding: 4px 0;
 }
 
+/* ── LINEUP DUE FOR HITS ── */
+.lineup-due-section {
+  padding: 8px 14px; border-top: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+}
+.lineup-due-hdr { font-size: .72rem; font-weight: 700; color: var(--accent); margin-right: 4px; }
+.lineup-due-tag { display: flex; align-items: center; gap: 4px; font-size: .78rem; }
+
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-text {
