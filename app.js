@@ -1297,33 +1297,118 @@ async function renderESPNGamePreview(game, panel) {
   const paths = { nba:'basketball/nba', wnba:'basketball/wnba', nfl:'football/nfl', nhl:'hockey/nhl' };
   const path  = paths[game.sport];
   if (!path) { panel.innerHTML = '<div class="pp-empty" style="padding:12px">No preview available</div>'; return; }
+
+  // Sport config: which categories to highlight (pre-game) + which labels to show (live)
+  const SPORT_CFG = {
+    nba:  { cats: ['Points','Rebounds','Assists'],
+            live: { sort:'PTS', show:['PTS','REB','AST','BLK','STL'] }, icon:'🏀' },
+    wnba: { cats: ['Points','Rebounds','Assists'],
+            live: { sort:'PTS', show:['PTS','REB','AST'] }, icon:'🏀' },
+    nfl:  { cats: ['Passing Yards','Rushing Yards','Receiving Yards','Sacks'],
+            live: { sort:'YDS', show:['YDS','TD','INT'] }, icon:'🏈' },
+    nhl:  { cats: ['Points','Goals','Assists','Save Percentage'],
+            live: { sort:'PTS', show:['G','A','PTS','+/-'] }, icon:'🏒' }
+  };
+  const cfg = SPORT_CFG[game.sport] || { cats:[], live:{ sort:'', show:[] }, icon:'' };
+
   try {
     const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${path}/summary?event=${game.id}`);
     const j   = await res.json();
-    const comp = j.header?.competitions?.[0];
-    const awayC = comp?.competitors?.find(c => c.homeAway === 'away');
-    const homeC = comp?.competitors?.find(c => c.homeAway === 'home');
+    const comp   = j.header?.competitions?.[0];
+    const state  = comp?.status?.type?.state || '';
+    const awayC  = comp?.competitors?.find(c => c.homeAway === 'away');
+    const homeC  = comp?.competitors?.find(c => c.homeAway === 'home');
     const awayRec = awayC?.record?.[0]?.summary || '';
     const homeRec = homeC?.record?.[0]?.summary || '';
-    const state   = comp?.status?.type?.state || '';
 
-    let performers = '';
-    for (const teamBox of (j.boxscore?.players || [])) {
-      const tName = teamBox.team?.abbreviation || '';
-      for (const grp of (teamBox.statistics || []).slice(0, 1)) {
-        for (const ath of (grp.athletes || []).filter(a => a.stats?.some(s => parseFloat(s) > 0)).slice(0, 3)) {
-          const name  = ath.athlete?.shortName || ath.athlete?.displayName || '—';
-          const stats = (grp.labels || []).slice(0, 4).map((lbl, i) => `<span class="gp-muted">${lbl} <b>${ath.stats[i]||'—'}</b></span>`).join('');
-          performers += `<div class="gp-player-row"><span class="gp-team">${esc(tName)}</span><span class="gp-pname">${esc(name)}</span><span class="gp-stats" style="flex-wrap:wrap;gap:6px">${stats}</span></div>`;
+    let html = '';
+
+    // Records header
+    if (awayRec || homeRec) {
+      html += `<div class="gp-records">
+        ${esc(game.awayTeam)}${awayRec ? ` <span class="gp-muted">(${awayRec})</span>` : ''}
+        <span class="gp-at">@</span>
+        ${esc(game.homeTeam)}${homeRec ? ` <span class="gp-muted">(${homeRec})</span>` : ''}
+      </div>`;
+    }
+
+    // ── PRE-GAME: season leaders per team ──
+    if (state === 'pre' || !state) {
+      const teamLeaders = j.leaders || [];
+      const catMap = {};
+      for (const tl of teamLeaders) {
+        const tAbbr = tl.team?.abbreviation || tl.team?.shortDisplayName || '';
+        for (const cat of (tl.leaders || [])) {
+          const cName = cat.displayName || cat.shortDisplayName || '';
+          const matches = cfg.cats.some(c => cName.toLowerCase().includes(c.toLowerCase()));
+          if (cfg.cats.length && !matches) continue;
+          if (!catMap[cName]) catMap[cName] = [];
+          for (const l of (cat.leaders || []).slice(0, 1)) {
+            catMap[cName].push({
+              team: tAbbr,
+              name: l.athlete?.shortName || l.athlete?.displayName || '—',
+              val:  l.displayValue || String(l.value ?? '—')
+            });
+          }
         }
       }
+
+      const catKeys = Object.keys(catMap);
+      if (catKeys.length) {
+        let catHTML = '';
+        for (const [cat, players] of Object.entries(catMap)) {
+          catHTML += `<div class="gp-stat-cat">
+            <div class="gp-cat-lbl">${esc(cat)}</div>
+            ${players.map(p =>
+              `<div class="gp-player-row">
+                <span class="gp-team">${esc(p.team)}</span>
+                <span class="gp-pname">${esc(p.name)}</span>
+                <span class="gp-avg-val">${esc(p.val)}</span>
+              </div>`
+            ).join('')}
+          </div>`;
+        }
+        html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Key Players to Watch</div>${catHTML}</div>`;
+      } else {
+        html += `<div class="gp-no-lineup">Pre-game stats not available yet — check back closer to tip-off / puck drop / kickoff</div>`;
+      }
     }
-    panel.innerHTML = `
-      <div class="gp-inner">
-        ${awayRec || homeRec ? `<div class="gp-records">${esc(game.awayTeam)} ${awayRec?`(${awayRec})`:''}  <span class="gp-at">@</span>  ${esc(game.homeTeam)} ${homeRec?`(${homeRec})`:''}</div>` : ''}
-        ${state === 'pre' ? '<div class="gp-no-lineup">Game has not started yet</div>' : ''}
-        ${performers ? `<div class="gp-section"><div class="gp-section-hdr">Top Performers</div>${performers}</div>` : ''}
-      </div>`;
+
+    // ── LIVE / FINAL: box score top performers ──
+    if (state === 'in' || state === 'post') {
+      const { sort, show } = cfg.live;
+      let performers = '';
+      for (const teamBox of (j.boxscore?.players || [])) {
+        const tName = teamBox.team?.abbreviation || '';
+        for (const grp of (teamBox.statistics || [])) {
+          const labels  = grp.labels || [];
+          const sortIdx = labels.indexOf(sort);
+          if (sortIdx < 0 && show.length) continue;
+          const showIdxs = show.map(k => labels.indexOf(k)).filter(i => i >= 0);
+          if (!showIdxs.length) continue;
+          const sorted = (grp.athletes || [])
+            .map(a => ({ a, sv: parseFloat(a.stats?.[sortIdx] ?? '0') || 0 }))
+            .filter(x => x.sv > 0)
+            .sort((x, y) => y.sv - x.sv)
+            .slice(0, 4);
+          for (const { a } of sorted) {
+            const statStr = showIdxs
+              .map(i => `<span class="gp-muted">${esc(labels[i])} <b>${esc(a.stats[i] || '—')}</b></span>`)
+              .join('');
+            performers += `<div class="gp-player-row">
+              <span class="gp-team">${esc(tName)}</span>
+              <span class="gp-pname">${esc(a.athlete?.shortName || a.athlete?.displayName || '—')}</span>
+              <span class="gp-stats" style="gap:6px;flex-wrap:wrap">${statStr}</span>
+            </div>`;
+          }
+        }
+      }
+      if (performers) {
+        html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Top Performers</div>${performers}</div>`;
+      }
+    }
+
+    panel.innerHTML = `<div class="gp-inner">${html || '<div class="gp-no-lineup">No preview data available</div>'}</div>`;
   } catch (err) {
     panel.innerHTML = `<div class="pp-error" style="padding:12px">Could not load: ${esc(err.message)}</div>`;
   }
