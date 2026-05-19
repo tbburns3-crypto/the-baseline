@@ -729,6 +729,132 @@ function renderPlayerResults(players, q) {
   `;
 }
 
+// ── OTHER SPORTS PLAYER SEARCH ──────────────────────────────
+let _sportPlayerTimer = null;
+
+function onSportPlayerSearch(q) {
+  clearTimeout(_sportPlayerTimer);
+  const resultsEl = document.getElementById('sport-player-results');
+  if (!q.trim()) {
+    resultsEl.innerHTML = '<div class="empty-state">Type a name to search players</div>';
+    return;
+  }
+  resultsEl.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching…</p></div>';
+  _sportPlayerTimer = setTimeout(() => doSportPlayerSearch(q.trim()), 400);
+}
+
+async function doSportPlayerSearch(q) {
+  const resultsEl = document.getElementById('sport-player-results');
+  try {
+    const players = await fetchSportPlayers(S.sport, q);
+    renderSportPlayerResults(players, q);
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Search failed: ${esc(err.message)}</p></div>`;
+  }
+}
+
+async function fetchSportPlayers(sport, q) {
+  if (sport === 'nba')  return searchNBAPlayers(q);
+  if (sport === 'mlb')  return searchMLBPlayers(q);
+  if (sport === 'nhl')  return searchNHLPlayers(q);
+  return searchESPNPlayers(sport, q);
+}
+
+async function searchNBAPlayers(q) {
+  const res = await fetch(
+    `${CFG.bdl.base}/players?search=${encodeURIComponent(q)}&per_page=30`,
+    { headers: { Authorization: CFG.bdl.key } }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return (json.data || []).map(p => ({
+    name:     `${p.first_name} ${p.last_name}`.trim(),
+    team:     p.team?.full_name || p.team?.abbreviation || '—',
+    position: p.position || '—',
+    extra:    [
+      p.height_feet != null ? `${p.height_feet}'${p.height_inches || 0}"` : '',
+      p.weight_pounds ? `${p.weight_pounds} lbs` : '',
+    ].filter(Boolean).join(' · '),
+  }));
+}
+
+async function searchMLBPlayers(q) {
+  const res = await fetch(
+    `https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(q)}&sportId=1&hydrate=currentTeam,position`
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return (json.people || []).map(p => ({
+    name:     p.fullName || '—',
+    team:     p.currentTeam?.name || '—',
+    position: p.primaryPosition?.abbreviation || p.primaryPosition?.name || '—',
+    extra:    [
+      p.batSide?.description ? `Bats ${p.batSide.description}` : '',
+      p.pitchHand?.description ? `Throws ${p.pitchHand.description}` : '',
+    ].filter(Boolean).join(' · '),
+  }));
+}
+
+async function searchNHLPlayers(q) {
+  const res = await fetch(
+    `https://api-web.nhle.com/v1/player-search/player?q=${encodeURIComponent(q)}&culture=en-us`
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  return (json.players || []).map(p => ({
+    name:     `${p.firstName?.default || ''} ${p.lastName?.default || ''}`.trim(),
+    team:     p.currentTeamAbbrev || '—',
+    position: p.positionCode || '—',
+    extra:    [
+      p.sweaterNumber ? `#${p.sweaterNumber}` : '',
+      p.birthCountry  ? p.birthCountry : '',
+    ].filter(Boolean).join(' · '),
+  }));
+}
+
+async function searchESPNPlayers(sport, q) {
+  // ESPN athletes endpoint — load active roster and filter client-side
+  const paths = { wnba: 'basketball/wnba', nfl: 'football/nfl' };
+  const path  = paths[sport];
+  if (!path) throw new Error('Unsupported sport');
+  const res = await fetch(
+    `https://site.api.espn.com/apis/site/v2/sports/${path}/athletes?limit=1000&active=true`
+  );
+  if (!res.ok) throw new Error(`ESPN HTTP ${res.status}`);
+  const json = await res.json();
+  const qLow = q.toLowerCase();
+  const all  = json.athletes || json.items || [];
+  return all
+    .filter(a => (a.fullName || a.displayName || '').toLowerCase().includes(qLow))
+    .slice(0, 40)
+    .map(a => ({
+      name:     a.fullName || a.displayName || '—',
+      team:     a.team?.displayName || a.team?.abbreviation || '—',
+      position: a.position?.abbreviation || a.position?.name || '—',
+      extra:    [a.jersey ? `#${a.jersey}` : ''].filter(Boolean).join(''),
+    }));
+}
+
+function renderSportPlayerResults(players, q) {
+  const resultsEl = document.getElementById('sport-player-results');
+  if (!players.length) {
+    resultsEl.innerHTML = `<div class="empty-state">No players found for "<strong>${esc(q)}</strong>"</div>`;
+    return;
+  }
+  resultsEl.innerHTML = `
+    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found</div>
+    ${players.map(p => `
+      <div class="player-result-row">
+        <div class="player-result-name">${esc(p.name)}</div>
+        <div class="player-result-meta">
+          <span class="player-type-badge">${esc(p.position)}</span>
+          <span class="player-country-tag">${esc(p.team)}</span>
+          ${p.extra ? `<span class="player-age-tag">${esc(p.extra)}</span>` : ''}
+        </div>
+      </div>`).join('')}
+  `;
+}
+
 // ── FILTER ───────────────────────────────────────────────────
 function filterPasses(m) {
   if (S.filter === 'all') return true;
@@ -767,11 +893,14 @@ function switchSport(sport) {
   const isTennis = sport === 'tennis';
   document.querySelectorAll('.tennis-only').forEach(el => el.style.display = isTennis ? '' : 'none');
 
-  const secTab = document.getElementById('secondary-tab');
+  const secTab     = document.getElementById('secondary-tab');
+  const playersTab = document.getElementById('players-tab');
   if (isTennis) {
     secTab.textContent = 'Rankings'; secTab.dataset.view = 'secondary';
+    playersTab.style.display = 'none';
   } else {
     secTab.textContent = 'Standings'; secTab.dataset.view = 'secondary';
+    playersTab.style.display = '';
   }
 
   switchView('scores');
@@ -802,6 +931,10 @@ function switchView(view) {
     if (view === 'scores') {
       document.getElementById('view-other-scores').classList.add('active');
       loadOtherScores(S.sport);
+    } else if (view === 'players') {
+      document.getElementById('view-sport-players').classList.add('active');
+      document.getElementById('sport-player-search-input').value = '';
+      document.getElementById('sport-player-results').innerHTML = '<div class="empty-state">Type a name to search players</div>';
     } else {
       document.getElementById('view-other-standings').classList.add('active');
       loadOtherStandings(S.sport);
