@@ -153,13 +153,29 @@ async function tennisFetch(method, params = {}) {
   url.searchParams.set('method', method);
   url.searchParams.set('APIkey', CFG.tennis.key);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const proxied = CFG.tennis.proxy + url.toString();
-  const res = await fetch(proxied);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
-  // api-tennis returns { success:1, result:[] } or { success:0, errors:"..." }
-  if (json.success === 0) throw new Error(json.errors || 'API error');
-  return json.result || [];
+  const target = url.toString();
+
+  // Try two CORS proxies in order — corsproxy.io can return 413 for large
+  // result sets (today/past dates), allorigins.win handles bigger responses
+  const proxies = [
+    CFG.tennis.proxy + target,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`
+  ];
+
+  let lastErr;
+  for (const proxied of proxies) {
+    try {
+      const res = await fetch(proxied);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.success === 0) throw new Error(json.errors || 'API error');
+      return json.result || [];
+    } catch (err) {
+      lastErr = err;
+      console.warn(`Tennis proxy attempt failed (${err.message}), trying next…`);
+    }
+  }
+  throw lastErr;
 }
 
 async function loadFixtures(offset = 0) {
@@ -631,8 +647,11 @@ async function bdlGames(sport, date) {
   const res = await fetch(url, { headers: { Authorization: CFG.bdl.key } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const d = await res.json();
+  // BallDontLie only covers the major US league for each sport
+  const leagueName = sport === 'nba' ? 'NBA' : sport === 'mlb' ? 'MLB' : 'NFL';
   return (d.data || []).map(g => ({
     id: g.id,
+    league: leagueName,
     homeTeam: g.home_team?.full_name || g.home_team?.name || '—',
     awayTeam: g.visitor_team?.full_name || g.visitor_team?.name || '—',
     homeScore: g.home_team_score ?? '',
@@ -647,13 +666,17 @@ async function bdlGames(sport, date) {
 async function apiSportsGames(sport, date) {
   const base = CFG.apisports[sport];
   if (!base) throw new Error('unknown sport');
-  const res = await fetch(`${base}/games?date=${date}`, {
+  // Filter MLB to league 1 (MLB only) to exclude NPB, KBO, etc.
+  const leagueParam = sport === 'mlb' ? '&league=1' : '';
+  const season = new Date().getFullYear();
+  const res = await fetch(`${base}/games?date=${date}${leagueParam}&season=${season}`, {
     headers: { 'x-apisports-key': CFG.apisports.key }
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const d = await res.json();
   return (d.response || []).map(g => ({
     id: g.id,
+    league: g.league?.name || sport.toUpperCase(),
     homeTeam: g.teams?.home?.name || '—',
     awayTeam: (g.teams?.visitors || g.teams?.away)?.name || '—',
     homeScore: g.scores?.home?.points ?? g.scores?.home?.total ?? '',
@@ -665,6 +688,29 @@ async function apiSportsGames(sport, date) {
   }));
 }
 
+function buildOtherRow(g) {
+  const liveStatuses = new Set(['In Progress','In-Progress','live','ongoing','Q1','Q2','Q3','Q4','H1','H2','OT']);
+  const finStatuses  = new Set(['Final','FT','Finished','Complete','F','AOT']);
+  const live = liveStatuses.has(g.status) || /^\d+(st|nd|rd|th)\s*(quarter|period|set|inning)/i.test(g.status);
+  const fin  = finStatuses.has(g.status);
+  const periodLabel = g.period ? `${g.period}${ordinal(+g.period || 0)}` : '';
+  return `
+    <div class="other-match-row ${live?'live':''}">
+      <div class="other-status">
+        ${live ? '<span class="live-badge">LIVE</span>' : fin ? '<span class="fin-badge">FIN</span>' : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`}
+      </div>
+      <div class="other-teams">
+        <div class="other-team away">${esc(g.awayTeam)}</div>
+        <div class="other-team home">${esc(g.homeTeam)}</div>
+      </div>
+      <div class="other-scores">
+        <div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '—'}</div>
+        <div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '—'}</div>
+      </div>
+      ${live && (periodLabel || g.time) ? `<div class="other-period">${esc(periodLabel)} ${esc(g.time)}</div>` : '<div></div>'}
+    </div>`;
+}
+
 function renderOtherScores(games, sport, src) {
   const area = document.getElementById('other-scores-area');
   if (!games.length) {
@@ -672,29 +718,24 @@ function renderOtherScores(games, sport, src) {
     area.innerHTML = `<div class="empty-state"><p>No ${sport.toUpperCase()} games today.</p>${offMsg}</div>`;
     return;
   }
-  const liveStatuses = new Set(['In Progress','In-Progress','live','ongoing','Q1','Q2','Q3','Q4','H1','H2','OT']);
-  const finStatuses  = new Set(['Final','FT','Finished','Complete','F']);
-  const rows = games.map(g => {
-    const live = liveStatuses.has(g.status) || /^\d+(st|nd|rd|th)\s*(quarter|period|set|inning)/i.test(g.status);
-    const fin  = finStatuses.has(g.status);
-    const periodLabel = g.period ? `${g.period}${ordinal(+g.period || 0)}` : '';
-    return `
-      <div class="other-match-row ${live?'live':''}">
-        <div class="other-status">
-          ${live ? '<span class="live-badge">LIVE</span>' : fin ? '<span class="fin-badge">FIN</span>' : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`}
-        </div>
-        <div class="other-teams">
-          <div class="other-team away">${esc(g.awayTeam)}</div>
-          <div class="other-team home">${esc(g.homeTeam)}</div>
-        </div>
-        <div class="other-scores">
-          <div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '—'}</div>
-          <div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '—'}</div>
-        </div>
-        ${live && (periodLabel || g.time) ? `<div class="other-period">${esc(periodLabel)} ${esc(g.time)}</div>` : '<div></div>'}
+
+  // Group by league so MLB doesn't bleed into NPB/KBO etc.
+  const groups = new Map();
+  for (const g of games) {
+    const key = g.league || sport.toUpperCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(g);
+  }
+
+  let html = `<div class="source-badge">Source: ${esc(src)}</div>`;
+  for (const [league, leagueGames] of groups) {
+    html += `
+      <div class="league-group">
+        <div class="league-header">${esc(league)}</div>
+        <div class="other-games-list">${leagueGames.map(g => buildOtherRow(g)).join('')}</div>
       </div>`;
-  }).join('');
-  area.innerHTML = `<div class="source-badge">Source: ${esc(src)}</div><div class="other-games-list">${rows}</div>`;
+  }
+  area.innerHTML = html;
 }
 
 async function loadOtherStandings(sport) {
