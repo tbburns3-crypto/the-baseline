@@ -1366,6 +1366,52 @@ function buildPickSection(awayName, homeName, opts) {
   return `${seriesHTML}<div class="gp-pick-box">${verdictHTML}<div class="gp-pick-factors">${factorsHTML}</div></div>`;
 }
 
+function buildMLBPreStats(leaders) {
+  if (!leaders?.length) return '<div class="gp-no-lineup">Lineups not posted yet — check back closer to game time</div>';
+  const BAT_MAP = { 'Batting Average':'AVG','Home Runs':'HR','RBI':'RBI','Hits':'H','Stolen Bases':'SB','On Base Pct':'OBP','OPS':'OPS','Slugging Pct':'SLG' };
+  const PIT_MAP = { 'ERA':'ERA','Wins':'W','Strikeouts':'K','WHIP':'WHIP','Saves':'SV' };
+  let html = '';
+  for (const tl of leaders) {
+    const tAbbr = tl.team?.abbreviation || '';
+    const batCols = [], pitCols = [];
+    const batMap = new Map(), pitMap = new Map();
+    for (const cat of (tl.leaders || [])) {
+      const cName = cat.displayName || '';
+      const batKey = BAT_MAP[cName], pitKey = PIT_MAP[cName];
+      if (!batKey && !pitKey) continue;
+      const key = batKey || pitKey;
+      const isB = !!batKey;
+      if (isB && !batCols.includes(key)) batCols.push(key);
+      if (!isB && !pitCols.includes(key)) pitCols.push(key);
+      const map = isB ? batMap : pitMap;
+      for (const l of (cat.leaders || []).slice(0, 5)) {
+        const id = l.athlete?.id; if (!id) continue;
+        if (!map.has(id)) map.set(id, { name: l.athlete?.shortName || '—', stats: {} });
+        map.get(id).stats[key] = l.displayValue || String(l.value ?? '—');
+      }
+    }
+    const mkBlock = (label, map, cols) => {
+      if (!map.size || !cols.length) return '';
+      const gs = `grid-template-columns:1fr repeat(${cols.length},42px)`;
+      const hdr = cols.map(k => `<span class="nba-sc">${esc(k)}</span>`).join('');
+      const rows = [...map.values()].map(p => {
+        const cells = cols.map(k => `<span class="nba-sc">${esc(p.stats[k] || '—')}</span>`).join('');
+        return `<div class="nba-row" style="${gs}"><span class="nba-pname">${esc(p.name)}</span>${cells}</div>`;
+      }).join('');
+      return `<div class="nba-block">
+        <div class="nba-block-hdr"><span class="nba-hdr-team">${esc(tAbbr)}</span><span class="nba-hdr-label">${label}</span></div>
+        <div class="nba-row nba-row-hdr" style="${gs}"><span class="nba-pname">Player</span>${hdr}</div>
+        ${rows}
+      </div>`;
+    };
+    html += mkBlock('Batting',  batMap, batCols);
+    html += mkBlock('Pitching', pitMap, pitCols);
+  }
+  return html
+    ? `<div class="gp-section"><div class="gp-section-hdr">⚾ Season Leaders — Lineups Not Posted Yet</div>${html}</div>`
+    : '<div class="gp-no-lineup">Lineups not posted yet — check back closer to game time</div>';
+}
+
 async function renderMLBGamePreview(espnGame, panel) {
   try {
     const games = await getMLBSchedule();
@@ -1539,7 +1585,7 @@ async function renderMLBGamePreview(espnGame, panel) {
         ${mlbBoxHTML}
         ${!isLiveOrFin
           ? noLineup
-            ? `<div class="gp-no-lineup">Lineups not posted yet — only pitcher preview available</div>`
+            ? buildMLBPreStats(espnSummary?.leaders)
             : `
             <div class="gp-hand-legend"><span class="gp-hand gp-fav">L/R/S</span> = favorable matchup &nbsp;·&nbsp; <span class="gp-babip gp-babip-due">BABIP .240 ↑</span> = unlucky, hits coming &nbsp;·&nbsp; <span class="gp-babip gp-babip-hot">BABIP .360 ↓</span> = running hot</div>
             ${dueForHits.length ? `<div class="gp-section"><div class="gp-section-hdr">🍀 Due for Hits <span style="font-size:.65rem;font-weight:400;color:var(--text-muted)">— low BABIP = getting unlucky</span></div>${dueForHits.map(dueRow).join('')}</div>` : ''}
@@ -1750,43 +1796,71 @@ async function renderESPNGamePreview(game, panel) {
     // ── PRE-GAME: season leaders per team ──
     if (state === 'pre' || !state) {
       const teamLeaders = j.leaders || [];
-      const catMap = {};
-      const maxLeaders = (game.sport === 'nba' || game.sport === 'wnba') ? 2 : 1;
-      for (const tl of teamLeaders) {
-        const tAbbr = tl.team?.abbreviation || tl.team?.shortDisplayName || '';
-        for (const cat of (tl.leaders || [])) {
-          const cName = cat.displayName || cat.shortDisplayName || '';
-          const matches = cfg.cats.some(c => cName.toLowerCase().includes(c.toLowerCase()));
-          if (cfg.cats.length && !matches) continue;
-          if (!catMap[cName]) catMap[cName] = [];
-          for (const l of (cat.leaders || []).slice(0, maxLeaders)) {
-            catMap[cName].push({
-              team: tAbbr,
-              name: l.athlete?.shortName || l.athlete?.displayName || '—',
-              val:  l.displayValue || String(l.value ?? '—')
-            });
-          }
-        }
-      }
+      const isBball = game.sport === 'nba' || game.sport === 'wnba';
 
-      const catKeys = Object.keys(catMap);
-      if (catKeys.length) {
-        let catHTML = '';
-        for (const [cat, players] of Object.entries(catMap)) {
-          catHTML += `<div class="gp-stat-cat">
-            <div class="gp-cat-lbl">${esc(cat)}</div>
-            ${players.map(p =>
-              `<div class="gp-player-row">
-                <span class="gp-team">${esc(p.team)}</span>
-                <span class="gp-pname">${esc(p.name)}</span>
-                <span class="gp-avg-val">${esc(p.val)}</span>
-              </div>`
-            ).join('')}
+      if (isBball) {
+        // Combined per-team player table: PPG / RPG / APG / SPG etc.
+        const COL_SHORT = { 'Points':'PPG','Rebounds':'RPG','Assists':'APG','Steals':'SPG','Blocks':'BPG','Three Pointers Made':'3PM','Three-Point Field Goals Made':'3PM','Turnovers':'TO' };
+        let tableHTML = '';
+        for (const tl of teamLeaders) {
+          const tAbbr = tl.team?.abbreviation || tl.team?.shortDisplayName || '';
+          const playerMap = new Map();
+          const catNames  = [];
+          for (const cat of (tl.leaders || [])) {
+            const cName = cat.displayName || cat.shortDisplayName || '';
+            if (cfg.cats.length && !cfg.cats.some(c => cName.toLowerCase().includes(c.toLowerCase()))) continue;
+            if (!catNames.includes(cName)) catNames.push(cName);
+            for (const l of (cat.leaders || []).slice(0, 5)) {
+              const id = l.athlete?.id; if (!id) continue;
+              if (!playerMap.has(id)) playerMap.set(id, { name: l.athlete?.shortName || l.athlete?.displayName || '—', stats: {} });
+              playerMap.get(id).stats[cName] = l.displayValue || String(l.value ?? '—');
+            }
+          }
+          if (!playerMap.size || !catNames.length) continue;
+          const gs = `grid-template-columns:1fr repeat(${catNames.length},42px)`;
+          const colHdr = catNames.map(c => `<span class="nba-sc">${esc(COL_SHORT[c] || c.slice(0,3).toUpperCase())}</span>`).join('');
+          const rows   = [...playerMap.values()].map(p => {
+            const cells = catNames.map(c => `<span class="nba-sc">${esc(p.stats[c] || '—')}</span>`).join('');
+            return `<div class="nba-row" style="${gs}"><span class="nba-pname">${esc(p.name)}</span>${cells}</div>`;
+          }).join('');
+          tableHTML += `<div class="nba-block">
+            <div class="nba-block-hdr"><span class="nba-hdr-team">${esc(tAbbr)}</span><span class="nba-hdr-label">Season Avg</span></div>
+            <div class="nba-row nba-row-hdr" style="${gs}"><span class="nba-pname">Player</span>${colHdr}</div>
+            ${rows}
           </div>`;
         }
-        html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Key Players to Watch</div>${catHTML}</div>`;
+        if (tableHTML) {
+          html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Players to Watch</div>${tableHTML}</div>`;
+        } else {
+          html += `<div class="gp-no-lineup">Pre-game stats not available yet — check back closer to tip-off</div>`;
+        }
       } else {
-        html += `<div class="gp-no-lineup">Pre-game stats not available yet — check back closer to tip-off / puck drop / kickoff</div>`;
+        // Other sports: category-by-category display
+        const catMap = {};
+        for (const tl of teamLeaders) {
+          const tAbbr = tl.team?.abbreviation || tl.team?.shortDisplayName || '';
+          for (const cat of (tl.leaders || [])) {
+            const cName = cat.displayName || cat.shortDisplayName || '';
+            const matches = cfg.cats.some(c => cName.toLowerCase().includes(c.toLowerCase()));
+            if (cfg.cats.length && !matches) continue;
+            if (!catMap[cName]) catMap[cName] = [];
+            for (const l of (cat.leaders || []).slice(0, 1)) {
+              catMap[cName].push({ team: tAbbr, name: l.athlete?.shortName || l.athlete?.displayName || '—', val: l.displayValue || String(l.value ?? '—') });
+            }
+          }
+        }
+        const catKeys = Object.keys(catMap);
+        if (catKeys.length) {
+          let catHTML = '';
+          for (const [cat, players] of Object.entries(catMap)) {
+            catHTML += `<div class="gp-stat-cat"><div class="gp-cat-lbl">${esc(cat)}</div>
+              ${players.map(p => `<div class="gp-player-row"><span class="gp-team">${esc(p.team)}</span><span class="gp-pname">${esc(p.name)}</span><span class="gp-avg-val">${esc(p.val)}</span></div>`).join('')}
+            </div>`;
+          }
+          html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Key Players to Watch</div>${catHTML}</div>`;
+        } else {
+          html += `<div class="gp-no-lineup">Pre-game stats not available yet — check back closer to tip-off / puck drop / kickoff</div>`;
+        }
       }
     }
 
