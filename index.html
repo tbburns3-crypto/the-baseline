@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Baseline — Live Sports Scores</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── TOP NAV ── -->
+  <header id="topbar">
+    <div class="logo">
+      <span class="logo-icon">◉</span>
+      <span class="logo-text">THE BASELINE</span>
+    </div>
+    <nav id="sport-tabs">
+      <button class="sport-tab active" data-sport="tennis">🎾 Tennis</button>
+      <button class="sport-tab" data-sport="nba">🏀 NBA</button>
+      <button class="sport-tab" data-sport="mlb">⚾ MLB</button>
+      <button class="sport-tab" data-sport="nfl">🏈 NFL</button>
+    </nav>
+    <div class="topbar-controls">
+      <div id="conn-indicator">
+        <span id="conn-dot" class="conn-dot conn-connecting"></span>
+        <span id="conn-label">Connecting…</span>
+      </div>
+      <button id="refresh-btn" title="Refresh data">↻</button>
+    </div>
+  </header>
+
+  <!-- ── CONNECTION STATUS BAR ── -->
+  <div id="conn-bar" class="conn-connecting">
+    <span id="conn-msg">Connecting to live updates…</span>
+    <span id="last-update-time"></span>
+  </div>
+
+  <!-- ── TENNIS DATE BAR ── -->
+  <div id="date-bar" class="tennis-only">
+    <button id="prev-dates" class="date-nav-btn">‹</button>
+    <div id="date-tabs-container"></div>
+    <button id="next-dates" class="date-nav-btn">›</button>
+  </div>
+
+  <!-- ── APP LAYOUT ── -->
+  <div id="app-layout">
+
+    <!-- Sidebar: tournament list (tennis only) -->
+    <aside id="sidebar" class="tennis-only">
+      <div class="sidebar-header">
+        <span class="sidebar-title">Tournaments</span>
+        <input type="text" id="tournament-search" placeholder="Search…" autocomplete="off">
+      </div>
+      <div id="tournament-list">
+        <div class="sidebar-loading">Loading…</div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <div id="main-content">
+
+      <!-- View sub-tabs -->
+      <div id="view-tabs">
+        <button class="view-tab active" data-view="scores">Scores</button>
+        <button class="view-tab" data-view="secondary" id="secondary-tab">Rankings</button>
+      </div>
+
+      <!-- ── TENNIS SCORES ── -->
+      <section id="view-tennis-scores" class="view-panel active">
+        <div id="overview-cards">
+          <div class="overview-card" data-cat="atp">
+            <div class="ov-label">ATP</div>
+            <div class="ov-count" id="ov-atp-count">—</div>
+            <div class="ov-live" id="ov-atp-live"></div>
+          </div>
+          <div class="overview-card" data-cat="wta">
+            <div class="ov-label">WTA</div>
+            <div class="ov-count" id="ov-wta-count">—</div>
+            <div class="ov-live" id="ov-wta-live"></div>
+          </div>
+          <div class="overview-card" data-cat="challenger">
+            <div class="ov-label">Challenger</div>
+            <div class="ov-count" id="ov-chal-count">—</div>
+            <div class="ov-live" id="ov-chal-live"></div>
+          </div>
+          <div class="overview-card" data-cat="itf">
+            <div class="ov-label">ITF</div>
+            <div class="ov-count" id="ov-itf-count">—</div>
+            <div class="ov-live" id="ov-itf-live"></div>
+          </div>
+        </div>
+
+        <div id="filter-chips">
+          <button class="chip active" data-filter="all">All</button>
+          <button class="chip" data-filter="atp">ATP</button>
+          <button class="chip" data-filter="wta">WTA</button>
+          <button class="chip" data-filter="challenger-m">Challenger Men</button>
+          <button class="chip" data-filter="challenger-w">Challenger Women</button>
+          <button class="chip" data-filter="itf-m">ITF Men</button>
+          <button class="chip" data-filter="itf-w">ITF Women</button>
+          <button class="chip" data-filter="doubles">Doubles</button>
+        </div>
+
+        <div id="matches-area">
+          <div class="loading-spinner"><div class="spinner"></div><p>Loading matches…</p></div>
+        </div>
+      </section>
+
+      <!-- ── TENNIS RANKINGS ── -->
+      <section id="view-tennis-rankings" class="view-panel">
+        <div id="rankings-area">
+          <div class="loading-spinner"><div class="spinner"></div><p>Loading rankings…</p></div>
+        </div>
+      </section>
+
+      <!-- ── OTHER SPORTS SCORES ── -->
+      <section id="view-other-scores" class="view-panel">
+        <div id="other-scores-area">
+          <div class="loading-spinner"><div class="spinner"></div><p>Loading games…</p></div>
+        </div>
+      </section>
+
+      <!-- ── OTHER SPORTS STANDINGS ── -->
+      <section id="view-other-standings" class="view-panel">
+        <div id="other-standings-area">
+          <div class="loading-spinner"><div class="spinner"></div><p>Loading standings…</p></div>
+        </div>
+      </section>
+
+    </div><!-- /main-content -->
+  </div><!-- /app-layout -->
+
+  <script src="app.js"></script>
+</body>
+</html>
