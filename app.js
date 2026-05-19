@@ -104,6 +104,11 @@ function surfaceClass(surface = '') {
   return 'hard';
 }
 
+function cleanScore(s) {
+  // Strip tiebreak notation "(4)" and any decimals — show only the whole number
+  return String(s ?? '').replace(/\(.*?\)/g, '').split('.')[0].trim();
+}
+
 function parseSets(m) {
   const sets = [];
   if (m.scores && typeof m.scores === 'object') {
@@ -111,14 +116,14 @@ function parseSets(m) {
     for (const k of keys) {
       const s = m.scores[k];
       if (s && (s.score_first !== undefined)) {
-        sets.push({ p1: s.score_first ?? '', p2: s.score_second ?? '' });
+        sets.push({ p1: cleanScore(s.score_first), p2: cleanScore(s.score_second) });
       }
     }
   }
   if (sets.length === 0 && m.event_final_result) {
     for (const part of m.event_final_result.split(',')) {
       const halves = part.trim().split('-');
-      if (halves.length >= 2) sets.push({ p1: halves[0].trim(), p2: halves[1].trim() });
+      if (halves.length >= 2) sets.push({ p1: cleanScore(halves[0]), p2: cleanScore(halves[1]) });
     }
   }
   return sets;
@@ -280,7 +285,22 @@ function renderMatches(all) {
     return;
   }
 
-  // Group by tournament
+  // ── LIVE NOW section ──
+  const liveMatches = filtered.filter(m => isLive(m.event_status));
+  let html = '';
+  if (liveMatches.length) {
+    html += `
+      <div class="live-now-section">
+        <div class="live-now-header">
+          <span class="live-now-dot">●</span>
+          LIVE NOW
+          <span class="live-now-count">${liveMatches.length} match${liveMatches.length !== 1 ? 'es' : ''}</span>
+        </div>
+        ${liveMatches.map(m => buildMatchRow(m, true)).join('')}
+      </div>`;
+  }
+
+  // ── Tournament groups ──
   const groups = new Map();
   for (const m of filtered) {
     const key = m.league_name || m.tournament_name || m.event_type || 'Other';
@@ -288,14 +308,14 @@ function renderMatches(all) {
     groups.get(key).matches.push(m);
   }
 
-  // Live tournaments first
   const sorted = [...groups.values()].sort((a, b) => {
     const al = a.matches.some(m => isLive(m.event_status)) ? 0 : 1;
     const bl = b.matches.some(m => isLive(m.event_status)) ? 0 : 1;
     return al - bl;
   });
 
-  area.innerHTML = sorted.map(g => buildGroup(g)).join('');
+  html += sorted.map(g => buildGroup(g)).join('');
+  area.innerHTML = html;
 }
 
 function buildGroup(g) {
@@ -323,7 +343,7 @@ function buildGroup(g) {
     </div>`;
 }
 
-function buildMatchRow(m) {
+function buildMatchRow(m, liteMode = false) {
   const live     = isLive(m.event_status);
   const finished = isFinished(m.event_status);
   const sets     = parseSets(m);
@@ -349,10 +369,26 @@ function buildMatchRow(m) {
 
   const key = esc(m.event_key);
 
+  const detailPanel = liteMode ? '' : `
+    <div class="match-detail" id="md-${key}" style="display:none">
+      <div class="detail-inner">
+        <div class="detail-header">
+          <span class="detail-player">${esc(m.event_first_player||'—')}</span>
+          <span class="detail-vs">vs</span>
+          <span class="detail-player">${esc(m.event_second_player||'—')}</span>
+        </div>
+        <div class="detail-sets" id="ds-${key}">${buildDetailSets(sets)}</div>
+        <div class="detail-game" id="dg-${key}" style="${live?'':'display:none'}">
+          Current game: ${esc(m.event_game_result||'—')}
+        </div>
+        <div class="detail-status">Status: ${esc(m.event_status||'Unknown')}</div>
+      </div>
+    </div>`;
+
   return `
     <div class="match-row ${live?'live':''} ${finished?'finished':''}"
          data-key="${key}"
-         onclick="toggleDetail('${key}')">
+         onclick="${liteMode ? `jumpTo('${slugify(m.league_name||m.tournament_name||'')}')` : `toggleDetail('${key}')`}">
       <div class="match-status">${statusHTML}</div>
       <div class="match-players">
         <div class="player p1 ${serve==='1'?'serving':''}">
@@ -366,23 +402,7 @@ function buildMatchRow(m) {
         <div class="sets-area">${setsHTML}</div>
         ${gameHTML}
       </div>
-    </div>
-    <div class="match-detail" id="md-${key}" style="display:none">
-      <div class="detail-inner">
-        <div class="detail-header">
-          <span class="detail-player">${esc(m.event_first_player||'—')}</span>
-          <span class="detail-vs">vs</span>
-          <span class="detail-player">${esc(m.event_second_player||'—')}</span>
-        </div>
-        <div class="detail-sets" id="ds-${key}">
-          ${buildDetailSets(sets)}
-        </div>
-        <div class="detail-game" id="dg-${key}" style="${live?'':'display:none'}">
-          Current game: ${esc(m.event_game_result||'—')}
-        </div>
-        <div class="detail-status">Status: ${esc(m.event_status||'Unknown')}</div>
-      </div>
-    </div>`;
+    </div>${detailPanel}`;
 }
 
 function buildDetailSets(sets) {
@@ -394,10 +414,14 @@ function buildDetailSets(sets) {
     </div>`).join('');
 }
 
-// Patch a single match row in-place without full re-render
+// Patch all instances of a match row (live section + main section)
 function patchRow(m) {
-  const row = document.querySelector(`.match-row[data-key="${m.event_key}"]`);
-  if (!row) return;
+  const rows = document.querySelectorAll(`.match-row[data-key="${m.event_key}"]`);
+  if (!rows.length) return;
+  rows.forEach(row => patchSingleRow(row, m));
+}
+
+function patchSingleRow(row, m) {
 
   const live     = isLive(m.event_status);
   const finished = isFinished(m.event_status);
