@@ -1086,7 +1086,7 @@ async function apiSportsGames(sport, date) {
   }));
 }
 
-function buildOtherRow(g) {
+function gameRowState(g) {
   const st = g.status || '';
   const live = /^(Q[1-4]|OT)\s+\d/i.test(st)
     || /^(Top|Bot|Mid)\s+\d/i.test(st)
@@ -1094,20 +1094,25 @@ function buildOtherRow(g) {
     || /^\d+(st|nd|rd|th)\s*(quarter|period|inning)/i.test(st);
   const fin  = /^Final/i.test(st) || /^F(\/|$)/i.test(st) || ['FT','Finished','Complete'].includes(st);
   const periodLabel = g.period ? `${g.period}${ordinal(+g.period || 0)}` : '';
+  return { live, fin, periodLabel };
+}
+
+function buildOtherRow(g) {
+  const { live, fin, periodLabel } = gameRowState(g);
   return `
     <div class="other-match-row ${live?'live':''}" id="og-${esc(g.id)}" onclick="toggleGamePreview('${esc(g.id)}')">
-      <div class="other-status">
+      <div class="other-status" id="og-st-${esc(g.id)}">
         ${live ? '<span class="live-badge">LIVE</span>' : fin ? '<span class="fin-badge">FIN</span>' : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`}
       </div>
       <div class="other-teams">
         <div class="other-team away">${esc(g.awayTeam)}</div>
         <div class="other-team home">${esc(g.homeTeam)}</div>
       </div>
-      <div class="other-scores">
+      <div class="other-scores" id="og-sc-${esc(g.id)}">
         <div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '—'}</div>
         <div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '—'}</div>
       </div>
-      ${live && (periodLabel || g.time) ? `<div class="other-period">${esc(periodLabel)} ${esc(g.time)}</div>` : '<div></div>'}
+      <div class="other-period" id="og-pd-${esc(g.id)}">${live && (periodLabel || g.time) ? `${esc(periodLabel)} ${esc(g.time)}` : ''}</div>
     </div>`;
 }
 
@@ -1123,7 +1128,27 @@ function renderOtherScores(games, sport, src) {
   _otherGamesMap.clear();
   for (const g of games) _otherGamesMap.set(String(g.id), g);
 
-  // Group by league so MLB doesn't bleed into NPB/KBO etc.
+  // If all rows already exist, update only scores/status in-place so open previews stay open
+  const allExist = games.every(g => !!document.getElementById(`og-${g.id}`));
+  if (allExist) {
+    for (const g of games) {
+      const { live, fin, periodLabel } = gameRowState(g);
+      const rowEl = document.getElementById(`og-${g.id}`);
+      const stEl  = document.getElementById(`og-st-${g.id}`);
+      const scEl  = document.getElementById(`og-sc-${g.id}`);
+      const pdEl  = document.getElementById(`og-pd-${g.id}`);
+      if (!rowEl || !stEl || !scEl || !pdEl) continue;
+      rowEl.classList.toggle('live', live);
+      stEl.innerHTML = live ? '<span class="live-badge">LIVE</span>'
+                     : fin  ? '<span class="fin-badge">FIN</span>'
+                     : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`;
+      scEl.innerHTML = `<div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '—'}</div><div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '—'}</div>`;
+      pdEl.textContent = live && (periodLabel || g.time) ? `${periodLabel} ${g.time}`.trim() : '';
+    }
+    return;
+  }
+
+  // Full re-render (first load or game count changed)
   const groups = new Map();
   for (const g of games) {
     const key = g.league || sport.toUpperCase();
