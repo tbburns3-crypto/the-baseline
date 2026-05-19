@@ -622,15 +622,15 @@ input { font: inherit; }
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
 }
-.ranking-header, .ranking-row {
+.ranking-header-row, .ranking-row {
   display: grid;
-  grid-template-columns: 44px 1fr 80px;
+  grid-template-columns: 40px 1fr 72px 64px;
   align-items: center;
   padding: 7px 8px;
   font-size: 0.83rem;
   gap: 6px;
 }
-.ranking-header {
+.ranking-header-row {
   color: var(--text-muted);
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -650,6 +650,11 @@ input { font: inherit; }
   font-variant-numeric: tabular-nums;
   color: var(--accent);
   font-weight: 700;
+  text-align: right;
+}
+.rank-country {
+  color: var(--text-muted);
+  font-size: 0.78rem;
   text-align: right;
 }
 
