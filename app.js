@@ -172,7 +172,7 @@ async function loadFixtures(offset = 0) {
     renderSidebar(results);
   } catch (err) {
     console.error('Fixtures error:', err);
-    showError('matches-area', `Could not load matches — ${err.message}`, () => loadFixtures(offset));
+    showError('matches-area', `Could not load matches — ${err.message}`, `loadFixtures(${offset})`);
   }
 }
 
@@ -201,7 +201,7 @@ async function loadRankings() {
       wtaR.status === 'fulfilled' ? wtaR.value : []
     );
   } catch (err) {
-    showError('rankings-area', `Could not load rankings — ${err.message}`, loadRankings);
+    showError('rankings-area', `Could not load rankings — ${err.message}`, 'loadRankings()');
   }
 }
 
@@ -619,7 +619,7 @@ async function loadOtherScores(sport) {
     }
     renderOtherScores(games, sport, src);
   } catch (err) {
-    showError('other-scores-area', `Could not load ${sport.toUpperCase()} — ${err.message}`, () => loadOtherScores(sport));
+    showError('other-scores-area', `Could not load ${sport.toUpperCase()} — ${err.message}`, `loadOtherScores('${sport}')`);
   }
 }
 
@@ -751,7 +751,7 @@ async function loadOtherStandings(sport) {
     }
     renderOtherStandings(data, sport, src);
   } catch (err) {
-    showError('other-standings-area', `Could not load standings — ${err.message}`, () => loadOtherStandings(sport));
+    showError('other-standings-area', `Could not load standings — ${err.message}`, `loadOtherStandings('${sport}')`);
   }
 }
 
@@ -779,8 +779,9 @@ function showLoading(id, msg) {
     `<div class="loading-spinner"><div class="spinner"></div><p>${esc(msg)}</p></div>`;
 }
 
-function showError(id, msg, retryFn) {
-  const btn = retryFn ? `<button class="retry-btn" onclick="(${retryFn.toString()})()">Retry</button>` : '';
+function showError(id, msg, retryCall) {
+  // retryCall is a plain JS string like "loadFixtures(0)" — avoids closure issues
+  const btn = retryCall ? `<button class="retry-btn" onclick="${retryCall}">Retry</button>` : '';
   document.getElementById(id).innerHTML =
     `<div class="error-state"><div class="error-icon">⚠</div><p>${esc(msg)}</p>${btn}</div>`;
 }
