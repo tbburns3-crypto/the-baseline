@@ -333,6 +333,43 @@ input { font: inherit; }
 .chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
 .chip.active { background: var(--accent); color: #0a1a0e; border-color: var(--accent); font-weight: 700; }
 
+/* ── LIVE NOW SECTION ── */
+.live-now-section {
+  background: rgba(244,67,54,0.06);
+  border: 1px solid rgba(244,67,54,0.3);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.live-now-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--live);
+  border-bottom: 1px solid rgba(244,67,54,0.2);
+}
+.live-now-dot {
+  animation: pulse-text 1.4s infinite;
+  font-size: 0.75rem;
+}
+.live-now-count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(244,67,54,0.7);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.live-now-section .match-row {
+  border-top: 1px solid rgba(244,67,54,0.15);
+}
+.live-now-section .match-row:first-of-type { border-top: none; }
+
 /* ── TOURNAMENT GROUPS ── */
 .tournament-group {
   background: var(--bg-card);
