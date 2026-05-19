@@ -155,11 +155,10 @@ async function tennisFetch(method, params = {}) {
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const target = url.toString();
 
-  // Try two CORS proxies in order — corsproxy.io can return 413 for large
-  // result sets (today/past dates), allorigins.win handles bigger responses
+  // allorigins.win is the reliable free proxy; corsproxy.io now requires paid plan
   const proxies = [
-    CFG.tennis.proxy + target,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
+    CFG.tennis.proxy + target
   ];
 
   let lastErr;
