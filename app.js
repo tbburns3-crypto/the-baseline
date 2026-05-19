@@ -35,6 +35,7 @@ const S = {
   playerDBLoaded:  false,
   playerDBLoading: false,
   lineupsTimer:    null,
+  scoresTimer:     null,
   ws:          null,
   wsRetries:   0,
   wsMax:       3,
@@ -890,6 +891,17 @@ function pickDate(offset) {
 }
 
 // ── SPORT / VIEW SWITCHING ───────────────────────────────────
+function stopScoresTimer() {
+  if (S.scoresTimer) { clearInterval(S.scoresTimer); S.scoresTimer = null; }
+}
+
+function startScoresTimer(sport) {
+  stopScoresTimer();
+  S.scoresTimer = setInterval(() => {
+    if (S.sport === sport && S.view === 'scores') loadOtherScores(sport);
+  }, 30000);
+}
+
 function switchSport(sport) {
   S.sport = sport;
   document.querySelectorAll('.sport-tab').forEach(t => t.classList.toggle('active', t.dataset.sport === sport));
@@ -901,6 +913,7 @@ function switchSport(sport) {
   const playersTab  = document.getElementById('players-tab');
   const lineupsTab  = document.getElementById('lineups-tab');
   if (S.lineupsTimer) { clearInterval(S.lineupsTimer); S.lineupsTimer = null; }
+  stopScoresTimer();
   if (isTennis) {
     secTab.textContent = 'Rankings'; secTab.dataset.view = 'secondary';
     playersTab.style.display  = 'none';
@@ -918,7 +931,7 @@ function switchSport(sport) {
     loadFixtures(S.dateOffset);
   } else {
     wsDisconnect();
-    setConn('disconnected', `${sport.toUpperCase()} scores — no live connection needed`);
+    setConn('disconnected', `${sport.toUpperCase()} — updating every 30s`);
     loadOtherScores(sport);
   }
 }
@@ -939,16 +952,20 @@ function switchView(view) {
     if (view === 'scores') {
       document.getElementById('view-other-scores').classList.add('active');
       loadOtherScores(S.sport);
+      startScoresTimer(S.sport);
     } else if (view === 'lineups') {
+      stopScoresTimer();
       document.getElementById('view-mlb-lineups').classList.add('active');
       loadMLBLineups();
       if (S.lineupsTimer) clearInterval(S.lineupsTimer);
       S.lineupsTimer = setInterval(loadMLBLineups, 5 * 60 * 1000);
     } else if (view === 'players') {
+      stopScoresTimer();
       document.getElementById('view-sport-players').classList.add('active');
       document.getElementById('sport-player-search-input').value = '';
       document.getElementById('sport-player-results').innerHTML = '<div class="empty-state">Type a name to search players</div>';
     } else {
+      stopScoresTimer();
       document.getElementById('view-other-standings').classList.add('active');
       if (S.sport === 'mlb') loadMLBFullStandings();
       else loadOtherStandings(S.sport);
@@ -975,7 +992,10 @@ async function loadOtherScores(sport) {
       }
     }
     renderOtherScores(games, sport, src);
+    const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    setConn('connected', `${sport.toUpperCase()} — updated ${t} · refreshes every 30s`);
   } catch (err) {
+    setConn('disconnected', `${sport.toUpperCase()} — update failed, retrying…`);
     showError('other-scores-area', `Could not load ${sport.toUpperCase()} — ${err.message}`, `loadOtherScores('${sport}')`);
   }
 }
