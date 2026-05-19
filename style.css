@@ -820,41 +820,41 @@ input { font: inherit; }
 .standing-head span { font-weight: 600; }
 .standing-gb     { font-size: .8rem; color: var(--text-muted); text-align: right; }
 .standing-streak { font-size: .8rem; color: var(--text-muted); text-align: right; }
-.leaders-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-  padding: 8px 16px 20px;
-}
-.leader-block {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.leader-block-title {
-  background: rgba(255,255,255,.05);
-  padding: 7px 12px;
-  font-size: .75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--accent);
+.mlb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
 }
+.mlb-chip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-muted);
+  padding: 5px 14px;
+  font-size: .82rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.mlb-chip:hover  { border-color: var(--accent); color: var(--text); }
+.mlb-chip.active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 700; }
+.leader-list { padding: 8px 16px 16px; }
 .leader-row {
   display: grid;
-  grid-template-columns: 22px 1fr 36px 40px;
-  gap: 6px;
+  grid-template-columns: 28px 1fr 46px 56px;
+  gap: 8px;
   align-items: center;
-  padding: 5px 12px;
-  border-bottom: 1px solid rgba(255,255,255,.04);
-  font-size: .82rem;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  font-size: .88rem;
 }
-.leader-rank { color: var(--text-muted); font-size: .72rem; text-align: center; }
-.leader-name { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.leader-team { color: var(--text-muted); font-size: .75rem; }
-.leader-val  { color: var(--accent); font-weight: 700; text-align: right; }
+.leader-row.leader-head { font-size: .72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; padding-bottom: 6px; }
+.leader-rank { color: var(--text-muted); font-size: .78rem; text-align: center; font-weight: 700; }
+.leader-name { color: var(--text); font-weight: 500; }
+.leader-team { color: var(--text-muted); font-size: .78rem; }
+.leader-val  { color: var(--accent); font-weight: 700; text-align: right; font-size: .95rem; }
 
 /* ── MLB PLAYER STATS PANEL ── */
 .mlb-stats-panel {
