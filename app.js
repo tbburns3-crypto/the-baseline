@@ -1282,58 +1282,165 @@ function renderMLBStandingsView(activeKey) {
 }
 
 // ── MLB PLAYER STATS ─────────────────────────────────────────
+const _ppCache = new Map(); // `${playerId}_${view}` → data
+
 async function loadMLBPlayerStats(playerId, playerName, rowEl) {
-  const existingPanel = rowEl.nextElementSibling;
-  if (existingPanel?.classList.contains('mlb-stats-panel')) {
-    existingPanel.remove(); return;
-  }
+  const existing = rowEl.nextElementSibling;
+  if (existing?.classList.contains('mlb-stats-panel')) { existing.remove(); return; }
+
   const panel = document.createElement('div');
   panel.className = 'mlb-stats-panel';
-  panel.innerHTML = '<div class="loading-spinner" style="padding:12px"><div class="spinner"></div></div>';
+  panel.id = `pp-${playerId}`;
+  panel.innerHTML = `
+    <div class="pp-header">
+      <span class="pp-name">${esc(playerName)}</span>
+      <span class="pp-season">2025</span>
+    </div>
+    <div class="pp-chips" id="ppc-${playerId}">
+      <button class="pp-chip active"  onclick="ppView(${playerId},'season',this)">Season</button>
+      <button class="pp-chip"         onclick="ppView(${playerId},'last30',this)">Last 30</button>
+      <button class="pp-chip"         onclick="ppView(${playerId},'last14',this)">Last 14</button>
+      <button class="pp-chip"         onclick="ppView(${playerId},'last7',this)">Last 7</button>
+      <button class="pp-chip"         onclick="ppView(${playerId},'log',this)">Game Log</button>
+    </div>
+    <div class="pp-content" id="ppcontent-${playerId}">
+      <div class="loading-spinner" style="padding:14px"><div class="spinner"></div></div>
+    </div>`;
   rowEl.after(panel);
+  ppView(playerId, 'season');
+}
+
+async function ppView(playerId, view, chipEl) {
+  if (chipEl) {
+    document.querySelectorAll(`#ppc-${playerId} .pp-chip`).forEach(c => c.classList.remove('active'));
+    chipEl.classList.add('active');
+  }
+  const contentEl = document.getElementById(`ppcontent-${playerId}`);
+  if (!contentEl) return;
+
+  const key = `${playerId}_${view}`;
+  if (_ppCache.has(key)) { renderPPContent(contentEl, _ppCache.get(key), view); return; }
+
+  contentEl.innerHTML = '<div class="loading-spinner" style="padding:14px"><div class="spinner"></div></div>';
   try {
-    const res = await fetch(
-      `https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=stats(group=[hitting,pitching],type=season,season=2025),currentTeam,position`
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    const person = json.people?.[0];
-    const allStats = person?.stats || [];
-    const hitting  = allStats.find(s => s.group?.displayName === 'hitting')?.splits?.[0]?.stat;
-    const pitching = allStats.find(s => s.group?.displayName === 'pitching')?.splits?.[0]?.stat;
-    let inner = `<div class="mlb-stats-name">${esc(playerName)} — 2025 Season Stats</div>`;
-    if (hitting) {
-      inner += `<div class="mlb-stats-group">
-        <div class="mlb-stats-label">Batting</div>
-        <div class="mlb-stats-row">
-          ${statCell('AVG', hitting.avg)} ${statCell('HR', hitting.homeRuns)} ${statCell('RBI', hitting.rbi)}
-          ${statCell('H', hitting.hits)} ${statCell('R', hitting.runs)} ${statCell('2B', hitting.doubles)}
-          ${statCell('3B', hitting.triples)} ${statCell('BB', hitting.baseOnBalls)} ${statCell('SO', hitting.strikeOuts)}
-          ${statCell('SB', hitting.stolenBases)} ${statCell('OBP', hitting.obp)} ${statCell('SLG', hitting.slg)}
-          ${statCell('OPS', hitting.ops)} ${statCell('AB', hitting.atBats)} ${statCell('G', hitting.gamesPlayed)}
-        </div>
-      </div>`;
+    let data;
+    if (view === 'season') {
+      const r = await fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=stats(group=[hitting,pitching],type=season,season=2025),currentTeam,position`);
+      const j = await r.json();
+      const p = j.people?.[0];
+      const all = p?.stats || [];
+      data = {
+        info:    { team: p?.currentTeam?.name, pos: p?.primaryPosition?.abbreviation, jersey: p?.primaryNumber },
+        hitting: all.find(s => s.group?.displayName === 'hitting')?.splits?.[0]?.stat,
+        pitching:all.find(s => s.group?.displayName === 'pitching')?.splits?.[0]?.stat,
+      };
+    } else if (view === 'log') {
+      const [hr, pr] = await Promise.allSettled([
+        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&season=2025&group=hitting&limit=20`).then(r=>r.json()),
+        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&season=2025&group=pitching&limit=20`).then(r=>r.json()),
+      ]);
+      data = {
+        hLog: hr.status==='fulfilled' ? hr.value?.stats?.[0]?.splits||[] : [],
+        pLog: pr.status==='fulfilled' ? pr.value?.stats?.[0]?.splits||[] : [],
+      };
+    } else {
+      const days  = view==='last7' ? 7 : view==='last14' ? 14 : 30;
+      const start = dateStr(-days), end = dateStr(0);
+      const [hr, pr] = await Promise.allSettled([
+        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=byDateRange&startDate=${start}&endDate=${end}&group=hitting&season=2025`).then(r=>r.json()),
+        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=byDateRange&startDate=${start}&endDate=${end}&group=pitching&season=2025`).then(r=>r.json()),
+      ]);
+      data = {
+        hitting: hr.status==='fulfilled' ? hr.value?.stats?.[0]?.splits?.[0]?.stat : null,
+        pitching:pr.status==='fulfilled' ? pr.value?.stats?.[0]?.splits?.[0]?.stat : null,
+      };
     }
-    if (pitching) {
-      inner += `<div class="mlb-stats-group">
-        <div class="mlb-stats-label">Pitching</div>
-        <div class="mlb-stats-row">
-          ${statCell('ERA', pitching.era)} ${statCell('W', pitching.wins)} ${statCell('L', pitching.losses)}
-          ${statCell('IP', pitching.inningsPitched)} ${statCell('SO', pitching.strikeOuts)} ${statCell('BB', pitching.baseOnBalls)}
-          ${statCell('H', pitching.hits)} ${statCell('HR', pitching.homeRuns)} ${statCell('WHIP', pitching.whip)}
-          ${statCell('SV', pitching.saves)} ${statCell('HLD', pitching.holds)} ${statCell('G', pitching.gamesPlayed)}
-        </div>
-      </div>`;
-    }
-    if (!hitting && !pitching) inner += '<div class="empty-state" style="padding:10px">No 2025 stats found</div>';
-    panel.innerHTML = inner;
+    _ppCache.set(key, data);
+    renderPPContent(contentEl, data, view);
   } catch (err) {
-    panel.innerHTML = `<div class="error-state" style="padding:10px">Could not load stats: ${esc(err.message)}</div>`;
+    contentEl.innerHTML = `<div class="pp-error">Could not load: ${esc(err.message)}</div>`;
   }
 }
 
-function statCell(label, val) {
-  return `<div class="stat-cell"><div class="stat-val">${val != null ? esc(String(val)) : '—'}</div><div class="stat-lbl">${label}</div></div>`;
+function renderPPContent(el, data, view) {
+  if (view === 'log') {
+    el.innerHTML = renderGameLog(data.hLog, data.pLog);
+    return;
+  }
+  const { hitting, pitching } = data;
+  let html = '';
+  if (hitting) html += renderStatBlock('Batting', [
+    [['AVG',hitting.avg],['OBP',hitting.obp],['SLG',hitting.slg],['OPS',hitting.ops]],
+    [['HR',hitting.homeRuns],['RBI',hitting.rbi],['H',hitting.hits],['R',hitting.runs],['2B',hitting.doubles],['3B',hitting.triples]],
+    [['BB',hitting.baseOnBalls],['K',hitting.strikeOuts],['SB',hitting.stolenBases],['AB',hitting.atBats],['G',hitting.gamesPlayed]],
+  ]);
+  if (pitching) html += renderStatBlock('Pitching', [
+    [['ERA',pitching.era],['WHIP',pitching.whip],['W',pitching.wins],['L',pitching.losses]],
+    [['IP',pitching.inningsPitched],['K',pitching.strikeOuts],['BB',pitching.baseOnBalls],['H',pitching.hits],['HR',pitching.homeRuns]],
+    [['G',pitching.gamesPlayed],['GS',pitching.gamesStarted],['SV',pitching.saves],['HLD',pitching.holds]],
+  ]);
+  if (!hitting && !pitching) html = '<div class="pp-empty">No stats available for this period</div>';
+  el.innerHTML = html;
+}
+
+function renderStatBlock(label, rows) {
+  return `<div class="pp-block">
+    <div class="pp-block-label">${label}</div>
+    ${rows.map((row, i) => `
+      <div class="pp-stat-row ${i===0?'pp-stat-row-primary':''}">
+        ${row.map(([lbl, val]) => `
+          <div class="pp-stat-cell">
+            <div class="pp-stat-val">${val != null ? esc(String(val)) : '—'}</div>
+            <div class="pp-stat-lbl">${lbl}</div>
+          </div>`).join('')}
+      </div>`).join('')}
+  </div>`;
+}
+
+function renderGameLog(hLog, pLog) {
+  const log = hLog.length ? hLog : pLog;
+  const isBatter = hLog.length > 0;
+  if (!log.length) return '<div class="pp-empty">No game log available</div>';
+
+  const fmt = (d) => {
+    if (!d) return '—';
+    const dt = new Date(d + 'T12:00:00');
+    return dt.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+  };
+
+  const head = isBatter
+    ? ['Date','Opp','AB','H','HR','RBI','BB','K','AVG']
+    : ['Date','Opp','Dec','IP','H','R','ER','BB','K','ERA'];
+
+  const rows = log.slice(0, 15).map(s => {
+    const opp   = (s.isHome ? '' : '@') + (s.opponent?.abbreviation || '—');
+    const d     = fmt(s.date);
+    const st    = s.stat;
+    if (isBatter) {
+      const hasHit = (st.hits || 0) > 0;
+      const hasHR  = (st.homeRuns || 0) > 0;
+      return `<div class="gl-row ${hasHR?'gl-hr':hasHit?'gl-hit':''}">
+        <span>${d}</span><span>${opp}</span><span>${st.atBats??'—'}</span>
+        <span>${st.hits??'—'}</span><span>${st.homeRuns??'—'}</span><span>${st.rbi??'—'}</span>
+        <span>${st.baseOnBalls??'—'}</span><span>${st.strikeOuts??'—'}</span>
+        <span class="gl-avg">${st.avg??'—'}</span>
+      </div>`;
+    } else {
+      const dec = s.stat.wins ? 'W' : s.stat.losses ? 'L' : s.stat.saves ? 'SV' : '—';
+      return `<div class="gl-row ${dec==='W'?'gl-hit':dec==='L'?'gl-loss':''}">
+        <span>${d}</span><span>${opp}</span><span class="gl-dec">${dec}</span>
+        <span>${st.inningsPitched??'—'}</span><span>${st.hits??'—'}</span>
+        <span>${st.runs??'—'}</span><span>${st.earnedRuns??'—'}</span>
+        <span>${st.baseOnBalls??'—'}</span><span>${st.strikeOuts??'—'}</span>
+        <span class="gl-avg">${st.era??'—'}</span>
+      </div>`;
+    }
+  });
+
+  return `<div class="gl-table">
+    <div class="gl-head">${head.map(h=>`<span>${h}</span>`).join('')}</div>
+    ${rows.join('')}
+  </div>`;
 }
 
 async function loadOtherStandings(sport) {
