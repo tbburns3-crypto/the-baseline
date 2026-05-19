@@ -1282,6 +1282,32 @@ input { font: inherit; }
   font-style: italic; padding: 4px 0;
 }
 
+/* ── GAME PICK & SERIES ── */
+.gp-series-badge {
+  font-size: .75rem; font-weight: 700;
+  background: rgba(255,179,0,.12); color: #ffb300;
+  border-radius: 6px; padding: 6px 12px; margin-bottom: 4px;
+}
+.gp-series-title { opacity: 0.75; font-weight: 400; }
+.gp-pick {
+  font-size: .82rem; padding: 7px 12px;
+  background: rgba(0,230,118,.09); border-radius: 6px;
+  border-left: 3px solid var(--accent); margin-bottom: 8px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+}
+.gp-pick-toss {
+  font-size: .82rem; padding: 7px 12px;
+  background: rgba(255,255,255,.04); border-radius: 6px;
+  color: var(--text-muted); margin-bottom: 8px;
+}
+.gp-pick-team  { font-weight: 700; color: var(--accent); }
+.gp-pick-reason { color: var(--text-muted); font-size: .78rem; }
+.gp-bench-tag {
+  font-size: .62rem; font-weight: 700;
+  background: rgba(255,179,0,.18); color: #ffb300;
+  border-radius: 3px; padding: 1px 5px; white-space: nowrap; flex-shrink: 0;
+}
+
 /* ── LINEUP DUE FOR HITS ── */
 .lineup-due-section {
   padding: 8px 14px; border-top: 1px solid var(--border);
