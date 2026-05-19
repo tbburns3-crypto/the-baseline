@@ -1289,19 +1289,32 @@ input { font: inherit; }
   border-radius: 6px; padding: 6px 12px; margin-bottom: 4px;
 }
 .gp-series-title { opacity: 0.75; font-weight: 400; }
-.gp-pick {
-  font-size: .82rem; padding: 7px 12px;
-  background: rgba(0,230,118,.09); border-radius: 6px;
-  border-left: 3px solid var(--accent); margin-bottom: 8px;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+.gp-pick-box {
+  border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0;
+  overflow: hidden; margin-bottom: 8px;
 }
-.gp-pick-toss {
-  font-size: .82rem; padding: 7px 12px;
-  background: rgba(255,255,255,.04); border-radius: 6px;
-  color: var(--text-muted); margin-bottom: 8px;
+.gp-pick-verdict {
+  font-size: .82rem; font-weight: 600; padding: 7px 12px;
+  background: rgba(0,230,118,.09);
 }
+.gp-verdict-toss { background: rgba(255,255,255,.04); color: var(--text-muted); font-weight: 400; }
 .gp-pick-team  { font-weight: 700; color: var(--accent); }
-.gp-pick-reason { color: var(--text-muted); font-size: .78rem; }
+.gp-pick-count { font-size: .72rem; color: var(--text-muted); font-weight: 400; margin-left: 4px; }
+.gp-pick-factors { border-top: 1px solid var(--border); }
+.gp-pfactor {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 4px 12px; font-size: .74rem;
+  border-bottom: 1px solid rgba(255,255,255,.03);
+}
+.gp-pf-win  { background: rgba(0,230,118,.05); }
+.gp-pf-loss { background: transparent; }
+.gp-pf-tie  { background: transparent; }
+.gp-pf-icon { font-size: .68rem; font-weight: 700; flex-shrink: 0; width: 10px; }
+.gp-pf-win  .gp-pf-icon { color: var(--accent); }
+.gp-pf-loss .gp-pf-icon { color: var(--text-muted); }
+.gp-pf-tie  .gp-pf-icon { color: var(--text-muted); }
+.gp-pf-label { font-weight: 700; color: var(--text); white-space: nowrap; min-width: 72px; flex-shrink: 0; }
+.gp-pf-detail { color: var(--text-muted); }
 .gp-bench-tag {
   font-size: .62rem; font-weight: 700;
   background: rgba(255,179,0,.18); color: #ffb300;
