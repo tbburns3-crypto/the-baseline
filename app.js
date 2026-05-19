@@ -1545,6 +1545,65 @@ async function renderMLBGamePreview(espnGame, panel) {
   }
 }
 
+function renderNBABoxScore(j) {
+  const COLS = [
+    { key:'PTS', alts:['PTS'] },
+    { key:'REB', alts:['REB'] },
+    { key:'AST', alts:['AST'] },
+    { key:'3PM', alts:['3PM','3PT','3PTM'] },
+    { key:'STL', alts:['STL'] },
+    { key:'BLK', alts:['BLK'] },
+    { key:'TO',  alts:['TO','TOS'] }
+  ];
+  let html = '';
+  for (const teamBox of (j.boxscore?.players || [])) {
+    const tAbbr = teamBox.team?.abbreviation || '';
+    for (const grp of (teamBox.statistics || [])) {
+      const labels = grp.labels || [];
+      const cols = COLS.map(c => {
+        for (const alt of c.alts) { const idx = labels.indexOf(alt); if (idx >= 0) return { key: c.key, i: idx }; }
+        return null;
+      }).filter(Boolean);
+      if (!cols.length) continue;
+      const minI = labels.indexOf('MIN');
+      const played = a => minI < 0 || parseInt(a.stats?.[minI] || '0') > 0;
+      const starters = (grp.athletes || []).filter(a => a.starter === true  && played(a));
+      const bench    = (grp.athletes || []).filter(a => a.starter === false && played(a));
+      const allPlayed = [...starters, ...bench];
+      const leaders = {};
+      for (const { key, i } of cols) {
+        const max = Math.max(0, ...allPlayed.map(a => parseFloat(a.stats?.[i] || '0')));
+        if (max > 0) leaders[key] = max;
+      }
+      const colHdr = cols.map(c => `<span class="nba-sc">${esc(c.key)}</span>`).join('');
+      const mkRow = a => {
+        const nm = a.athlete?.shortName || a.athlete?.displayName || '—';
+        const cells = cols.map(({ key, i }) => {
+          const v = a.stats?.[i] || '0';
+          const lead = leaders[key] !== undefined && parseFloat(v) === leaders[key];
+          return `<span class="nba-sc${lead ? ' nba-lead' : ''}">${esc(v)}</span>`;
+        }).join('');
+        return `<div class="nba-row"><span class="nba-pname">${esc(nm)}</span>${cells}</div>`;
+      };
+      if (starters.length) {
+        html += `<div class="nba-block">
+          <div class="nba-block-hdr"><span class="nba-hdr-team">${esc(tAbbr)}</span><span class="nba-hdr-label">Starters</span></div>
+          <div class="nba-row nba-row-hdr"><span class="nba-pname">Player</span>${colHdr}</div>
+          ${starters.map(mkRow).join('')}
+        </div>`;
+      }
+      if (bench.length) {
+        html += `<div class="nba-block">
+          <div class="nba-block-hdr"><span class="nba-hdr-team">${esc(tAbbr)}</span><span class="nba-hdr-label nba-bench-lbl">Bench</span></div>
+          <div class="nba-row nba-row-hdr"><span class="nba-pname">Player</span>${colHdr}</div>
+          ${bench.map(mkRow).join('')}
+        </div>`;
+      }
+    }
+  }
+  return html ? `<div class="gp-section"><div class="gp-section-hdr">🏀 Full Box Score</div>${html}</div>` : '';
+}
+
 async function renderESPNGamePreview(game, panel) {
   const paths = { nba:'basketball/nba', wnba:'basketball/wnba', nfl:'football/nfl', nhl:'hockey/nhl' };
   const path  = paths[game.sport];
@@ -1662,48 +1721,32 @@ async function renderESPNGamePreview(game, panel) {
       }
     }
 
-    // ── LIVE / FINAL: box score top performers ──
+    // ── LIVE / FINAL: box score ──
     if (state === 'in' || state === 'post') {
-      const { sort, show } = cfg.live;
-      let performers = '';
-      let benchRows  = '';
-      const isBball  = game.sport === 'nba' || game.sport === 'wnba';
-      for (const teamBox of (j.boxscore?.players || [])) {
-        const tName = teamBox.team?.abbreviation || '';
-        for (const grp of (teamBox.statistics || [])) {
-          const labels  = grp.labels || [];
-          const sortIdx = labels.indexOf(sort);
-          if (sortIdx < 0 && show.length) continue;
-          const showIdxs = show.map(k => labels.indexOf(k)).filter(i => i >= 0);
-          if (!showIdxs.length) continue;
-          const sorted = (grp.athletes || [])
-            .map(a => ({ a, sv: parseFloat(a.stats?.[sortIdx] ?? '0') || 0 }))
-            .filter(x => x.sv > 0)
-            .sort((x, y) => y.sv - x.sv)
-            .slice(0, 4);
-          for (const { a } of sorted) {
-            const statStr = showIdxs
-              .map(i => `<span class="gp-muted">${esc(labels[i])} <b>${esc(a.stats[i] || '—')}</b></span>`)
-              .join('');
-            performers += `<div class="gp-player-row">
-              <span class="gp-team">${esc(tName)}</span>
-              <span class="gp-pname">${esc(a.athlete?.shortName || a.athlete?.displayName || '—')}</span>
-              <span class="gp-stats" style="gap:6px;flex-wrap:wrap">${statStr}</span>
-            </div>`;
-          }
-          if (isBball) {
-            const benchSorted = (grp.athletes || [])
-              .filter(a => a.starter === false)
+      const isBball = game.sport === 'nba' || game.sport === 'wnba';
+      if (isBball) {
+        html += renderNBABoxScore(j);
+      } else {
+        const { sort, show } = cfg.live;
+        let performers = '';
+        for (const teamBox of (j.boxscore?.players || [])) {
+          const tName = teamBox.team?.abbreviation || '';
+          for (const grp of (teamBox.statistics || [])) {
+            const labels  = grp.labels || [];
+            const sortIdx = labels.indexOf(sort);
+            if (sortIdx < 0 && show.length) continue;
+            const showIdxs = show.map(k => labels.indexOf(k)).filter(i => i >= 0);
+            if (!showIdxs.length) continue;
+            const sorted = (grp.athletes || [])
               .map(a => ({ a, sv: parseFloat(a.stats?.[sortIdx] ?? '0') || 0 }))
-              .filter(x => x.sv >= 8)
+              .filter(x => x.sv > 0)
               .sort((x, y) => y.sv - x.sv)
-              .slice(0, 2);
-            for (const { a } of benchSorted) {
+              .slice(0, 4);
+            for (const { a } of sorted) {
               const statStr = showIdxs
                 .map(i => `<span class="gp-muted">${esc(labels[i])} <b>${esc(a.stats[i] || '—')}</b></span>`)
                 .join('');
-              benchRows += `<div class="gp-player-row">
-                <span class="gp-bench-tag">BENCH</span>
+              performers += `<div class="gp-player-row">
                 <span class="gp-team">${esc(tName)}</span>
                 <span class="gp-pname">${esc(a.athlete?.shortName || a.athlete?.displayName || '—')}</span>
                 <span class="gp-stats" style="gap:6px;flex-wrap:wrap">${statStr}</span>
@@ -1711,12 +1754,9 @@ async function renderESPNGamePreview(game, panel) {
             }
           }
         }
-      }
-      if (performers) {
-        html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Top Performers</div>${performers}</div>`;
-      }
-      if (benchRows) {
-        html += `<div class="gp-section"><div class="gp-section-hdr">🔥 Bench Stepping Up</div>${benchRows}</div>`;
+        if (performers) {
+          html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Top Performers</div>${performers}</div>`;
+        }
       }
     }
 
@@ -2111,6 +2151,77 @@ const GOLF_TOURS = [
   { key:'liv',  label:'LIV Golf',      icon:'🏌️' }
 ];
 
+function formatTeeTime(raw) {
+  try { const d = new Date(raw); if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }); } catch {}
+  return raw;
+}
+
+function groupByTeeTime(players) {
+  const map = new Map();
+  for (const p of players) {
+    const t = p.teeTime || '';
+    if (!map.has(t)) map.set(t, []);
+    map.get(t).push(p);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => {
+      if (!a && !b) return 0; if (!a) return 1; if (!b) return -1;
+      return a.localeCompare(b);
+    })
+    .map(([time, ps]) => ({ time, players: ps }))
+    .filter(g => g.players.length >= 2 && g.time); // only real groups with a tee time
+}
+
+function renderGolfGroup(group, round, isLive) {
+  const players = group.players.slice(0, 3);
+  const getWRNum = p => { const s = p.statistics?.find(x => x.name === 'worldRanking' || x.abbreviation === 'WR'); return s ? parseInt(s.displayValue) || 9999 : 9999; };
+  const getWRStr = p => { const s = p.statistics?.find(x => x.name === 'worldRanking' || x.abbreviation === 'WR'); return s?.displayValue || null; };
+  let pick;
+  if (isLive) {
+    pick = [...players].sort((a, b) => (+a.sortOrder || 9999) - (+b.sortOrder || 9999))[0];
+  } else {
+    pick = [...players].sort((a, b) => getWRNum(a) - getWRNum(b))[0];
+    if (getWRNum(pick) === 9999) pick = [...players].sort((a, b) => (+a.sortOrder || 9999) - (+b.sortOrder || 9999))[0];
+  }
+  const pickWR = getWRStr(pick);
+  const pickName = pick?.athlete?.shortName || pick?.athlete?.displayName || '?';
+  const pickScore = pick?.score || 'E';
+  let pickReason = '';
+  if (isLive) {
+    pickReason = (pick?.sortOrder || 9999) <= 5 ? `Leading at #${pick.sortOrder} — momentum is strong` : pickWR && parseInt(pickWR) <= 20 ? `World #${pickWR} — elite talent in this group` : `Best current position in the group`;
+  } else {
+    pickReason = pickWR && parseInt(pickWR) <= 30 ? `World #${pickWR} — highest-ranked player in this group` : `Best placed heading into the round`;
+  }
+
+  const rows = players.map(p => {
+    const name = p.athlete?.shortName || p.athlete?.displayName || '—';
+    const total = p.score || 'E';
+    const totalNum = total === 'E' ? 0 : parseInt(total);
+    const scoreCls = isNaN(totalNum) ? '' : totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
+    const thru  = p.status?.displayValue || '—';
+    const today = p.linescores?.[round - 1]?.displayValue || '—';
+    const pos   = p.sortOrder ? `#${p.sortOrder}` : '—';
+    const wr    = getWRStr(p);
+    const isPick = p === pick;
+    return `<div class="golf-group-row${isPick ? ' golf-group-pick-row' : ''}">
+      <span class="golf-group-pos">${esc(pos)}</span>
+      <span class="golf-group-name">${esc(name)}${wr ? ` <span class="golf-wr">WR${esc(wr)}</span>` : ''}</span>
+      <span class="golf-group-score ${scoreCls}">${esc(total)}</span>
+      <span class="golf-group-today">${esc(today)}</span>
+      <span class="golf-group-thru">${esc(thru)}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="golf-group-card">
+    <div class="golf-group-time">⏰ ${esc(formatTeeTime(group.time))}</div>
+    <div class="golf-group-hdr">
+      <span>POS</span><span>PLAYER</span><span>TOTAL</span><span>TODAY</span><span>THRU</span>
+    </div>
+    ${rows}
+    <div class="golf-group-edge">📌 Edge: <b>${esc(pickName)}</b> (${esc(pickScore)}) — ${esc(pickReason)}</div>
+  </div>`;
+}
+
 async function loadGolfLeaderboard() {
   const area = document.getElementById('golf-leaderboard-area');
   if (!area) return;
@@ -2137,15 +2248,24 @@ async function loadGolfLeaderboard() {
         const statusTxt = isLive  ? `<span class="live-badge pulse">LIVE</span> Round ${round}`
                         : isFinal ? `<span class="fin-badge">FINAL</span>`
                         :           `Round ${round} · Upcoming`;
-        const players = [...(comp.competitors || [])]
+        const allCompetitors = comp.competitors || [];
+        const players = [...allCompetitors]
           .sort((a, b) => (+a.sortOrder||99) - (+b.sortOrder||99))
           .slice(0, 25);
         if (!players.length) continue;
+        const groups = groupByTeeTime(allCompetitors);
+        const groupsHTML = groups.length >= 2
+          ? `<div class="golf-groups-section">
+              <div class="golf-groups-hdr">🎯 Today's Groups &amp; Picks</div>
+              ${groups.slice(0, 24).map(g => renderGolfGroup(g, round, isLive)).join('')}
+            </div>`
+          : '';
         html += `<div class="golf-tournament">
           <div class="golf-tourn-header">
             <div class="golf-tourn-name">${tour.icon} ${esc(ev.name || ev.shortName || tour.label)}</div>
             <div class="golf-tourn-meta">${statusTxt}${venue ? ` · ${esc(venue)}` : ''}${city ? `, ${esc(city)}` : ''}</div>
           </div>
+          ${groupsHTML}
           <div class="golf-leaderboard">
             <div class="golf-lb-hdr">
               <span class="gc-pos">POS</span>
