@@ -716,7 +716,9 @@ input { font: inherit; }
   color: var(--text-muted);
 }
 .player-country-tag { color: var(--text-muted); }
-.player-pts-tag { color: var(--accent); font-weight: 600; }
+.player-pts-tag  { color: var(--accent); font-weight: 600; }
+.player-age-tag  { color: var(--text-muted); }
+.player-hand-tag { color: var(--text-muted); font-style: italic; }
 
 /* ── OTHER SPORTS ── */
 .other-games-list { display: flex; flex-direction: column; gap: 6px; }
