@@ -1117,6 +1117,52 @@ function renderOtherScores(games, sport, src) {
 }
 
 // ── MLB LINEUPS ──────────────────────────────────────────────
+// ── GAME PREVIEW DATA ────────────────────────────────────────
+const _pitcherCache = new Map();
+const _batterCache  = new Map();
+
+async function fetchPitcherPreview(pitcherId) {
+  if (!pitcherId) return null;
+  if (_pitcherCache.has(pitcherId)) return _pitcherCache.get(pitcherId);
+  try {
+    const res  = await fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season,gameLog&season=2025&group=pitching&limit=1`);
+    const j    = await res.json();
+    const season    = j.stats?.find(s => s.type?.displayName === 'season')?.splits?.[0]?.stat || null;
+    const lastStart = j.stats?.find(s => s.type?.displayName === 'gameLog')?.splits?.[0] || null;
+    const result = { season, lastStart };
+    _pitcherCache.set(pitcherId, result);
+    return result;
+  } catch { _pitcherCache.set(pitcherId, null); return null; }
+}
+
+async function fetchBatterPreview(batterId) {
+  if (_batterCache.has(batterId)) return _batterCache.get(batterId);
+  try {
+    const res  = await fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=season&season=2025&group=hitting`);
+    const j    = await res.json();
+    const stat = j.stats?.[0]?.splits?.[0]?.stat || null;
+    _batterCache.set(batterId, stat);
+    return stat;
+  } catch { _batterCache.set(batterId, null); return null; }
+}
+
+async function loadBatterStatsForCard(game) {
+  const gamePk = game.gamePk;
+  const sides  = [game.lineups?.awayPlayers || [], game.lineups?.homePlayers || []];
+  for (const players of sides) {
+    if (!players.length) continue;
+    const results = await Promise.allSettled(players.map(p => fetchBatterPreview(p.id)));
+    players.forEach((p, i) => {
+      const st = results[i].status === 'fulfilled' ? results[i].value : null;
+      const el = document.getElementById(`bstat-${p.id}-${gamePk}`);
+      if (!el) return;
+      el.innerHTML = st
+        ? `<span class="bi-avg">${st.avg || '.---'}</span><span class="bi-hr">${st.homeRuns ?? 0}HR</span><span class="bi-rbi">${st.rbi ?? 0}RBI</span>`
+        : '';
+    });
+  }
+}
+
 async function loadMLBLineups() {
   showLoading('mlb-lineups-area', 'Loading today\'s lineups…');
   try {
@@ -1124,8 +1170,18 @@ async function loadMLBLineups() {
       `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateStr(0)}&hydrate=lineups,probablePitcher,team,linescore`
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    renderMLBLineups(json.dates?.[0]?.games || []);
+    const json  = await res.json();
+    const games = json.dates?.[0]?.games || [];
+
+    // Pre-fetch all pitcher stats in parallel before rendering
+    const pitcherIds = [];
+    for (const g of games) {
+      if (g.teams.away.probablePitcher?.id) pitcherIds.push(g.teams.away.probablePitcher.id);
+      if (g.teams.home.probablePitcher?.id) pitcherIds.push(g.teams.home.probablePitcher.id);
+    }
+    await Promise.allSettled(pitcherIds.map(id => fetchPitcherPreview(id)));
+
+    renderMLBLineups(games);
   } catch (err) {
     showError('mlb-lineups-area', `Could not load lineups — ${err.message}`, 'loadMLBLineups()');
   }
@@ -1140,47 +1196,92 @@ function renderMLBLineups(games) {
     if (!players.length) return pitcherRow + `<div class="lineup-tbd">Lineup not yet posted</div>`;
     const canMatchup = oppPitcherId && oppPitcherName && oppPitcherName !== 'TBD';
     return pitcherRow + players.map((p, i) => {
-      const bid  = p.id;
-      const key  = `${bid}-${gamePk}`;
-      const hint = canMatchup ? ` <span class="matchup-hint">tap for vs ${esc(oppPitcherName.split(' ').pop())}</span>` : '';
+      const bid   = p.id;
+      const key   = `${bid}-${gamePk}`;
+      const hint  = canMatchup ? ` <span class="matchup-hint">vs ${esc(oppPitcherName.split(' ').pop())}</span>` : '';
       const click = canMatchup ? `onclick="toggleMatchup(${bid},${oppPitcherId},'${esc(p.fullName||'').replace(/'/g,"\\'")}','${esc(oppPitcherName).replace(/'/g,"\\'")}','${gamePk}')"` : '';
       return `<div class="lineup-player-row${canMatchup?' matchup-clickable':''}" data-batter-key="${key}" ${click}>
         <span class="lineup-order">${i+1}</span>
         <span class="lineup-pos-tag">${esc(p.position?.abbreviation || '—')}</span>
         <span class="lineup-name">${esc(p.fullName || '—')}${hint}</span>
+        <span class="batter-inline-stats" id="bstat-${bid}-${gamePk}"><span class="bi-loading">…</span></span>
       </div>`;
     }).join('');
+  };
+
+  const renderPitcherDuel = (awayId, awayName, homeId, homeName) => {
+    const slot = (id, name) => {
+      const d = id ? _pitcherCache.get(id) : null;
+      const s = d?.season;
+      const ls = d?.lastStart;
+      const lastName = (name && name !== 'TBD') ? name.split(' ').slice(1).join(' ') || name : 'TBD';
+      const lastLine = ls
+        ? `${ls.stat?.inningsPitched || '?'}IP · ${ls.stat?.earnedRuns ?? '?'}ER · ${ls.stat?.strikeOuts ?? 0}K`
+        : null;
+      const lastOpp = ls?.opponent?.abbreviation ? `vs ${ls.opponent.abbreviation}` : '';
+      return `<div class="pd-slot">
+        <div class="pd-name">${esc(lastName)}</div>
+        <div class="pd-era ${!s ? 'pd-tbd' : ''}">${s ? (s.era || '—') : '—'}</div>
+        <div class="pd-era-lbl">ERA</div>
+        ${s ? `
+          <div class="pd-secondary">
+            <span>${s.wins ?? 0}-${s.losses ?? 0}</span>
+            <span>${s.whip || '—'} WHIP</span>
+            <span>${s.strikeOuts ?? 0}K</span>
+          </div>
+          ${lastLine ? `<div class="pd-last-start">Last: ${esc(lastLine)} ${esc(lastOpp)}</div>` : ''}
+        ` : `<div class="pd-secondary pd-tbd">No stats yet</div>`}
+      </div>`;
+    };
+    return `<div class="pitcher-duel">
+      ${slot(awayId, awayName)}
+      <div class="pd-vs">VS</div>
+      ${slot(homeId, homeName)}
+    </div>`;
   };
 
   area.innerHTML = games.map(g => {
     const away = g.teams.away, home = g.teams.home;
     const awayName      = away.team?.name || '—';
     const homeName      = home.team?.name || '—';
+    const awayAbbr      = away.team?.abbreviation || awayName.slice(0,3).toUpperCase();
+    const homeAbbr      = home.team?.abbreviation || homeName.slice(0,3).toUpperCase();
     const awayPitcher   = away.probablePitcher?.fullName || 'TBD';
     const homePitcher   = home.probablePitcher?.fullName || 'TBD';
     const awayPitcherId = away.probablePitcher?.id || null;
     const homePitcherId = home.probablePitcher?.id || null;
+    const awayRec       = away.leagueRecord;
+    const homeRec       = home.leagueRecord;
+    const awayRecStr    = awayRec ? `${awayRec.wins}-${awayRec.losses}` : '';
+    const homeRecStr    = homeRec ? `${homeRec.wins}-${homeRec.losses}` : '';
     const gamePk        = g.gamePk || '';
-    const awayLineup  = g.lineups?.awayPlayers || [];
-    const homeLineup  = g.lineups?.homePlayers || [];
-    const status      = g.status?.detailedState || '';
-    const isLive      = g.status?.abstractGameState === 'Live';
-    const isFinal     = g.status?.abstractGameState === 'Final';
-    const gameTime    = g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) : '—';
-    const inning      = g.linescore?.currentInning ? `${g.linescore.inningHalf || ''} ${g.linescore.currentInning}` : '';
-    const statusBadge = isLive  ? `<span class="live-badge pulse">LIVE ${esc(inning)}</span>`
-                      : isFinal ? `<span class="fin-badge">FINAL</span>`
-                      : `<span class="lineup-time">${esc(gameTime)}</span>`;
-    const score = (isLive || isFinal) ? `<span class="lineup-score">${away.score ?? 0}–${home.score ?? 0}</span>` : '';
-    const lineupStatus = awayLineup.length ? '<span class="lineup-confirmed">✓ Confirmed</span>' : '<span class="lineup-pending">Probable only</span>';
+    const awayLineup    = g.lineups?.awayPlayers || [];
+    const homeLineup    = g.lineups?.homePlayers || [];
+    const isLiveGame    = g.status?.abstractGameState === 'Live';
+    const isFinal       = g.status?.abstractGameState === 'Final';
+    const gameTime      = g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZoneName:'short' }) : '—';
+    const inning        = g.linescore?.currentInning ? `${g.linescore.inningHalf || ''} ${g.linescore.currentInning}` : '';
+    const statusBadge   = isLiveGame ? `<span class="live-badge pulse">LIVE ${esc(inning)}</span>`
+                        : isFinal   ? `<span class="fin-badge">FINAL</span>`
+                        :             `<span class="lineup-time">${esc(gameTime)}</span>`;
+    const score         = (isLiveGame || isFinal) ? `<span class="lineup-score">${away.score ?? 0}–${home.score ?? 0}</span>` : '';
+    const lineupStatus  = awayLineup.length ? '<span class="lineup-confirmed">✓ Lineups In</span>' : '<span class="lineup-pending">Probable Pitchers</span>';
+
     return `
       <div class="lineup-card">
         <div class="lineup-card-header">
-          <span class="lineup-matchup">${esc(awayName)} @ ${esc(homeName)}</span>
-          ${score}
-          <span>${statusBadge}</span>
-          ${lineupStatus}
+          <div class="matchup-teams">
+            <span class="matchup-team-name">${esc(awayAbbr)}${awayRecStr ? ` <span class="team-record">${awayRecStr}</span>` : ''}</span>
+            <span class="matchup-at">@</span>
+            <span class="matchup-team-name">${esc(homeAbbr)}${homeRecStr ? ` <span class="team-record">${homeRecStr}</span>` : ''}</span>
+          </div>
+          <div class="matchup-meta">
+            ${score}
+            ${statusBadge}
+            ${lineupStatus}
+          </div>
         </div>
+        ${renderPitcherDuel(awayPitcherId, awayPitcher, homePitcherId, homePitcher)}
         <div class="lineup-grid">
           <div class="lineup-col">
             <div class="lineup-col-header">${esc(awayName)}</div>
@@ -1193,6 +1294,13 @@ function renderMLBLineups(games) {
         </div>
       </div>`;
   }).join('');
+
+  // Auto-load batter stats for any confirmed lineups
+  for (const g of games) {
+    if ((g.lineups?.awayPlayers?.length || 0) + (g.lineups?.homePlayers?.length || 0) > 0) {
+      loadBatterStatsForCard(g);
+    }
+  }
 }
 
 // ── MLB FULL STANDINGS + STAT LEADERS ───────────────────────
