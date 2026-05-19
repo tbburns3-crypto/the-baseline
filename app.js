@@ -1391,12 +1391,16 @@ async function renderMLBGamePreview(espnGame, panel) {
     const awayAbbr    = away.team?.abbreviation || away.team?.name?.slice(0,3).toUpperCase() || 'AWY';
     const homeAbbr    = home.team?.abbreviation || home.team?.name?.slice(0,3).toUpperCase() || 'HME';
 
-    // Fetch pitcher stats + all batter stats in parallel
-    await Promise.allSettled([
+    // Fetch pitcher stats, batter stats, and ESPN summary in parallel
+    const _allFetches = await Promise.allSettled([
       awayPId && fetchPitcherPreview(awayPId),
       homePId && fetchPitcherPreview(homePId),
-      ...[...awayLineup, ...homeLineup].map(p => fetchBatterPreview(p.id))
+      ...[...awayLineup, ...homeLineup].map(p => fetchBatterPreview(p.id)),
+      fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=${espnGame.id}`).then(r => r.json())
     ]);
+    const _espnRes  = _allFetches[_allFetches.length - 1];
+    const espnSummary = _espnRes?.status === 'fulfilled' ? _espnRes.value : null;
+    const espnState   = espnSummary?.header?.competitions?.[0]?.status?.type?.state || 'pre';
 
     const awayPD   = awayPId ? _pitcherCache.get(awayPId) : null;
     const homePD   = homePId ? _pitcherCache.get(homePId) : null;
@@ -1520,7 +1524,9 @@ async function renderMLBGamePreview(espnGame, panel) {
       </div>`;
     };
 
-    const noLineup = allBatters.length === 0;
+    const noLineup    = allBatters.length === 0;
+    const isLiveOrFin = espnState === 'in' || espnState === 'post';
+    const mlbBoxHTML  = isLiveOrFin ? renderMLBBoxScore(espnSummary) : '';
 
     panel.innerHTML = `
       <div class="gp-inner">
@@ -1530,19 +1536,82 @@ async function renderMLBGamePreview(espnGame, panel) {
           <div class="gp-duel-vs">VS</div>
           ${pdSlot(homePId, homePName, homePD)}
         </div>
-        ${noLineup
-          ? `<div class="gp-no-lineup">Lineups not posted yet — only pitcher preview available</div>`
-          : `
-          <div class="gp-hand-legend"><span class="gp-hand gp-fav">L/R/S</span> = favorable matchup &nbsp;·&nbsp; <span class="gp-babip gp-babip-due">BABIP .240 ↑</span> = unlucky, hits coming &nbsp;·&nbsp; <span class="gp-babip gp-babip-hot">BABIP .360 ↓</span> = running hot</div>
-          ${dueForHits.length ? `<div class="gp-section"><div class="gp-section-hdr">🍀 Due for Hits <span style="font-size:.65rem;font-weight:400;color:var(--text-muted)">— low BABIP = getting unlucky</span></div>${dueForHits.map(dueRow).join('')}</div>` : ''}
-          ${hrThreats.length ? `<div class="gp-section"><div class="gp-section-hdr">💣 HR Threats</div>${hrThreats.map(hrRow).join('')}</div>` : ''}
-          ${topProd.length  ? `<div class="gp-section"><div class="gp-section-hdr">⚡ H + R + RBI Leaders</div>${topProd.map(prodRow).join('')}</div>` : ''}
-          ${topHitters.length ? `<div class="gp-section"><div class="gp-section-hdr">🎯 Best Hitters by AVG</div>${topHitters.map(hitRow).join('')}</div>` : ''}
-        `}
+        ${mlbBoxHTML}
+        ${!isLiveOrFin
+          ? noLineup
+            ? `<div class="gp-no-lineup">Lineups not posted yet — only pitcher preview available</div>`
+            : `
+            <div class="gp-hand-legend"><span class="gp-hand gp-fav">L/R/S</span> = favorable matchup &nbsp;·&nbsp; <span class="gp-babip gp-babip-due">BABIP .240 ↑</span> = unlucky, hits coming &nbsp;·&nbsp; <span class="gp-babip gp-babip-hot">BABIP .360 ↓</span> = running hot</div>
+            ${dueForHits.length ? `<div class="gp-section"><div class="gp-section-hdr">🍀 Due for Hits <span style="font-size:.65rem;font-weight:400;color:var(--text-muted)">— low BABIP = getting unlucky</span></div>${dueForHits.map(dueRow).join('')}</div>` : ''}
+            ${hrThreats.length ? `<div class="gp-section"><div class="gp-section-hdr">💣 HR Threats</div>${hrThreats.map(hrRow).join('')}</div>` : ''}
+            ${topProd.length  ? `<div class="gp-section"><div class="gp-section-hdr">⚡ H + R + RBI Leaders</div>${topProd.map(prodRow).join('')}</div>` : ''}
+            ${topHitters.length ? `<div class="gp-section"><div class="gp-section-hdr">🎯 Best Hitters by AVG</div>${topHitters.map(hitRow).join('')}</div>` : ''}
+            `
+          : ''
+        }
       </div>`;
   } catch (err) {
     panel.innerHTML = `<div class="pp-error" style="padding:12px">Could not load: ${esc(err.message)}</div>`;
   }
+}
+
+function renderMLBBoxScore(j) {
+  const BATTING_COLS = [
+    { key:'AB',  alts:['AB'] },
+    { key:'R',   alts:['R'] },
+    { key:'H',   alts:['H'] },
+    { key:'HR',  alts:['HR'] },
+    { key:'RBI', alts:['RBI'] },
+    { key:'BB',  alts:['BB'] },
+    { key:'K',   alts:['K','SO'] },
+    { key:'AVG', alts:['AVG'] }
+  ];
+  const PITCHING_COLS = [
+    { key:'IP',  alts:['IP'] },
+    { key:'H',   alts:['H'] },
+    { key:'ER',  alts:['ER'] },
+    { key:'BB',  alts:['BB'] },
+    { key:'K',   alts:['K','SO'] },
+    { key:'ERA', alts:['ERA'] }
+  ];
+  let html = '';
+  for (const teamBox of (j.boxscore?.players || [])) {
+    const tAbbr = teamBox.team?.abbreviation || '';
+    for (const grp of (teamBox.statistics || [])) {
+      const grpName = (grp.name || grp.label || '').toLowerCase();
+      const isBatting  = grpName.includes('batting')  || grpName.includes('hitter');
+      const isPitching = grpName.includes('pitching') || grpName.includes('pitcher');
+      if (!isBatting && !isPitching) continue;
+      const COLS   = isBatting ? BATTING_COLS : PITCHING_COLS;
+      const labels = grp.labels || [];
+      const cols   = COLS.map(c => { for (const alt of c.alts) { const i = labels.indexOf(alt); if (i >= 0) return { key: c.key, i }; } return null; }).filter(Boolean);
+      if (!cols.length) continue;
+      const athletes = grp.athletes || [];
+      const leaders  = {};
+      if (isBatting) {
+        for (const { key, i } of cols.filter(c => ['H','HR','RBI'].includes(c.key))) {
+          const max = Math.max(0, ...athletes.map(a => parseFloat(a.stats?.[i] || '0')));
+          if (max > 0) leaders[key] = max;
+        }
+      }
+      const colHdr = cols.map(c => `<span class="nba-sc">${esc(c.key)}</span>`).join('');
+      const mkRow  = a => {
+        const nm    = a.athlete?.shortName || a.athlete?.displayName || '—';
+        const cells = cols.map(({ key, i }) => {
+          const v    = a.stats?.[i] || '—';
+          const lead = leaders[key] !== undefined && parseFloat(v) === leaders[key];
+          return `<span class="nba-sc${lead ? ' nba-lead' : ''}">${esc(v)}</span>`;
+        }).join('');
+        return `<div class="nba-row"><span class="nba-pname">${esc(nm)}</span>${cells}</div>`;
+      };
+      html += `<div class="nba-block">
+        <div class="nba-block-hdr"><span class="nba-hdr-team">${esc(tAbbr)}</span><span class="nba-hdr-label">${isBatting ? 'Batting' : 'Pitching'}</span></div>
+        <div class="nba-row nba-row-hdr"><span class="nba-pname">Player</span>${colHdr}</div>
+        ${athletes.map(mkRow).join('')}
+      </div>`;
+    }
+  }
+  return html ? `<div class="gp-section"><div class="gp-section-hdr">⚾ Box Score</div>${html}</div>` : '';
 }
 
 function renderNBABoxScore(j) {
