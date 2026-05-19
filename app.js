@@ -1023,6 +1023,11 @@ async function espnGames(sport) {
       league: sport.toUpperCase(),
       homeTeam: home?.team?.shortDisplayName || home?.team?.name || '—',
       awayTeam: away?.team?.shortDisplayName || away?.team?.name || '—',
+      homeAbbr: home?.team?.abbreviation || '',
+      awayAbbr: away?.team?.abbreviation || '',
+      homeRec: home?.record?.[0]?.summary || '',
+      awayRec: away?.record?.[0]?.summary || '',
+      series: comp.series ? { summary: comp.series.summary || '', title: comp.series.title || '' } : null,
       homeScore: state !== 'pre' ? (home?.score ?? '') : '',
       awayScore: state !== 'pre' ? (away?.score ?? '') : '',
       status: st.type?.shortDetail || st.type?.description || '—',
@@ -1161,6 +1166,71 @@ async function toggleGamePreview(gameId) {
   }
 }
 
+function parseWinPct(recStr) {
+  if (!recStr) return 0.5;
+  const m = recStr.match(/(\d+)-(\d+)/);
+  if (!m) return 0.5;
+  const w = +m[1], l = +m[2];
+  return (w + l) > 0 ? w / (w + l) : 0.5;
+}
+
+function buildPickSection(awayName, homeName, opts) {
+  const { awayRec='', homeRec='', awayERA=null, homeERA=null,
+          seriesSummary='', seriesTitle='', awayAbbr='', homeAbbr='' } = opts || {};
+  const hasData = awayRec || homeRec || awayERA !== null || seriesSummary;
+  const seriesHTML = seriesSummary
+    ? `<div class="gp-series-badge">🏆 ${seriesTitle ? `<span class="gp-series-title">${esc(seriesTitle)}</span> · ` : ''}${esc(seriesSummary)}</div>`
+    : '';
+  if (!hasData) return seriesHTML;
+
+  let aScore = parseWinPct(awayRec);
+  let hScore = parseWinPct(homeRec) + 0.03;
+
+  if (awayERA !== null && homeERA !== null) {
+    const ae = parseFloat(awayERA), he = parseFloat(homeERA);
+    if (ae > 0 && he > 0) {
+      aScore += Math.max(0, 5.5 - ae) * 0.03;
+      hScore += Math.max(0, 5.5 - he) * 0.03;
+    }
+  }
+
+  if (seriesSummary) {
+    const sm = seriesSummary.match(/^(\S+)\s+leads/i);
+    if (sm) {
+      const leader = sm[1].toUpperCase();
+      const matchAway = leader === awayAbbr.toUpperCase() ||
+                        awayName.toUpperCase().split(' ').some(w => w.startsWith(leader));
+      if (matchAway) aScore += 0.10; else hScore += 0.10;
+    }
+  }
+
+  const gap = Math.abs(aScore - hScore);
+  if (gap < 0.03) return `${seriesHTML}<div class="gp-pick gp-pick-toss">🎲 Too close to call — toss-up</div>`;
+
+  const pickIsHome = hScore > aScore;
+  const pickTeam   = pickIsHome ? homeName : awayName;
+  const pickRec    = pickIsHome ? homeRec  : awayRec;
+  const oppRec     = pickIsHome ? awayRec  : homeRec;
+  const favERA     = awayERA !== null ? (pickIsHome ? homeERA : awayERA) : null;
+  const oppERA     = awayERA !== null ? (pickIsHome ? awayERA : homeERA) : null;
+
+  let reason = '';
+  if (seriesSummary && gap >= 0.08) {
+    reason = 'Up in series';
+  } else if (favERA !== null && oppERA !== null) {
+    const fe = parseFloat(favERA), oe = parseFloat(oppERA);
+    if (Math.abs(fe - oe) > 0.6) reason = `Starter edge (${fe.toFixed(2)} ERA)`;
+  }
+  if (!reason) {
+    if (Math.abs(parseWinPct(pickRec) - parseWinPct(oppRec)) > 0.08) reason = `Better record (${pickRec})`;
+    else if (pickIsHome) reason = 'Home advantage';
+    else reason = 'Slight edge';
+  }
+
+  const conf = gap > 0.12 ? 'Strong lean' : gap > 0.07 ? 'Lean' : 'Slight lean';
+  return `${seriesHTML}<div class="gp-pick">📌 ${conf}: <span class="gp-pick-team">${esc(pickTeam)}</span> <span class="gp-pick-reason">— ${esc(reason)}</span></div>`;
+}
+
 async function renderMLBGamePreview(espnGame, panel) {
   try {
     const games = await getMLBSchedule();
@@ -1222,6 +1292,12 @@ async function renderMLBGamePreview(espnGame, panel) {
     const awayBatters = makeBatters(awayLineup, homeHand, awayAbbr);
     const homeBatters = makeBatters(homeLineup, awayHand, homeAbbr);
     const allBatters  = [...awayBatters, ...homeBatters];
+
+    const pickHTML = buildPickSection(awayAbbr, homeAbbr, {
+      awayRec: espnGame.awayRec || '', homeRec: espnGame.homeRec || '',
+      awayERA: awayPD?.season?.era ?? null, homeERA: homePD?.season?.era ?? null,
+      awayAbbr, homeAbbr
+    });
 
     const hrThreats   = [...allBatters].filter(b => b.hr > 0).sort((a, b) => b.hr - a.hr).slice(0, 5);
     const topProd     = [...allBatters].sort((a, b) => b.prodScore - a.prodScore).slice(0, 5);
@@ -1312,6 +1388,7 @@ async function renderMLBGamePreview(espnGame, panel) {
 
     panel.innerHTML = `
       <div class="gp-inner">
+        ${pickHTML}
         <div class="gp-duel">
           ${pdSlot(awayPId, awayPName, awayPD)}
           <div class="gp-duel-vs">VS</div>
@@ -1359,8 +1436,16 @@ async function renderESPNGamePreview(game, panel) {
     const homeC  = comp?.competitors?.find(c => c.homeAway === 'home');
     const awayRec = awayC?.record?.[0]?.summary || '';
     const homeRec = homeC?.record?.[0]?.summary || '';
+    const seriesSummary = comp?.series?.summary || '';
+    const seriesTitle   = comp?.series?.title   || '';
+    const awayAbbr2 = awayC?.team?.abbreviation || game.awayAbbr || '';
+    const homeAbbr2 = homeC?.team?.abbreviation || game.homeAbbr || '';
+    const pickHTML = buildPickSection(game.awayTeam, game.homeTeam, {
+      awayRec, homeRec, seriesSummary, seriesTitle,
+      awayAbbr: awayAbbr2, homeAbbr: homeAbbr2
+    });
 
-    let html = '';
+    let html = pickHTML;
 
     // Records header
     if (awayRec || homeRec) {
@@ -1375,6 +1460,7 @@ async function renderESPNGamePreview(game, panel) {
     if (state === 'pre' || !state) {
       const teamLeaders = j.leaders || [];
       const catMap = {};
+      const maxLeaders = (game.sport === 'nba' || game.sport === 'wnba') ? 2 : 1;
       for (const tl of teamLeaders) {
         const tAbbr = tl.team?.abbreviation || tl.team?.shortDisplayName || '';
         for (const cat of (tl.leaders || [])) {
@@ -1382,7 +1468,7 @@ async function renderESPNGamePreview(game, panel) {
           const matches = cfg.cats.some(c => cName.toLowerCase().includes(c.toLowerCase()));
           if (cfg.cats.length && !matches) continue;
           if (!catMap[cName]) catMap[cName] = [];
-          for (const l of (cat.leaders || []).slice(0, 1)) {
+          for (const l of (cat.leaders || []).slice(0, maxLeaders)) {
             catMap[cName].push({
               team: tAbbr,
               name: l.athlete?.shortName || l.athlete?.displayName || '—',
@@ -1417,6 +1503,8 @@ async function renderESPNGamePreview(game, panel) {
     if (state === 'in' || state === 'post') {
       const { sort, show } = cfg.live;
       let performers = '';
+      let benchRows  = '';
+      const isBball  = game.sport === 'nba' || game.sport === 'wnba';
       for (const teamBox of (j.boxscore?.players || [])) {
         const tName = teamBox.team?.abbreviation || '';
         for (const grp of (teamBox.statistics || [])) {
@@ -1440,10 +1528,32 @@ async function renderESPNGamePreview(game, panel) {
               <span class="gp-stats" style="gap:6px;flex-wrap:wrap">${statStr}</span>
             </div>`;
           }
+          if (isBball) {
+            const benchSorted = (grp.athletes || [])
+              .filter(a => a.starter === false)
+              .map(a => ({ a, sv: parseFloat(a.stats?.[sortIdx] ?? '0') || 0 }))
+              .filter(x => x.sv >= 8)
+              .sort((x, y) => y.sv - x.sv)
+              .slice(0, 2);
+            for (const { a } of benchSorted) {
+              const statStr = showIdxs
+                .map(i => `<span class="gp-muted">${esc(labels[i])} <b>${esc(a.stats[i] || '—')}</b></span>`)
+                .join('');
+              benchRows += `<div class="gp-player-row">
+                <span class="gp-bench-tag">BENCH</span>
+                <span class="gp-team">${esc(tName)}</span>
+                <span class="gp-pname">${esc(a.athlete?.shortName || a.athlete?.displayName || '—')}</span>
+                <span class="gp-stats" style="gap:6px;flex-wrap:wrap">${statStr}</span>
+              </div>`;
+            }
+          }
         }
       }
       if (performers) {
         html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Top Performers</div>${performers}</div>`;
+      }
+      if (benchRows) {
+        html += `<div class="gp-section"><div class="gp-section-hdr">🔥 Bench Stepping Up</div>${benchRows}</div>`;
       }
     }
 
