@@ -1188,72 +1188,97 @@ function renderMLBLineups(games) {
 }
 
 // ── MLB FULL STANDINGS + STAT LEADERS ───────────────────────
+let _mlbStandData = null;
+let _mlbLeadData  = null;
+
 async function loadMLBFullStandings() {
-  showLoading('other-standings-area', 'Loading MLB standings & leaders…');
+  showLoading('other-standings-area', 'Loading MLB standings…');
   try {
     const [standRes, leadRes] = await Promise.all([
       fetch('https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=2025&standingsTypes=regularSeason&hydrate=division,team,record'),
       fetch('https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=homeRuns,battingAverage,rbi,stolenBases,hits,earnedRunAverage,strikeouts,wins,saves&season=2025&sportId=1&limit=10&hydrate=person,team')
     ]);
-    if (!standRes.ok) throw new Error(`Standings HTTP ${standRes.status}`);
-    if (!leadRes.ok)  throw new Error(`Leaders HTTP ${leadRes.status}`);
-    renderMLBFullStandings(await standRes.json(), await leadRes.json());
+    if (!standRes.ok) throw new Error(`HTTP ${standRes.status}`);
+    if (!leadRes.ok)  throw new Error(`HTTP ${leadRes.status}`);
+    _mlbStandData = await standRes.json();
+    _mlbLeadData  = await leadRes.json();
+    renderMLBStandingsView('standings');
   } catch (err) {
-    showError('other-standings-area', `Could not load MLB stats — ${err.message}`, "loadMLBFullStandings()");
+    showError('other-standings-area', `Could not load MLB stats — ${err.message}`, 'loadMLBFullStandings()');
   }
 }
 
-function renderMLBFullStandings(standData, leadData) {
+const MLB_CHIPS = [
+  { key: 'standings',       label: 'Standings' },
+  { key: 'homeRuns',        label: 'Home Runs' },
+  { key: 'battingAverage',  label: 'Avg' },
+  { key: 'hits',            label: 'Hits' },
+  { key: 'rbi',             label: 'RBI' },
+  { key: 'stolenBases',     label: 'SB' },
+  { key: 'earnedRunAverage',label: 'ERA' },
+  { key: 'strikeouts',      label: 'K (P)' },
+  { key: 'wins',            label: 'Wins' },
+  { key: 'saves',           label: 'Saves' },
+];
+
+function renderMLBStandingsView(activeKey) {
   const area = document.getElementById('other-standings-area');
-  let html = '';
 
-  // ── Division Standings ──
-  const divOrder = ['American League East','American League Central','American League West','National League East','National League Central','National League West'];
-  const byDiv = {};
-  for (const rec of (standData.records || [])) {
-    const name = rec.division?.name || rec.league?.name || 'Other';
-    byDiv[name] = rec.teamRecords || [];
-  }
-  html += '<div class="mlb-section-title">Division Standings</div>';
-  for (const divName of divOrder) {
-    const teams = byDiv[divName];
-    if (!teams?.length) continue;
-    html += `<div class="league-group"><div class="league-header">${esc(divName)}</div>
-      <div class="standings-list">
-        <div class="standing-row standing-head"><span>#</span><span>Team</span><span>W–L</span><span>GB</span><span>Streak</span></div>
-        ${teams.map((t,i) => `<div class="standing-row">
-          <span class="standing-rank">${i+1}</span>
-          <span class="standing-team">${esc(t.team?.name || '—')}</span>
-          <span class="standing-record">${t.wins}–${t.losses}</span>
-          <span class="standing-gb">${esc(t.gamesBack || '—')}</span>
-          <span class="standing-streak">${esc(t.streak?.streakCode || '—')}</span>
-        </div>`).join('')}
-      </div></div>`;
+  const chips = `<div class="mlb-chips">
+    ${MLB_CHIPS.map(c => `<button class="mlb-chip ${c.key === activeKey ? 'active' : ''}" onclick="renderMLBStandingsView('${c.key}')">${esc(c.label)}</button>`).join('')}
+  </div>`;
+
+  let content = '';
+
+  if (activeKey === 'standings') {
+    const divOrder = [
+      'American League East','American League Central','American League West',
+      'National League East','National League Central','National League West'
+    ];
+    const byDiv = {};
+    for (const rec of (_mlbStandData?.records || [])) {
+      byDiv[rec.division?.name || 'Other'] = rec.teamRecords || [];
+    }
+    for (const divName of divOrder) {
+      const teams = byDiv[divName];
+      if (!teams?.length) continue;
+      content += `
+        <div class="league-group">
+          <div class="league-header">${esc(divName)}</div>
+          <div class="standings-list">
+            <div class="standing-row standing-head"><span>#</span><span>Team</span><span>W–L</span><span>GB</span><span>Str</span></div>
+            ${teams.map((t, i) => `
+              <div class="standing-row">
+                <span class="standing-rank">${i+1}</span>
+                <span class="standing-team">${esc(t.team?.name || '—')}</span>
+                <span class="standing-record">${t.wins}–${t.losses}</span>
+                <span class="standing-gb">${esc(t.gamesBack || '—')}</span>
+                <span class="standing-streak">${esc(t.streak?.streakCode || '—')}</span>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    }
+  } else {
+    const cat = (_mlbLeadData?.leagueLeaders || []).find(c => c.leaderCategory === activeKey);
+    const label = MLB_CHIPS.find(c => c.key === activeKey)?.label || activeKey;
+    if (!cat?.leaders?.length) {
+      content = `<div class="empty-state">No data available for ${esc(label)}</div>`;
+    } else {
+      content = `
+        <div class="leader-list">
+          <div class="leader-row leader-head"><span>#</span><span>Player</span><span>Team</span><span>${esc(label)}</span></div>
+          ${cat.leaders.slice(0, 10).map(l => `
+            <div class="leader-row">
+              <span class="leader-rank">${l.rank}</span>
+              <span class="leader-name">${esc(l.person?.fullName || '—')}</span>
+              <span class="leader-team">${esc(l.team?.abbreviation || '—')}</span>
+              <span class="leader-val">${esc(l.value)}</span>
+            </div>`).join('')}
+        </div>`;
+    }
   }
 
-  // ── Stat Leaders ──
-  const LEADER_LABELS = {
-    homeRuns: 'Home Runs', battingAverage: 'Batting Average', rbi: 'RBI',
-    stolenBases: 'Stolen Bases', hits: 'Hits',
-    earnedRunAverage: 'ERA', strikeouts: 'Strikeouts (P)', wins: 'Wins', saves: 'Saves'
-  };
-  html += '<div class="mlb-section-title" style="margin-top:24px">Leaderboards</div>';
-  html += '<div class="leaders-grid">';
-  for (const cat of (leadData.leagueLeaders || [])) {
-    const label = LEADER_LABELS[cat.leaderCategory] || cat.leaderCategory;
-    html += `<div class="leader-block">
-      <div class="leader-block-title">${esc(label)}</div>
-      ${(cat.leaders || []).slice(0,10).map(l => `
-        <div class="leader-row">
-          <span class="leader-rank">${l.rank}</span>
-          <span class="leader-name">${esc(l.person?.fullName || '—')}</span>
-          <span class="leader-team">${esc(l.team?.abbreviation || l.team?.name || '—')}</span>
-          <span class="leader-val">${esc(l.value)}</span>
-        </div>`).join('')}
-    </div>`;
-  }
-  html += '</div>';
-  area.innerHTML = html;
+  area.innerHTML = chips + content;
 }
 
 // ── MLB PLAYER STATS ─────────────────────────────────────────
