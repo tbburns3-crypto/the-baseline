@@ -65,6 +65,7 @@
       <div id="view-tabs">
         <button class="view-tab active" data-view="scores">Scores</button>
         <button class="view-tab" data-view="secondary" id="secondary-tab">Rankings</button>
+        <button class="view-tab" data-view="lineups" id="lineups-tab" style="display:none">Lineups</button>
         <button class="view-tab" data-view="players" id="players-tab" style="display:none">Players</button>
       </div>
 
@@ -127,6 +128,13 @@
         </div>
       </section>
 
+      <!-- ── MLB LINEUPS ── -->
+      <section id="view-mlb-lineups" class="view-panel">
+        <div id="mlb-lineups-area">
+          <div class="loading-spinner"><div class="spinner"></div><p>Loading lineups…</p></div>
+        </div>
+      </section>
+
       <!-- ── SPORT PLAYERS ── -->
       <section id="view-sport-players" class="view-panel">
         <div id="sport-player-search-box">
@@ -147,6 +155,6 @@
     </div><!-- /main-content -->
   </div><!-- /app-layout -->
 
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>
