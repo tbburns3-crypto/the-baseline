@@ -628,23 +628,55 @@ function switchView(view) {
   }
 }
 
-// ── OTHER SPORTS (BDL + API-Sports fallback) ──────────────────
+// ── OTHER SPORTS (ESPN primary, BDL + API-Sports fallback) ────
 async function loadOtherScores(sport) {
   showLoading('other-scores-area', `Loading ${sport.toUpperCase()} games…`);
-  const today = dateStr(0);
   try {
-    let games = []; let src = 'BallDontLie';
+    let games = []; let src = 'ESPN';
     try {
-      games = await bdlGames(sport, today);
+      games = await espnGames(sport);
     } catch (e) {
-      console.warn('BDL failed:', e.message, '— trying API-Sports');
-      src = 'API-Sports';
-      games = await apiSportsGames(sport, today);
+      console.warn('ESPN failed:', e.message, '— trying BallDontLie');
+      src = 'BallDontLie';
+      try {
+        games = await bdlGames(sport, dateStr(0));
+      } catch (e2) {
+        console.warn('BDL failed:', e2.message, '— trying API-Sports');
+        src = 'API-Sports';
+        games = await apiSportsGames(sport, dateStr(0));
+      }
     }
     renderOtherScores(games, sport, src);
   } catch (err) {
     showError('other-scores-area', `Could not load ${sport.toUpperCase()} — ${err.message}`, `loadOtherScores('${sport}')`);
   }
+}
+
+async function espnGames(sport) {
+  const paths = { nba: 'basketball/nba', mlb: 'baseball/mlb', nfl: 'football/nfl' };
+  if (!paths[sport]) throw new Error('unknown sport');
+  const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${paths[sport]}/scoreboard`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const d = await res.json();
+  return (d.events || []).map(ev => {
+    const comp = ev.competitions[0];
+    const home = comp.competitors.find(c => c.homeAway === 'home') || comp.competitors[0];
+    const away = comp.competitors.find(c => c.homeAway === 'away') || comp.competitors[1];
+    const st   = comp.status || ev.status || {};
+    const state = st.type?.state || '';
+    return {
+      id: ev.id,
+      league: sport.toUpperCase(),
+      homeTeam: home?.team?.shortDisplayName || home?.team?.name || '—',
+      awayTeam: away?.team?.shortDisplayName || away?.team?.name || '—',
+      homeScore: state !== 'pre' ? (home?.score ?? '') : '',
+      awayScore: state !== 'pre' ? (away?.score ?? '') : '',
+      status: st.type?.shortDetail || st.type?.description || '—',
+      period: st.period || '',
+      time: st.displayClock || '',
+      sport
+    };
+  });
 }
 
 async function bdlGames(sport, date) {
@@ -696,10 +728,15 @@ async function apiSportsGames(sport, date) {
 }
 
 function buildOtherRow(g) {
-  const liveStatuses = new Set(['In Progress','In-Progress','live','ongoing','Q1','Q2','Q3','Q4','H1','H2','OT']);
-  const finStatuses  = new Set(['Final','FT','Finished','Complete','F','AOT']);
-  const live = liveStatuses.has(g.status) || /^\d+(st|nd|rd|th)\s*(quarter|period|set|inning)/i.test(g.status);
-  const fin  = finStatuses.has(g.status);
+  const st = g.status || '';
+  // ESPN live: "Q3 5:32", "OT 1:15", "Bot 7th", "Top 3rd", "Mid 5th"
+  // BDL/APS live: "In Progress", "Q1", "H1"
+  const live = /^(Q[1-4]|OT)\s+\d/i.test(st)
+    || /^(Top|Bot|Mid)\s+\d/i.test(st)
+    || /^(In.Progress|live|ongoing|H[1-2])$/i.test(st)
+    || /^\d+(st|nd|rd|th)\s*(quarter|period|inning)/i.test(st);
+  // ESPN final: "Final", "Final/OT", "F/OT"  BDL: "Final"
+  const fin  = /^Final/i.test(st) || /^F(\/|$)/i.test(st) || ['FT','Finished','Complete'].includes(st);
   const periodLabel = g.period ? `${g.period}${ordinal(+g.period || 0)}` : '';
   return `
     <div class="other-match-row ${live?'live':''}">
