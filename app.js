@@ -1199,11 +1199,43 @@ function parseWinPct(recStr) {
   return (w + l) > 0 ? w / (w + l) : 0.5;
 }
 
+function parseWeatherFactor(w, fmt) {
+  if (!w) return null;
+  let temp, windSpeed, hasPrecip, condition, windText;
+  if (fmt === 'mlb') {
+    temp      = parseInt(w.temp || '70');
+    condition = w.condition || '';
+    const wm  = (w.wind || '').match(/(\d+)\s*mph/i);
+    windSpeed = wm ? parseInt(wm[1]) : 0;
+    windText  = w.wind || '';
+    hasPrecip = /rain|drizzle|shower|snow|sleet|thunder/i.test(condition);
+  } else {
+    temp      = parseInt(w.temperature || '70');
+    condition = w.type || '';
+    windSpeed = parseInt(w.gust || '0');
+    windText  = windSpeed > 0 ? `${windSpeed} mph` : '';
+    const pct = parseInt(w.precipitation || '0');
+    hasPrecip = pct > 10 || /rain|snow|shower|drizzle|thunder|storm/i.test(condition);
+  }
+  const isExtreme = windSpeed > 18 || hasPrecip || temp < 40;
+  const parts = [];
+  if (temp) parts.push(`${temp}°F`);
+  if (condition) parts.push(condition);
+  if (windText) parts.push(`Wind ${windText}`);
+  let impact = '';
+  if (windSpeed > 25 || (windSpeed > 15 && hasPrecip)) impact = '⚠ Rough conditions may suppress scoring';
+  else if (windSpeed > 18) impact = '🌬 Windy — may affect passing/HR';
+  else if (hasPrecip) impact = '🌧 Wet conditions';
+  else if (temp < 40) impact = '🥶 Cold — may reduce offense';
+  return { display: parts.join(' · ') + (impact ? ` · ${impact}` : ''), isExtreme, windSpeed, hasPrecip, temp, condition };
+}
+
 function buildPickSection(awayName, homeName, opts) {
   const {
     awayRec = '', homeRec = '', awayERA = null, homeERA = null,
     seriesSummary = '', seriesTitle = '', awayAbbr = '', homeAbbr = '',
-    awayForm = null, homeForm = null, awayH2H = 0, homeH2H = 0, h2hTotal = 0
+    awayForm = null, homeForm = null, awayH2H = 0, homeH2H = 0, h2hTotal = 0,
+    sport = '', weather = null, weatherFmt = 'espn'
   } = opts || {};
 
   const aShort = awayAbbr || awayName.split(' ').pop();
@@ -1277,6 +1309,14 @@ function buildPickSection(awayName, homeName, opts) {
     }
   }
 
+  // 7. Weather — outdoor sports only (NFL, MLB); shown when API returns it
+  if (weather && (sport === 'nfl' || sport === 'mlb')) {
+    const wf = parseWeatherFactor(weather, weatherFmt);
+    if (wf) {
+      factors.push({ label: 'Weather', detail: wf.display, winner: 'tie', extreme: wf.isExtreme });
+    }
+  }
+
   // ── Verdict ──
   const gap = Math.abs(aScore - hScore);
   const pickIsHome = hScore > aScore;
@@ -1290,8 +1330,10 @@ function buildPickSection(awayName, homeName, opts) {
 
   const factorsHTML = factors.map(f => {
     const myWin = pickIsHome ? f.winner === 'home' : f.winner === 'away';
-    const cls  = f.winner === 'tie' ? 'gp-pf-tie' : myWin ? 'gp-pf-win' : 'gp-pf-loss';
-    const icon = f.winner === 'tie' ? '~' : myWin ? '✓' : '✗';
+    const isTie = f.winner === 'tie';
+    let cls  = isTie ? 'gp-pf-tie' : myWin ? 'gp-pf-win' : 'gp-pf-loss';
+    if (f.label === 'Weather') cls += f.extreme ? ' gp-pf-weather-warn' : ' gp-pf-weather';
+    const icon = isTie ? '~' : myWin ? '✓' : '✗';
     return `<div class="gp-pfactor ${cls}"><span class="gp-pf-icon">${icon}</span><span class="gp-pf-label">${esc(f.label)}</span><span class="gp-pf-detail">${f.detail}</span></div>`;
   }).join('');
 
@@ -1363,7 +1405,8 @@ async function renderMLBGamePreview(espnGame, panel) {
     const pickHTML = buildPickSection(awayAbbr, homeAbbr, {
       awayRec: espnGame.awayRec || '', homeRec: espnGame.homeRec || '',
       awayERA: awayPD?.season?.era ?? null, homeERA: homePD?.season?.era ?? null,
-      awayAbbr, homeAbbr
+      awayAbbr, homeAbbr,
+      sport: 'mlb', weather: mlbGame.weather || null, weatherFmt: 'mlb'
     });
 
     const hrThreats   = [...allBatters].filter(b => b.hr > 0).sort((a, b) => b.hr - a.hr).slice(0, 5);
@@ -1533,7 +1576,8 @@ async function renderESPNGamePreview(game, panel) {
     const pickHTML = buildPickSection(game.awayTeam, game.homeTeam, {
       awayRec, homeRec, seriesSummary, seriesTitle,
       awayAbbr: awayAbbr2, homeAbbr: homeAbbr2,
-      awayForm, homeForm, awayH2H, homeH2H, h2hTotal
+      awayForm, homeForm, awayH2H, homeH2H, h2hTotal,
+      sport: game.sport, weather: j.gameInfo?.weather || null, weatherFmt: 'espn'
     });
 
     let html = pickHTML;
@@ -1733,7 +1777,7 @@ async function getMLBSchedule() {
   const today = dateStr(0);
   if (_mlbSchedCache && _mlbSchedDate === today) return _mlbSchedCache;
   try {
-    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${today}&hydrate=lineups,probablePitcher,team,linescore`);
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${today}&hydrate=lineups,probablePitcher,team,linescore,weather`);
     const j   = await res.json();
     _mlbSchedCache = j.dates?.[0]?.games || [];
     _mlbSchedDate  = today;
