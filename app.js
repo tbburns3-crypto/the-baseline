@@ -1063,17 +1063,14 @@ async function apiSportsGames(sport, date) {
 
 function buildOtherRow(g) {
   const st = g.status || '';
-  // ESPN live: "Q3 5:32", "OT 1:15", "Bot 7th", "Top 3rd", "Mid 5th"
-  // BDL/APS live: "In Progress", "Q1", "H1"
   const live = /^(Q[1-4]|OT)\s+\d/i.test(st)
     || /^(Top|Bot|Mid)\s+\d/i.test(st)
     || /^(In.Progress|live|ongoing|H[1-2])$/i.test(st)
     || /^\d+(st|nd|rd|th)\s*(quarter|period|inning)/i.test(st);
-  // ESPN final: "Final", "Final/OT", "F/OT"  BDL: "Final"
   const fin  = /^Final/i.test(st) || /^F(\/|$)/i.test(st) || ['FT','Finished','Complete'].includes(st);
   const periodLabel = g.period ? `${g.period}${ordinal(+g.period || 0)}` : '';
   return `
-    <div class="other-match-row ${live?'live':''}">
+    <div class="other-match-row ${live?'live':''}" id="og-${esc(g.id)}" onclick="toggleGamePreview('${esc(g.id)}')">
       <div class="other-status">
         ${live ? '<span class="live-badge">LIVE</span>' : fin ? '<span class="fin-badge">FIN</span>' : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`}
       </div>
@@ -1097,6 +1094,10 @@ function renderOtherScores(games, sport, src) {
     return;
   }
 
+  // Cache game objects for click preview
+  _otherGamesMap.clear();
+  for (const g of games) _otherGamesMap.set(String(g.id), g);
+
   // Group by league so MLB doesn't bleed into NPB/KBO etc.
   const groups = new Map();
   for (const g of games) {
@@ -1116,20 +1117,238 @@ function renderOtherScores(games, sport, src) {
   area.innerHTML = html;
 }
 
-// ── MLB LINEUPS ──────────────────────────────────────────────
+// ── GAME PREVIEW CLICK HANDLER ───────────────────────────────
+async function toggleGamePreview(gameId) {
+  const rowEl = document.getElementById(`og-${gameId}`);
+  if (!rowEl) return;
+  const existing = rowEl.nextElementSibling;
+  if (existing?.classList.contains('game-preview-panel')) {
+    existing.remove();
+    rowEl.classList.remove('gp-expanded');
+    return;
+  }
+  rowEl.classList.add('gp-expanded');
+  const panel = document.createElement('div');
+  panel.className = 'game-preview-panel';
+  panel.innerHTML = '<div class="loading-spinner" style="padding:16px"><div class="spinner"></div></div>';
+  rowEl.after(panel);
+  const game = _otherGamesMap.get(gameId);
+  if (!game) { panel.innerHTML = '<div class="pp-empty" style="padding:12px">No data</div>'; return; }
+  if (game.sport === 'mlb') {
+    await renderMLBGamePreview(game, panel);
+  } else {
+    await renderESPNGamePreview(game, panel);
+  }
+}
+
+async function renderMLBGamePreview(espnGame, panel) {
+  try {
+    const games = await getMLBSchedule();
+    const nameMatch = (mlbFull, espnShort) => {
+      const f = mlbFull.toLowerCase(), s = espnShort.toLowerCase();
+      return f === s || f.endsWith(' ' + s) || f.endsWith(s) || f.includes(s);
+    };
+    const mlbGame = games.find(g =>
+      nameMatch(g.teams.away.team?.name || '', espnGame.awayTeam) &&
+      nameMatch(g.teams.home.team?.name || '', espnGame.homeTeam)
+    );
+    if (!mlbGame) {
+      panel.innerHTML = '<div class="pp-empty" style="padding:12px">Game preview not available yet — check back closer to game time</div>';
+      return;
+    }
+    const away        = mlbGame.teams.away, home = mlbGame.teams.home;
+    const awayLineup  = mlbGame.lineups?.awayPlayers || [];
+    const homeLineup  = mlbGame.lineups?.homePlayers || [];
+    const awayPId     = away.probablePitcher?.id;
+    const homePId     = home.probablePitcher?.id;
+    const awayPName   = away.probablePitcher?.fullName || 'TBD';
+    const homePName   = home.probablePitcher?.fullName || 'TBD';
+    const awayAbbr    = away.team?.abbreviation || away.team?.name?.slice(0,3).toUpperCase() || 'AWY';
+    const homeAbbr    = home.team?.abbreviation || home.team?.name?.slice(0,3).toUpperCase() || 'HME';
+
+    // Fetch pitcher stats + all batter stats in parallel
+    await Promise.allSettled([
+      awayPId && fetchPitcherPreview(awayPId),
+      homePId && fetchPitcherPreview(homePId),
+      ...[...awayLineup, ...homeLineup].map(p => fetchBatterPreview(p.id))
+    ]);
+
+    const awayPD   = awayPId ? _pitcherCache.get(awayPId) : null;
+    const homePD   = homePId ? _pitcherCache.get(homePId) : null;
+    const awayHand = awayPD?.pitchHand || null;  // away pitcher hand
+    const homeHand = homePD?.pitchHand || null;  // home pitcher hand
+
+    // Build batter objects with watch scores
+    // Away batters face HOME pitcher; home batters face AWAY pitcher
+    const makeBatters = (players, oppHand, teamAbbr) => players.map((p, i) => {
+      const st = _batterCache.get(p.id) || {};
+      const favorable = st.batSide === 'S' ||
+        (st.batSide && oppHand && st.batSide !== oppHand);
+      const hr  = parseInt(st.homeRuns || 0);
+      const h   = parseInt(st.hits     || 0);
+      const r   = parseInt(st.runs     || 0);
+      const rbi = parseInt(st.rbi      || 0);
+      const ops = parseFloat(st.ops    || 0);
+      const ab  = parseInt(st.atBats   || 0);
+      // Position weight: 3-hole and 4-hole cleanup carry most run-production weight
+      const posW = [0,1.1,1.0,1.4,1.5,1.2,1.0,0.9,0.8,0.7][i+1] || 1.0;
+      return { name: p.fullName, id: p.id, pos: i+1, stat: st, batSide: st.batSide,
+               favorable, team: teamAbbr, hr, h, r, rbi, ops, ab,
+               prodScore: (h + r + rbi) * posW,
+               watchScore: (ops * 500 + hr * 4 + rbi * 0.6) * posW };
+    }).filter(b => b.ab >= 10);
+
+    const awayBatters = makeBatters(awayLineup, homeHand, awayAbbr);
+    const homeBatters = makeBatters(homeLineup, awayHand, homeAbbr);
+    const allBatters  = [...awayBatters, ...homeBatters];
+
+    const hrThreats   = [...allBatters].filter(b => b.hr > 0).sort((a, b) => b.hr - a.hr).slice(0, 5);
+    const topProd     = [...allBatters].sort((a, b) => b.prodScore - a.prodScore).slice(0, 5);
+    const topHitters  = [...allBatters].filter(b => b.ab >= 50 && parseFloat(b.stat.avg || 0) > 0)
+                          .sort((a, b) => parseFloat(b.stat.avg) - parseFloat(a.stat.avg)).slice(0, 5);
+
+    const handTag = (batSide, favorable, oppHand) => {
+      if (!batSide) return '';
+      const vs  = oppHand ? ` vs ${oppHand}HP` : '';
+      const cls = favorable ? 'gp-hand gp-fav' : 'gp-hand gp-unfav';
+      return `<span class="${cls}" title="${batSide}${vs}">${batSide}</span>`;
+    };
+    const posTag = pos => {
+      const labels = {3:'3-Hole',4:'Cleanup',5:'5-Spot',1:'Leadoff',2:'2-Hole'};
+      return `<span class="gp-pos ${labels[pos]?'gp-pos-key':''}">#${pos}${labels[pos] ? ` <span class="gp-pos-lbl">${labels[pos]}</span>` : ''}</span>`;
+    };
+
+    const hrRow = b => `
+      <div class="gp-player-row">
+        ${posTag(b.pos)}
+        ${handTag(b.batSide, b.favorable, b.team === awayAbbr ? homeHand : awayHand)}
+        <span class="gp-pname">${esc(b.name.split(' ').slice(-1)[0])}</span>
+        <span class="gp-team">${esc(b.team)}</span>
+        <span class="gp-stats">
+          <span class="gp-hr-val">${b.hr}HR</span>
+          <span class="gp-muted">${b.stat.ops || '—'} OPS</span>
+          <span class="gp-muted">${b.stat.avg || '.---'}</span>
+        </span>
+      </div>`;
+
+    const prodRow = b => `
+      <div class="gp-player-row">
+        ${posTag(b.pos)}
+        ${handTag(b.batSide, b.favorable, b.team === awayAbbr ? homeHand : awayHand)}
+        <span class="gp-pname">${esc(b.name.split(' ').slice(-1)[0])}</span>
+        <span class="gp-team">${esc(b.team)}</span>
+        <span class="gp-stats">
+          <span class="gp-h-val">${b.h}H</span>
+          <span class="gp-r-val">${b.r}R</span>
+          <span class="gp-rbi-val">${b.rbi}RBI</span>
+        </span>
+      </div>`;
+
+    const hitRow = b => `
+      <div class="gp-player-row">
+        ${posTag(b.pos)}
+        ${handTag(b.batSide, b.favorable, b.team === awayAbbr ? homeHand : awayHand)}
+        <span class="gp-pname">${esc(b.name.split(' ').slice(-1)[0])}</span>
+        <span class="gp-team">${esc(b.team)}</span>
+        <span class="gp-stats">
+          <span class="gp-avg-val">${b.stat.avg}</span>
+          <span class="gp-muted">${b.stat.obp || '—'} OBP</span>
+          <span class="gp-muted">${b.stat.ops || '—'} OPS</span>
+        </span>
+      </div>`;
+
+    const pdSlot = (pid, pname, pd) => {
+      const s  = pd?.season;
+      const lh = pd?.pitchHand ? pd.pitchHand + 'HP' : '';
+      const lastName = pname !== 'TBD' ? pname.split(' ').slice(1).join(' ') || pname : 'TBD';
+      return `<div class="gp-pd-slot">
+        <div class="gp-pd-hand">${lh}</div>
+        <div class="gp-pd-name">${esc(lastName)}</div>
+        <div class="gp-pd-era ${!s?'pd-tbd':''}">${s?.era || '—'}</div>
+        <div class="gp-pd-era-lbl">ERA</div>
+        ${s ? `<div class="gp-pd-sub">${s.wins??0}-${s.losses??0} &nbsp;·&nbsp; ${s.whip||'—'} WHIP &nbsp;·&nbsp; ${s.strikeOuts??0}K</div>` : ''}
+      </div>`;
+    };
+
+    const noLineup = allBatters.length === 0;
+
+    panel.innerHTML = `
+      <div class="gp-inner">
+        <div class="gp-duel">
+          ${pdSlot(awayPId, awayPName, awayPD)}
+          <div class="gp-duel-vs">VS</div>
+          ${pdSlot(homePId, homePName, homePD)}
+        </div>
+        ${noLineup
+          ? `<div class="gp-no-lineup">Lineups not posted yet — only pitcher preview available</div>`
+          : `
+          <div class="gp-hand-legend"><span class="gp-hand gp-fav">L/R/S</span> = favorable matchup vs today's opposing pitcher &nbsp; <span class="gp-hand gp-unfav">L/R</span> = same side (pitcher has edge)</div>
+          ${hrThreats.length ? `<div class="gp-section"><div class="gp-section-hdr">💣 HR Threats</div>${hrThreats.map(hrRow).join('')}</div>` : ''}
+          ${topProd.length  ? `<div class="gp-section"><div class="gp-section-hdr">⚡ H + R + RBI Leaders</div>${topProd.map(prodRow).join('')}</div>` : ''}
+          ${topHitters.length ? `<div class="gp-section"><div class="gp-section-hdr">🎯 Best Hitters by AVG</div>${topHitters.map(hitRow).join('')}</div>` : ''}
+        `}
+      </div>`;
+  } catch (err) {
+    panel.innerHTML = `<div class="pp-error" style="padding:12px">Could not load: ${esc(err.message)}</div>`;
+  }
+}
+
+async function renderESPNGamePreview(game, panel) {
+  const paths = { nba:'basketball/nba', wnba:'basketball/wnba', nfl:'football/nfl', nhl:'hockey/nhl' };
+  const path  = paths[game.sport];
+  if (!path) { panel.innerHTML = '<div class="pp-empty" style="padding:12px">No preview available</div>'; return; }
+  try {
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${path}/summary?event=${game.id}`);
+    const j   = await res.json();
+    const comp = j.header?.competitions?.[0];
+    const awayC = comp?.competitors?.find(c => c.homeAway === 'away');
+    const homeC = comp?.competitors?.find(c => c.homeAway === 'home');
+    const awayRec = awayC?.record?.[0]?.summary || '';
+    const homeRec = homeC?.record?.[0]?.summary || '';
+    const state   = comp?.status?.type?.state || '';
+
+    let performers = '';
+    for (const teamBox of (j.boxscore?.players || [])) {
+      const tName = teamBox.team?.abbreviation || '';
+      for (const grp of (teamBox.statistics || []).slice(0, 1)) {
+        for (const ath of (grp.athletes || []).filter(a => a.stats?.some(s => parseFloat(s) > 0)).slice(0, 3)) {
+          const name  = ath.athlete?.shortName || ath.athlete?.displayName || '—';
+          const stats = (grp.labels || []).slice(0, 4).map((lbl, i) => `<span class="gp-muted">${lbl} <b>${ath.stats[i]||'—'}</b></span>`).join('');
+          performers += `<div class="gp-player-row"><span class="gp-team">${esc(tName)}</span><span class="gp-pname">${esc(name)}</span><span class="gp-stats" style="flex-wrap:wrap;gap:6px">${stats}</span></div>`;
+        }
+      }
+    }
+    panel.innerHTML = `
+      <div class="gp-inner">
+        ${awayRec || homeRec ? `<div class="gp-records">${esc(game.awayTeam)} ${awayRec?`(${awayRec})`:''}  <span class="gp-at">@</span>  ${esc(game.homeTeam)} ${homeRec?`(${homeRec})`:''}</div>` : ''}
+        ${state === 'pre' ? '<div class="gp-no-lineup">Game has not started yet</div>' : ''}
+        ${performers ? `<div class="gp-section"><div class="gp-section-hdr">Top Performers</div>${performers}</div>` : ''}
+      </div>`;
+  } catch (err) {
+    panel.innerHTML = `<div class="pp-error" style="padding:12px">Could not load: ${esc(err.message)}</div>`;
+  }
+}
+
 // ── GAME PREVIEW DATA ────────────────────────────────────────
-const _pitcherCache = new Map();
-const _batterCache  = new Map();
+const _pitcherCache   = new Map();
+const _batterCache    = new Map();
+const _otherGamesMap  = new Map(); // espn event id → game object
+let   _mlbSchedCache  = null;
+let   _mlbSchedDate   = null;
 
 async function fetchPitcherPreview(pitcherId) {
   if (!pitcherId) return null;
   if (_pitcherCache.has(pitcherId)) return _pitcherCache.get(pitcherId);
   try {
-    const res  = await fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season,gameLog&season=2025&group=pitching&limit=1`);
-    const j    = await res.json();
-    const season    = j.stats?.find(s => s.type?.displayName === 'season')?.splits?.[0]?.stat || null;
-    const lastStart = j.stats?.find(s => s.type?.displayName === 'gameLog')?.splits?.[0] || null;
-    const result = { season, lastStart };
+    const [r1, r2] = await Promise.all([
+      fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season,gameLog&season=2025&group=pitching&limit=1`).then(r => r.json()),
+      fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}?fields=people,id,pitchHand`).then(r => r.json())
+    ]);
+    const result = {
+      season:    r1.stats?.find(s => s.type?.displayName === 'season')?.splits?.[0]?.stat || null,
+      lastStart: r1.stats?.find(s => s.type?.displayName === 'gameLog')?.splits?.[0] || null,
+      pitchHand: r2.people?.[0]?.pitchHand?.code || null
+    };
     _pitcherCache.set(pitcherId, result);
     return result;
   } catch { _pitcherCache.set(pitcherId, null); return null; }
@@ -1138,12 +1357,28 @@ async function fetchPitcherPreview(pitcherId) {
 async function fetchBatterPreview(batterId) {
   if (_batterCache.has(batterId)) return _batterCache.get(batterId);
   try {
-    const res  = await fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=season&season=2025&group=hitting`);
-    const j    = await res.json();
-    const stat = j.stats?.[0]?.splits?.[0]?.stat || null;
-    _batterCache.set(batterId, stat);
-    return stat;
+    const [r1, r2] = await Promise.all([
+      fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=season&season=2025&group=hitting`).then(r => r.json()),
+      fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}?fields=people,id,batSide`).then(r => r.json())
+    ]);
+    const stat    = r1.stats?.[0]?.splits?.[0]?.stat || null;
+    const batSide = r2.people?.[0]?.batSide?.code || null;
+    const result  = stat ? { ...stat, batSide } : { batSide };
+    _batterCache.set(batterId, result);
+    return result;
   } catch { _batterCache.set(batterId, null); return null; }
+}
+
+async function getMLBSchedule() {
+  const today = dateStr(0);
+  if (_mlbSchedCache && _mlbSchedDate === today) return _mlbSchedCache;
+  try {
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${today}&hydrate=lineups,probablePitcher,team,linescore`);
+    const j   = await res.json();
+    _mlbSchedCache = j.dates?.[0]?.games || [];
+    _mlbSchedDate  = today;
+  } catch { _mlbSchedCache = []; }
+  return _mlbSchedCache;
 }
 
 async function loadBatterStatsForCard(game) {
