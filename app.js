@@ -29,8 +29,11 @@ const S = {
   view:        'scores',
   dateOffset:  0,
   filter:      'all',
-  matches:     new Map(),   // event_key → match object
-  rankIndex:   new Map(),   // player_key → {rank, points, league} built from loaded rankings
+  matches:       new Map(),   // event_key → match object
+  rankIndex:     new Map(),   // player_key → {rank, points, league} built from loaded rankings
+  playerDB:      [],          // all ranked ATP/WTA players from Sackmann data
+  playerDBLoaded:  false,
+  playerDBLoading: false,
   ws:          null,
   wsRetries:   0,
   wsMax:       3,
@@ -210,6 +213,7 @@ async function loadRankings() {
       if (p.player_key) S.rankIndex.set(String(p.player_key), { rank: p.place, points: p.points, league: p.league || (atp.includes(p) ? 'ATP' : 'WTA') });
     }
     renderRankings(atp, wta);
+    loadPlayerDatabase(); // start loading in background for search
   } catch (err) {
     showError('rankings-area', `Could not load rankings — ${err.message}`, 'loadRankings()');
   }
@@ -590,8 +594,80 @@ function renderRankings(atp, wta) {
     `<div class="rankings-grid">${col(atp,'ATP Rankings')}${col(wta,'WTA Rankings')}</div>`;
 }
 
-// ── PLAYER SEARCH ───────────────────────────────────────────
+// ── PLAYER DATABASE (Jeff Sackmann / tennis_atp + tennis_wta) ──
 let _playerSearchTimer = null;
+
+async function loadPlayerDatabase() {
+  if (S.playerDBLoaded || S.playerDBLoading) return;
+  S.playerDBLoading = true;
+
+  const RAW = 'https://raw.githubusercontent.com/JeffSackmann';
+  try {
+    const [atpRankTxt, wtaRankTxt, atpPlayersTxt, wtaPlayersTxt] = await Promise.all([
+      fetch(`${RAW}/tennis_atp/master/atp_rankings_current.csv`).then(r => r.text()),
+      fetch(`${RAW}/tennis_wta/master/wta_rankings_current.csv`).then(r => r.text()),
+      fetch(`${RAW}/tennis_atp/master/atp_players.csv`).then(r => r.text()),
+      fetch(`${RAW}/tennis_wta/master/wta_players.csv`).then(r => r.text()),
+    ]);
+
+    // Parse players CSV → Map(id → {firstName, lastName, hand, dob, ioc})
+    function parsePlayers(csv) {
+      const m = new Map();
+      for (const line of csv.split('\n')) {
+        const p = line.split(',');
+        if (p.length < 4 || !p[0].trim()) continue;
+        // columns: player_id, name_first, name_last, hand, dob, ioc
+        m.set(p[0].trim(), { firstName: p[1]?.trim() || '', lastName: p[2]?.trim() || '', hand: p[3]?.trim() || '', dob: p[4]?.trim() || '', ioc: p[5]?.trim() || '' });
+      }
+      return m;
+    }
+
+    // Parse rankings CSV → array, only the most-recent date
+    function parseRankings(csv, playersMap, league) {
+      const rows = csv.split('\n').map(l => l.split(',')).filter(p => p.length >= 4 && p[0]?.trim());
+      if (!rows.length) return [];
+      const latestDate = rows.reduce((best, p) => p[0].trim() > best ? p[0].trim() : best, '');
+      const out = [];
+      for (const p of rows) {
+        if (p[0].trim() !== latestDate) continue;
+        const id = p[2]?.trim();
+        const pl = playersMap.get(id);
+        if (!pl) continue;
+        out.push({
+          id,
+          firstName: pl.firstName,
+          lastName:  pl.lastName,
+          fullName:  `${pl.firstName} ${pl.lastName}`.trim(),
+          hand:      pl.hand,
+          dob:       pl.dob,
+          country:   pl.ioc,
+          rank:      parseInt(p[1]),
+          points:    parseInt(p[3]) || 0,
+          league,
+          rankDate:  latestDate,
+        });
+      }
+      return out.sort((a, b) => a.rank - b.rank);
+    }
+
+    const atpPlayers = parsePlayers(atpPlayersTxt);
+    const wtaPlayers = parsePlayers(wtaPlayersTxt);
+    S.playerDB       = [...parseRankings(atpRankTxt, atpPlayers, 'ATP'), ...parseRankings(wtaRankTxt, wtaPlayers, 'WTA')];
+    S.playerDBLoaded = true;
+    S.playerDBLoading = false;
+    console.log(`[PlayerDB] Loaded ${S.playerDB.length} ranked players`);
+  } catch (err) {
+    S.playerDBLoading = false;
+    console.error('[PlayerDB] Failed:', err);
+  }
+}
+
+function calcAge(dob) {
+  if (!dob || dob.length < 8) return '';
+  const y = parseInt(dob.slice(0,4)), mo = parseInt(dob.slice(4,6)) - 1, d = parseInt(dob.slice(6,8));
+  const age = Math.floor((Date.now() - new Date(y, mo, d)) / (365.25 * 24 * 60 * 60 * 1000));
+  return isNaN(age) || age < 1 ? '' : String(age);
+}
 
 function onPlayerSearch(q) {
   clearTimeout(_playerSearchTimer);
@@ -604,19 +680,26 @@ function onPlayerSearch(q) {
   }
   rankingsEl.style.display = 'none';
   resultsEl.style.display  = '';
-  resultsEl.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Searching…</p></div>';
-  _playerSearchTimer = setTimeout(() => doPlayerSearch(q.trim()), 400);
+
+  if (!S.playerDBLoaded) {
+    resultsEl.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading player database…</p></div>';
+    _playerSearchTimer = setTimeout(async () => {
+      await loadPlayerDatabase();
+      runPlayerSearch(q.trim());
+    }, 300);
+    return;
+  }
+  _playerSearchTimer = setTimeout(() => runPlayerSearch(q.trim()), 200);
 }
 
-async function doPlayerSearch(q) {
-  const resultsEl = document.getElementById('player-search-results');
-  try {
-    const results = await tennisFetch('get_players', { player_name: q });
-    console.log('[PlayerSearch] raw sample:', JSON.stringify(results.slice(0,2), null, 2));
-    renderPlayerResults(results, q);
-  } catch (err) {
-    resultsEl.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Search failed: ${esc(err.message)}</p></div>`;
-  }
+function runPlayerSearch(q) {
+  const qLow = q.toLowerCase();
+  const hits = S.playerDB.filter(p =>
+    p.firstName.toLowerCase().includes(qLow) ||
+    p.lastName.toLowerCase().includes(qLow)  ||
+    p.fullName.toLowerCase().includes(qLow)
+  ).slice(0, 60);
+  renderPlayerResults(hits, q);
 }
 
 function renderPlayerResults(players, q) {
@@ -625,36 +708,21 @@ function renderPlayerResults(players, q) {
     resultsEl.innerHTML = `<div class="empty-state">No players found for "<strong>${esc(q)}</strong>"</div>`;
     return;
   }
-
-  // Filter to players whose name contains the query (first or last name)
-  const qLow = q.toLowerCase();
-  const filtered = players.filter(p => {
-    const name = (p.player || p.player_name || p.team_name || p.name || '').toLowerCase();
-    return name.includes(qLow);
-  });
-  const display = filtered.length ? filtered : players; // fall back to all if filter removes everything
-
+  const handLabel = h => h === 'R' ? 'Right-handed' : h === 'L' ? 'Left-handed' : '';
   resultsEl.innerHTML = `
-    <div class="player-results-header">${display.length} player${display.length !== 1 ? 's' : ''} found</div>
-    ${display.map(p => {
-      const name    = p.player || p.player_name || p.team_name || p.name || '—';
-      const country = p.country || p.player_country || '';
-      const type    = p.league || p.player_type || p.event_type || '';
-
-      // Rank: first try the API response fields, then cross-reference our loaded rankings
-      const apiRank = p.place || p.ranking || p.player_rank || p.current_ranking || null;
-      const cached  = S.rankIndex.get(String(p.player_key || ''));
-      const rank    = apiRank || (cached ? cached.rank : null);
-      const pts     = p.points || p.standing_points || (cached ? cached.points : null);
-      const league  = type || (cached ? cached.league : '');
-
+    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found</div>
+    ${players.map(p => {
+      const age  = calcAge(p.dob);
+      const hand = handLabel(p.hand);
       return `<div class="player-result-row">
-        <div class="player-result-name">${esc(name)}</div>
+        <div class="player-result-name">${esc(p.fullName)}</div>
         <div class="player-result-meta">
-          ${rank ? `<span class="player-rank-badge">#${esc(rank)}</span>` : '<span class="player-unranked">Unranked / Outside Top 100</span>'}
-          ${league ? `<span class="player-type-badge">${esc(league)}</span>` : ''}
-          ${country ? `<span class="player-country-tag">${esc(country)}</span>` : ''}
-          ${pts ? `<span class="player-pts-tag">${esc(pts)} pts</span>` : ''}
+          <span class="player-rank-badge">#${p.rank}</span>
+          <span class="player-type-badge">${esc(p.league)}</span>
+          ${p.country ? `<span class="player-country-tag">${esc(p.country)}</span>` : ''}
+          ${p.points ? `<span class="player-pts-tag">${p.points.toLocaleString()} pts</span>` : ''}
+          ${age  ? `<span class="player-age-tag">Age ${age}</span>` : ''}
+          ${hand ? `<span class="player-hand-tag">${hand}</span>` : ''}
         </div>
       </div>`;
     }).join('')}
