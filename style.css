@@ -749,15 +749,14 @@ input { font: inherit; }
 }
 .lineup-card-header {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 2px;
   padding: 10px 14px;
   background: rgba(255,255,255,.04);
   border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
   font-size: .88rem;
 }
-.lineup-matchup { font-weight: 700; color: var(--text); flex: 1; }
+.lineup-matchup { font-weight: 700; color: var(--text); }
 .lineup-score   { font-weight: 700; color: var(--accent); font-size: 1rem; }
 .lineup-time    { color: var(--text-muted); font-size: .82rem; }
 .lineup-confirmed { color: #4caf50; font-size: .75rem; font-weight: 600; }
@@ -788,7 +787,7 @@ input { font: inherit; }
 }
 .lineup-player-row {
   display: grid;
-  grid-template-columns: 20px 30px 1fr;
+  grid-template-columns: 20px 30px 1fr auto;
   gap: 6px;
   align-items: center;
   padding: 3px 0;
@@ -1073,6 +1072,68 @@ input { font: inherit; }
   padding: 1px 6px;
   margin-left: 6px;
 }
+
+/* ── GAME PREVIEW HEADER ── */
+.matchup-teams {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 1.05rem; font-weight: 700; letter-spacing: .02em;
+}
+.matchup-at { color: var(--text-muted); font-weight: 400; font-size: .9rem; }
+.team-record { font-size: .72rem; color: var(--text-muted); font-weight: 400; margin-left: 2px; }
+.matchup-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+/* ── PITCHER DUEL ── */
+.pitcher-duel {
+  display: flex; align-items: stretch; gap: 0;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+  margin: 10px 0 12px 0;
+}
+.pd-slot {
+  flex: 1; padding: 12px 14px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.pd-slot:first-child { border-right: 1px solid var(--border); }
+.pd-name {
+  font-size: .85rem; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 120px;
+}
+.pd-era {
+  font-size: 2rem; font-weight: 800; color: var(--accent);
+  line-height: 1.1; margin-top: 4px;
+}
+.pd-era-lbl {
+  font-size: .65rem; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px;
+}
+.pd-secondary {
+  display: flex; gap: 8px; font-size: .75rem; color: var(--text-muted);
+  flex-wrap: wrap; justify-content: center;
+}
+.pd-secondary span { white-space: nowrap; }
+.pd-last-start {
+  font-size: .68rem; color: var(--text-muted);
+  margin-top: 3px; font-style: italic;
+}
+.pd-tbd { color: var(--text-muted) !important; }
+.pd-vs {
+  padding: 0 12px; display: flex; align-items: center;
+  font-size: .7rem; font-weight: 800; color: var(--text-muted);
+  letter-spacing: .12em; background: rgba(0,0,0,0.15);
+  border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+}
+
+/* ── BATTER INLINE STATS ── */
+.batter-inline-stats {
+  margin-left: auto; display: flex; gap: 5px; align-items: center;
+  flex-shrink: 0;
+}
+.bi-avg { font-size: .78rem; color: var(--accent); font-weight: 600; }
+.bi-hr  { font-size: .72rem; color: #ffb300; font-weight: 600; }
+.bi-rbi { font-size: .72rem; color: var(--text-muted); }
+.bi-loading { font-size: .7rem; color: var(--text-muted); opacity: .4; }
 
 /* ── VS PITCHER SEARCH ── */
 .vsp-area { padding: 10px 4px; }
