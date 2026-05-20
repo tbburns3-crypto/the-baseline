@@ -287,11 +287,9 @@ function resolvePick(gameId, winnerFull) {
 }
 
 function updatePicksDisplay() {
-  const allPicks   = getPicks();
-  const allVals    = Object.values(allPicks);
+  const allVals    = Object.values(getPicks());
   const sport      = S.sport;
 
-  // Sport-specific
   const sportPicks = allVals.filter(p => (p.sport || 'tennis') === sport);
   const sportRes   = sportPicks.filter(p => p.result !== null);
   const sportPend  = sportPicks.filter(p => p.result === null);
@@ -299,14 +297,7 @@ function updatePicksDisplay() {
   const sLosses    = sportRes.length - sWins;
   const sPct       = sportRes.length ? Math.round((sWins / sportRes.length) * 100) : 0;
 
-  // Overall (all sports combined)
-  const allRes     = allVals.filter(p => p.result !== null);
-  const allPend    = allVals.filter(p => p.result === null);
-  const allWins    = allRes.filter(p => p.result === 'win').length;
-  const allLosses  = allRes.length - allWins;
-  const allPct     = allRes.length ? Math.round((allWins / allRes.length) * 100) : 0;
-
-  // Small topbar badge — sport-specific resolved picks only
+  // Small topbar badge
   const badge = document.getElementById('picks-accuracy');
   if (badge) {
     if (!sportRes.length) { badge.textContent = ''; badge.classList.remove('has-picks'); }
@@ -317,7 +308,7 @@ function updatePicksDisplay() {
     }
   }
 
-  // Banner — show whenever ANY picks exist in the system (any sport)
+  // Banner — sport-specific only
   const banner  = document.getElementById('picks-banner');
   const pbWins  = document.getElementById('pb-wins');
   const pbLoss  = document.getElementById('pb-losses');
@@ -325,36 +316,24 @@ function updatePicksDisplay() {
   const pbBreak = document.getElementById('pb-breakdown');
   if (!banner || !pbWins || !pbLoss || !pbPct) return;
 
-  banner.style.display = ''; // always visible
-
-  if (!allVals.length) {
-    pbWins.textContent = '0';
-    pbLoss.textContent = '0';
-    pbPct.textContent  = 'making picks…';
-    if (pbBreak) pbBreak.textContent = '';
-    banner.className = '';
-    return;
-  }
+  banner.style.display = '';
 
   if (sportRes.length) {
-    // Sport has resolved picks — show sport record
     pbWins.textContent = sWins;
     pbLoss.textContent = sLosses;
     pbPct.textContent  = `(${sPct}%)`;
     if (pbBreak) pbBreak.textContent = sportPend.length ? `+${sportPend.length} active` : '';
     banner.className = sPct >= 55 ? 'pb-hot' : sPct <= 40 ? 'pb-cold' : '';
-  } else if (allRes.length) {
-    // Current sport has no resolved picks but other sports do — show overall
-    pbWins.textContent = allWins;
-    pbLoss.textContent = allLosses;
-    pbPct.textContent  = `(${allPct}%)`;
-    if (pbBreak) pbBreak.textContent = 'all sports';
-    banner.className = allPct >= 55 ? 'pb-hot' : allPct <= 40 ? 'pb-cold' : '';
-  } else {
-    // All picks still pending — no resolved games yet
+  } else if (sportPend.length) {
     pbWins.textContent = '—';
     pbLoss.textContent = '—';
-    pbPct.textContent  = `${allPend.length} picks active`;
+    pbPct.textContent  = `${sportPend.length} active`;
+    if (pbBreak) pbBreak.textContent = '';
+    banner.className = '';
+  } else {
+    pbWins.textContent = '—';
+    pbLoss.textContent = '—';
+    pbPct.textContent  = 'making picks…';
     if (pbBreak) pbBreak.textContent = '';
     banner.className = '';
   }
@@ -789,17 +768,28 @@ function renderMatches(all) {
   }
 
   // ── LIVE NOW section ──
-  const liveMatches  = filtered.filter(m => isLive(m.event_status));
-  const liveSingles  = liveMatches.filter(m => matchCategory(m.event_type_type || '') !== 'doubles');
-  const liveDoubles  = liveMatches.filter(m => matchCategory(m.event_type_type || '') === 'doubles');
+  const liveMatches = filtered.filter(m => isLive(m.event_status));
   let html = '';
   if (liveMatches.length) {
-    const singlesBlock = liveSingles.length
-      ? `<div class="live-sub-hdr">Singles</div>${liveSingles.map(m => buildMatchRow(m, 'live')).join('')}`
-      : '';
-    const doublesBlock = liveDoubles.length
-      ? `<div class="live-sub-hdr live-sub-doubles">Doubles</div>${liveDoubles.map(m => buildMatchRow(m, 'live')).join('')}`
-      : '';
+    // Group live matches by tournament
+    const liveTournMap = new Map();
+    for (const m of liveMatches) {
+      const tKey = m.tournament_name || m.league_name || m.event_type_type || 'Other';
+      if (!liveTournMap.has(tKey)) {
+        liveTournMap.set(tKey, { name: tKey, surface: m.tournament_surface || inferSurface(tKey), matches: [] });
+      }
+      liveTournMap.get(tKey).matches.push(m);
+    }
+    const tournBlocks = [...liveTournMap.values()].map(t => {
+      const sc = surfaceClass(t.surface);
+      return `<div class="live-tourn-block">
+        <div class="live-tourn-hdr">
+          <span class="surface-dot ${sc}" title="${esc(t.surface || 'hard')}"></span>
+          <span class="live-tourn-name">${esc(t.name)}</span>
+        </div>
+        ${t.matches.map(m => buildMatchRow(m, 'live')).join('')}
+      </div>`;
+    }).join('');
     html += `
       <div class="live-now-section">
         <div class="live-now-header">
@@ -807,7 +797,7 @@ function renderMatches(all) {
           LIVE NOW
           <span class="live-now-count">${liveMatches.length} match${liveMatches.length !== 1 ? 'es' : ''}</span>
         </div>
-        ${singlesBlock}${doublesBlock}
+        ${tournBlocks}
       </div>`;
   }
 
@@ -1869,12 +1859,29 @@ async function espnGames(sport, dateOffset = 0) {
   const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${paths[sport]}/scoreboard?dates=${d}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
+  const isBasketball = ['nba','wnba'].includes(sport);
   return (json.events || []).map(ev => {
     const comp = ev.competitions[0];
     const home = comp.competitors.find(c => c.homeAway === 'home') || comp.competitors[0];
     const away = comp.competitors.find(c => c.homeAway === 'away') || comp.competitors[1];
     const st   = comp.status || ev.status || {};
     const state = st.type?.state || '';
+    const teamLeaders = (teamId) => {
+      if (!isBasketball) return [];
+      return (comp.leaders || []).map(cat => {
+        const best = (cat.leaders || []).find(l => l.team?.id === String(teamId));
+        if (!best || !best.athlete?.displayName) return null;
+        return {
+          stat:      cat.name,
+          label:     cat.shortDisplayName || cat.displayName || cat.name,
+          value:     best.displayValue || '',
+          name:      best.athlete.displayName,
+          shortName: best.athlete.shortName || best.athlete.displayName,
+          id:        best.athlete.id || '',
+          pos:       best.athlete.position?.abbreviation || ''
+        };
+      }).filter(Boolean);
+    };
     return {
       id: ev.id,
       league: sport.toUpperCase(),
@@ -1891,7 +1898,9 @@ async function espnGames(sport, dateOffset = 0) {
       period: st.period || '',
       time: st.displayClock || '',
       sport,
-      odds: (() => { const o = comp.odds?.[0]; return o ? { spread: o.details || '', overUnder: o.overUnder || null } : null; })()
+      odds: (() => { const o = comp.odds?.[0]; return o ? { spread: o.details || '', overUnder: o.overUnder || null } : null; })(),
+      homeLeaders: teamLeaders(home?.team?.id),
+      awayLeaders: teamLeaders(away?.team?.id)
     };
   });
 }
@@ -2726,6 +2735,68 @@ function picksDatePickerChange(val) {
   else loadOtherPicksPage(S.sport);
 }
 
+// ── NBA / WNBA PICKS CARD (win prediction + top scorer picks) ─
+function buildNBAPicksCard(g) {
+  const { fin, live } = gameRowState(g);
+  const awayWP = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
+  let favLine = '';
+  if (g.awayRec || g.homeRec) {
+    const rawHome = homeWP * 1.03, total = awayWP + rawHome;
+    const homePct = Math.round((rawHome / total) * 100);
+    const favTeam = homePct >= 50 ? g.homeTeam : g.awayTeam;
+    const pct     = Math.max(homePct, 100 - homePct);
+    const margin  = Math.abs(homePct - 50);
+    if (!fin && margin >= 3) recordPick(String(g.id), favTeam.split(' ').pop(), `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '');
+    favLine = margin >= 3
+      ? `<span class="pc-fav">${esc(favTeam.split(' ').pop())} favored ${pct}%</span>`
+      : `<span class="pc-fav pc-fav-even">Even matchup</span>`;
+  }
+
+  // Build a player pick row for the top scorer on each team
+  const buildScoreRow = (leaders, teamAbbr) => {
+    const scorer = leaders.find(l => l.stat === 'points' || (l.label || '').toLowerCase().startsWith('pts') || (l.label || '').toLowerCase() === 'scoring');
+    if (!scorer || !scorer.name) return '';
+    const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
+    const safeId  = scorer.id || scorer.name.replace(/\W+/g, '');
+    const pickKey = `plr_${g.id}_${safeId}_pts`;
+    if (!fin) recordPlayerPick(pickKey, g.sport || 'nba', scorer.name, 'Points', `${scorer.value} PPG`, matchup, null);
+    const stored = getPicks()[pickKey];
+    const icon   = stored?.result === 'win' ? '✓' : stored?.result === 'loss' ? '✗' : '🏀';
+    const cls    = stored?.result === 'win' ? 'nba-pick-win' : stored?.result === 'loss' ? 'nba-pick-loss' : '';
+    return `<div class="nba-player-row ${cls}">
+      <span class="nba-pick-icon">${icon}</span>
+      <span class="nba-player-pos">${esc(scorer.pos || '—')}</span>
+      <span class="nba-player-name">${esc(scorer.shortName || scorer.name)}</span>
+      <span class="nba-player-team">${esc(teamAbbr)}</span>
+      <span class="nba-player-stat">${esc(scorer.value)} PPG</span>
+    </div>`;
+  };
+
+  const awayRow = buildScoreRow(g.awayLeaders || [], g.awayAbbr || g.awayTeam.split(' ').pop());
+  const homeRow = buildScoreRow(g.homeLeaders || [], g.homeAbbr || g.homeTeam.split(' ').pop());
+  const playerSection = (awayRow || homeRow)
+    ? `<div class="nba-players-section"><div class="nba-players-hdr">Top Scorers to Watch</div>${awayRow}${homeRow}</div>`
+    : '';
+
+  const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
+                    : live ? '<span class="live-badge">LIVE</span>'
+                    : `<span class="pc-time">${esc(g.status)}</span>`;
+  const oddsLine = g.odds?.spread
+    ? `<span class="pc-odds">${esc(g.odds.spread)}${g.odds.overUnder ? ` · O/U ${g.odds.overUnder}` : ''}</span>` : '';
+  const recLine = (g.awayRec || g.homeRec)
+    ? `<div class="pc-meta pc-recs">${esc(g.awayTeam)} ${esc(g.awayRec||'?')}  ·  ${esc(g.homeTeam)} ${esc(g.homeRec||'?')}</div>` : '';
+
+  return `<div class="picks-card">
+    <div class="pc-hdr">
+      <span class="pc-teams">${esc(g.awayTeam)} @ ${esc(g.homeTeam)}</span>
+      ${statusLabel}
+    </div>
+    ${recLine}
+    ${favLine || oddsLine ? `<div class="pc-meta">${favLine}${oddsLine ? `<span class="pc-meta-sep">·</span>${oddsLine}` : ''}</div>` : ''}
+    ${playerSection}
+  </div>`;
+}
+
 // ── ALL-SPORTS WIN PREDICTION CARD ───────────────────────────
 function buildWinPredCard(g) {
   const { fin, live } = gameRowState(g);
@@ -2771,8 +2842,9 @@ async function loadOtherPicksPage(sport) {
       area.innerHTML = nav + `<div class="empty-state"><p>No ${sport.toUpperCase()} games on this date.</p>${isNFL ? '<p class="muted">Use the date navigation above to browse the schedule.</p>' : ''}</div>`;
       return;
     }
-    const cards = games.map(g => buildWinPredCard(g)).join('');
-    const note  = off !== 0 ? '' : `<div class="pc-data-note">Win predictions based on season records · ESPN odds where available</div>`;
+    const isNBALeague = ['nba','wnba'].includes(sport);
+    const cards = games.map(g => isNBALeague ? buildNBAPicksCard(g) : buildWinPredCard(g)).join('');
+    const note  = off !== 0 ? '' : `<div class="pc-data-note">${isNBALeague ? 'Win prediction · top scorer picks from ESPN stats' : 'Win predictions based on season records · ESPN odds where available'}</div>`;
     area.innerHTML = nav + note + `<div class="picks-cards">${cards}</div>`;
     updatePicksDisplay();
   } catch (err) {
