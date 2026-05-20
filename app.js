@@ -858,6 +858,9 @@ function buildGroup(g) {
 }
 
 function inlineTennisPick(m) {
+  // Don't generate picks for future-dated matches — record them when their day arrives
+  if (m.event_date && m.event_date > dateStr(0)) return '';
+
   const pickId  = 'tn_' + m.event_key;
   const surface = m.event_surface ? ` (${m.event_surface})` : '';
   const matchup = `${lastName(m.event_first_player||'')} vs ${lastName(m.event_second_player||'')}${surface}`;
@@ -910,7 +913,8 @@ function buildMatchRow(m, idSuffix = '') {
   const key = esc(m.event_key);
   const pid = idSuffix ? `${key}-${idSuffix}` : key;
 
-  const pickHTML = (!live && !finished) ? inlineTennisPick(m) : '';
+  const _pickResult = inlineTennisPick(m); // always call — records pick as side effect (idempotent)
+  const pickHTML    = (!live && !finished) ? _pickResult : ''; // only display for upcoming
   // Resolve stored pick once result is known
   if (finished && m.event_winner) {
     let winnerLN = '';
