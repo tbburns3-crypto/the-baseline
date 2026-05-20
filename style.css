@@ -1649,6 +1649,9 @@ input { font: inherit; }
 .pc-rt  { font-size: .66rem; color: var(--accent-dim); font-weight: 700; background: rgba(0,200,83,.1); border-radius: 3px; padding: 1px 5px; white-space: nowrap; }
 .pc-rs  { font-size: .78rem; color: var(--text-muted); text-align: right; white-space: nowrap; }
 .pc-vs-note  { color: var(--accent); font-size: .72rem; }
+/* Second row of a two-team category pair — dimmed icon/label area */
+.pc-row:has(.pc-ri:empty) { background: rgba(255,255,255,.015); }
+.pc-ri:empty, .pc-rl:empty { display: block; }
 .pc-streak   { font-size: .78rem; margin-left: 3px; }
 
 /* ── PICKS HISTORY MODAL ── */
