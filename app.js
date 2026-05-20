@@ -191,7 +191,20 @@ function showPicksHistory() {
       if (!playerPicks.length) return '<div class="ph-empty">No player picks yet — visit the MLB Picks tab to generate them.</div>';
       const pPend = playerPicks.filter(p => p.result === null);
       const pRes  = playerPicks.filter(p => p.result !== null);
-      let html = '';
+      // Per-category accuracy summary
+      const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃' };
+      const cats = {};
+      for (const p of pRes) {
+        if (!cats[p.prop]) cats[p.prop] = { w:0, l:0 };
+        if (p.result === 'win') cats[p.prop].w++; else cats[p.prop].l++;
+      }
+      const catSummary = Object.entries(cats).length
+        ? `<div class="ph-cat-summary">${Object.entries(cats).map(([prop, r]) => {
+            const tot = r.w + r.l;
+            const pct = Math.round(r.w / tot * 100);
+            return `<span class="ph-cat-chip ph-cat-${pct >= 55 ? 'good' : pct <= 40 ? 'bad' : 'avg'}">${PROP_ICON[prop]||''} ${prop} ${r.w}–${r.l}</span>`;
+          }).join('')}</div>` : '';
+      let html = catSummary;
       if (pPend.length) {
         html += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pPend.length})</div>`;
         html += pPend.map(makePlayerRow).join('');
@@ -272,19 +285,19 @@ function resolvePick(gameId, winnerFull) {
 
 function updatePicksDisplay() {
   const allPicks   = getPicks();
+  const allVals    = Object.values(allPicks);
   const sport      = S.sport;
-  // Include both game picks and player picks for current sport
-  const sportPicks = Object.values(allPicks).filter(p => (p.sport || 'tennis') === sport);
-  const pending    = sportPicks.filter(p => p.result === null);
-  const resolved   = sportPicks.filter(p => p.result !== null);
-  const wins       = resolved.filter(p => p.result === 'win').length;
-  const losses     = resolved.length - wins;
-  const pct        = resolved.length ? Math.round((wins / resolved.length) * 100) : 0;
+  const sportPicks = allVals.filter(p => (p.sport || 'tennis') === sport);
+  const sportPend  = sportPicks.filter(p => p.result === null);
+  const sportRes   = sportPicks.filter(p => p.result !== null);
+  const wins       = sportRes.filter(p => p.result === 'win').length;
+  const losses     = sportRes.length - wins;
+  const pct        = sportRes.length ? Math.round((wins / sportRes.length) * 100) : 0;
 
-  // Small topbar badge (only when resolved picks exist)
+  // Small topbar badge — sport-specific resolved picks
   const badge = document.getElementById('picks-accuracy');
   if (badge) {
-    if (!resolved.length) { badge.textContent = ''; badge.classList.remove('has-picks'); }
+    if (!sportRes.length) { badge.textContent = ''; badge.classList.remove('has-picks'); }
     else {
       badge.textContent = `${wins}W-${losses}L (${pct}%)`;
       badge.title = `${wins} correct, ${losses} wrong`;
@@ -292,20 +305,22 @@ function updatePicksDisplay() {
     }
   }
 
-  // Prominent banner — show whenever any sport picks exist
+  // Banner — show whenever ANY picks exist in the system (any sport)
   const banner = document.getElementById('picks-banner');
   const pbWins = document.getElementById('pb-wins');
   const pbLoss = document.getElementById('pb-losses');
   const pbPct  = document.getElementById('pb-pct');
   if (banner && pbWins && pbLoss && pbPct) {
-    if (!sportPicks.length) {
+    if (!allVals.length) {
       banner.style.display = 'none';
     } else {
       pbWins.textContent = wins;
       pbLoss.textContent = losses;
-      pbPct.textContent  = resolved.length ? `(${pct}%)` : `${pending.length} active`;
+      if (sportRes.length)       pbPct.textContent = `(${pct}%)`;
+      else if (sportPend.length) pbPct.textContent = `${sportPend.length} active`;
+      else                       pbPct.textContent = 'tap for history';
       banner.style.display = '';
-      banner.className = resolved.length && pct >= 55 ? 'pb-hot' : resolved.length && pct <= 40 ? 'pb-cold' : '';
+      banner.className = sportRes.length && pct >= 55 ? 'pb-hot' : sportRes.length && pct <= 40 ? 'pb-cold' : '';
     }
   }
 }
@@ -2318,6 +2333,17 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   ].filter(Boolean) : [];
   const wxLine = wxParts.length ? `<div class="pc-wx">${wxParts.map(s => esc(s)).join(' · ')}</div>` : '';
 
+  // ── Elite pitcher warning ──
+  const _pitWarn = (pd, rates, facingAbbr) => {
+    const era = parseFloat(pd?.season?.era || 99);
+    if (era < 3.10 && rates.k9 > 9.0) return `⚠️ ${esc(lastName(pd?.name||''))} ${era.toFixed(2)} ERA · ${rates.k9.toFixed(1)} K/9 — tough day for ${esc(facingAbbr)} bats`;
+    return '';
+  };
+  const warnAway = _pitWarn(awayPD, awayRates, homeAbbr); // home batters face away pitcher
+  const warnHome = _pitWarn(homePD, homeRates, awayAbbr); // away batters face home pitcher
+  const pitWarnLine = (warnAway || warnHome)
+    ? `<div class="pc-pit-warn">${[warnAway, warnHome].filter(Boolean).join('<br>')}</div>` : '';
+
   // ── Build batter objects ──
   const awayLineup = mlbGame.lineups?.awayPlayers || [];
   const homeLineup = mlbGame.lineups?.homePlayers || [];
@@ -2355,10 +2381,16 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const bbScore  = bbPct   * pitRates.bb9 * 100;
     const sbScore  = sb * 10 + sbSucc * 50;
     const hScore   = platAvg * 600 + (ab > 0 ? h / ab : 0) * 400;
+    // Confidence: 0–3 based on platoon avg quality, streak, sample size
+    const conf = Math.min(3,
+      (platAvg >= 0.310 ? 2 : platAvg >= 0.270 ? 1 : 0) +
+      (streak === '🔥' ? 1 : 0) +
+      (ab >= 150 ? 1 : 0)
+    );
     return {
       id: p.id, name: p.fullName, abbr: teamAbbr, pos,
       batSide, oppPitcherId, oppHand, hand, avg, platAvg, vsL, vsR,
-      hr, rbi, h, bb, sb, cs, sbSucc, ab, ops, obp, pitRates, l30avg, streak,
+      hr, rbi, h, bb, sb, cs, sbSucc, ab, ops, obp, pitRates, l30avg, streak, conf,
       hitScore, hrScore, rbiScore, bbScore, sbScore, hScore,
     };
   };
@@ -2396,12 +2428,14 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       ? `<span class="pc-vs-note"> · ${vs.hits||0}/${vs.atBats||0} career</span>`
       : '';
     const streakBadge = batter.streak ? `<span class="pc-streak">${batter.streak}</span>` : '';
+    const conf = batter.conf || 0;
+    const confDots = conf > 0 ? `<span class="pc-conf pc-conf-${conf}" title="Confidence: ${['','Low','Medium','High'][conf]}">${'●'.repeat(conf)}${'○'.repeat(3-conf)}</span>` : '';
     return `<div class="pc-row">
       <span class="pc-ri">${icon}</span>
       <span class="pc-rl">${esc(label)}</span>
       <strong class="pc-rn">${esc(lastName(batter.name))}${streakBadge}</strong>
       <span class="pc-rt">${esc(batter.abbr)}</span>
-      <span class="pc-rs">${esc(keyStat)}${vsNote}</span>
+      <span class="pc-rs">${confDots}${esc(keyStat)}${vsNote}</span>
     </div>`;
   };
 
@@ -2469,6 +2503,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     ${favLine ? `<div class="pc-meta">${favLine}</div>` : ''}
     ${pitcherLine}
     ${wxLine}
+    ${pitWarnLine}
     ${picksHTML}
   </div>`;
 }
