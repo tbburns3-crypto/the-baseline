@@ -76,11 +76,47 @@ const _PICKS_KEY = 'baselinePicks';
 function getPicks()     { try { return JSON.parse(localStorage.getItem(_PICKS_KEY) || '{}'); } catch { return {}; } }
 function savePicks(obj) { try { localStorage.setItem(_PICKS_KEY, JSON.stringify(obj)); } catch {} }
 
-function recordPick(gameId, pickedTeam) {
+function recordPick(gameId, pickedTeam, matchup = '') {
   const picks = getPicks();
-  if (picks[gameId]) return; // already recorded
-  picks[gameId] = { team: pickedTeam, date: new Date().toISOString().slice(0,10), result: null };
+  if (picks[gameId]) return;
+  picks[gameId] = { team: pickedTeam, date: new Date().toISOString().slice(0,10), result: null, matchup };
   savePicks(picks);
+}
+
+function showPicksHistory() {
+  document.getElementById('picks-history-modal')?.remove();
+  const picks   = getPicks();
+  const entries = Object.entries(picks)
+    .filter(([, p]) => p.result !== null)
+    .sort((a, b) => (b[1].date || '').localeCompare(a[1].date || ''));
+  const pending = Object.values(picks).filter(p => p.result === null).length;
+
+  const rows = entries.map(([, p]) => {
+    const win      = p.result === 'win';
+    const sport    = typeof p.matchup === 'string' && p.matchup.includes('vs') ? '🎾' : '⚾';
+    const display  = p.matchup || p.team;
+    return `<div class="ph-row ${win ? 'ph-win' : 'ph-loss'}">
+      <span class="ph-icon">${win ? '✓' : '✗'}</span>
+      <span class="ph-date">${esc(p.date)}</span>
+      <span class="ph-matchup">${esc(display)}</span>
+      <span class="ph-pick">→ ${esc(p.team)}</span>
+    </div>`;
+  });
+
+  const modal = document.createElement('div');
+  modal.id = 'picks-history-modal';
+  modal.className = 'ph-modal';
+  modal.innerHTML = `<div class="ph-panel">
+    <div class="ph-hdr">
+      <span class="ph-title">Pick History</span>
+      <span class="ph-sub">last 14 days</span>
+      <button class="ph-close" onclick="document.getElementById('picks-history-modal').remove()">✕</button>
+    </div>
+    ${rows.length ? `<div class="ph-list">${rows.join('')}</div>` : '<div class="ph-empty">No resolved picks yet — results come in after games finish.</div>'}
+    ${pending ? `<div class="ph-pending">${pending} pick${pending > 1 ? 's' : ''} still pending</div>` : ''}
+  </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
 }
 
 function resolvePick(gameId, winnerFull) {
@@ -2052,42 +2088,33 @@ const PARK_HIT = { COL:1.15, BOS:1.05, TEX:1.04, CIN:1.03, CHC:1.02, MIL:1.01, N
 async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const { fin, live } = gameRowState(espnGame);
 
-  // ── Win pick ──
+  // ── Win prediction (folded into header) ──
   const awayWP = parseWinPct(espnGame.awayRec), homeWP = parseWinPct(espnGame.homeRec);
-  let winPickHTML = '<div class="pc-win-pick pc-no-data">Win pick loading...</div>';
+  let favLine = '';
   if (espnGame.awayRec || espnGame.homeRec) {
     const rawHome = homeWP * 1.03, total = awayWP + rawHome;
     const homePct = Math.round((rawHome / total) * 100);
     const favTeam = homePct >= 50 ? espnGame.homeTeam : espnGame.awayTeam;
-    const pct = Math.max(homePct, 100 - homePct);
-    const margin = Math.abs(homePct - 50);
-    if (!fin && margin >= 3) recordPick(String(espnGame.id), favTeam.split(' ').pop());
-    const cls = margin < 3 ? 'pc-conf-low' : pct >= 63 ? 'pc-conf-high' : 'pc-conf-med';
-    const lbl = margin < 3 ? 'Even matchup - too close to pick' : `→ ${esc(favTeam)} ${pct}% win probability`;
-    winPickHTML = `<div class="pc-win-pick ${cls}">
-      <span class="pc-win-label">${lbl}</span>
-      <span class="pc-pick-basis">Records: ${esc(espnGame.awayTeam)} ${esc(espnGame.awayRec || '?')} | ${esc(espnGame.homeTeam)} ${esc(espnGame.homeRec || '?')}</span>
-    </div>`;
+    const pct     = Math.max(homePct, 100 - homePct);
+    const margin  = Math.abs(homePct - 50);
+    const matchup = `${espnGame.awayTeam} @ ${espnGame.homeTeam}`;
+    if (!fin && margin >= 3) recordPick(String(espnGame.id), favTeam.split(' ').pop(), matchup);
+    favLine = margin >= 3
+      ? `<span class="pc-fav">${esc(favTeam.split(' ').pop())} favored ${pct}%</span>`
+      : `<span class="pc-fav pc-fav-even">Even matchup</span>`;
   }
 
   const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
                     : live ? '<span class="live-badge">LIVE</span>'
                     : `<span class="pc-time">${esc(espnGame.status)}</span>`;
 
-  // ── Header ──
-  const header = `<div class="pc-header">
-    <div class="pc-matchup">
-      <span class="pc-away">${esc(espnGame.awayTeam)}</span>${espnGame.awayRec ? ` <span class="rec-tag">${esc(espnGame.awayRec)}</span>` : ''}
-      <span class="pc-at">@</span>
-      <span class="pc-home">${esc(espnGame.homeTeam)}</span>${espnGame.homeRec ? ` <span class="rec-tag">${esc(espnGame.homeRec)}</span>` : ''}
-      ${espnGame.series?.summary ? `<span class="series-tag">${esc(espnGame.series.summary)}</span>` : ''}
-    </div>
-    <div class="pc-status">${statusLabel}</div>
-  </div>`;
-
-  // If no MLB schedule data, return just win pick
+  // If no MLB schedule data, show minimal card
   if (!mlbGame) {
-    return `<div class="picks-card">${header}${winPickHTML}<div class="pc-no-data" style="font-size:.78rem;padding:6px 0">Detailed matchup data not available yet</div></div>`;
+    return `<div class="picks-card">
+      <div class="pc-hdr"><span class="pc-teams">${esc(espnGame.awayTeam)} @ ${esc(espnGame.homeTeam)}</span>${statusLabel}</div>
+      ${favLine ? `<div class="pc-meta">${favLine}</div>` : ''}
+      <div class="pc-no-data">Lineup not posted yet</div>
+    </div>`;
   }
 
   const away = mlbGame.teams.away, home = mlbGame.teams.home;
@@ -2122,32 +2149,20 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const parkHit   = PARK_HIT[homeAbbr] || 1.0;
   const windMult  = wind.bonus >= 2 ? 1.16 : wind.bonus === 1 ? 1.08 : wind.bonus <= -2 ? 0.85 : wind.bonus === -1 ? 0.93 : 1.0;
 
-  // ── Pitcher matchup summary ──
-  const pitcherSlot = (name, pd, hand, abbr) => {
-    const s = pd?.season;
-    const handStr = hand ? `${hand}HP` : '';
-    const era = s?.era ? `ERA ${s.era}` : '';
-    const whip = s?.whip ? `WHIP ${s.whip}` : '';
-    const k = s?.strikeOuts ? `${s.strikeOuts}K` : '';
-    const rec = s ? `${s.wins??0}-${s.losses??0}` : '';
-    const stats = [era, whip, k, rec].filter(Boolean).join(' · ');
-    return `<div class="pc-pitcher-slot"><span class="pc-pit-abbr">${esc(abbr)}</span><span class="pc-pit-hand">${esc(handStr)}</span><span class="pc-pit-name">${esc(lastName(name))}</span>${stats ? `<span class="pc-pit-stats">${esc(stats)}</span>` : ''}</div>`;
+  // ── Compact pitcher line ──
+  const pitStr = (name, pd, hand) => {
+    const era = pd?.season?.era ? ` · ${pd.season.era} ERA` : '';
+    return `${esc(lastName(name))} (${hand||'?'}HP${esc(era)})`;
   };
+  const pitcherLine = `<div class="pc-pit-line">${pitStr(awayPName, awayPD, awayHand)} <span class="pc-pit-sep">vs</span> ${pitStr(homePName, homePD, homeHand)}</div>`;
 
-  const pitcherRow = `<div class="pc-pitchers">
-    ${pitcherSlot(awayPName, awayPD, awayHand, awayAbbr)}
-    <span class="pc-pit-vs">vs</span>
-    ${pitcherSlot(homePName, homePD, homeHand, homeAbbr)}
-  </div>`;
-
-  // ── Weather ──
-  const weatherHTML = weather
-    ? `<div class="pc-weather">
-        ${weather.condition ? `<span>${esc(weather.condition)}</span>` : ''}
-        ${weather.temp ? `<span>${esc(weather.temp)}°F</span>` : ''}
-        ${weather.wind ? `<span class="${wind.bonus > 0 ? 'pc-wind-out' : wind.bonus < 0 ? 'pc-wind-in' : ''}">${esc(weather.wind)}</span>` : ''}
-      </div>`
-    : '';
+  // ── Compact weather ──
+  const wxParts = weather ? [
+    weather.condition,
+    weather.temp ? `${weather.temp}°F` : '',
+    weather.wind ? `${weather.wind}${wind.bonus > 0 ? ' ↑HR' : wind.bonus < 0 ? ' ↓HR' : ''}` : ''
+  ].filter(Boolean) : [];
+  const wxLine = wxParts.length ? `<div class="pc-wx">${wxParts.map(s => esc(s)).join(' · ')}</div>` : '';
 
   // ── Build batter objects ──
   const awayLineup = mlbGame.lineups?.awayPlayers || [];
@@ -2215,74 +2230,56 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     }
   }
 
-  // ── Pick row builder ──
-  const pickRow = (icon, label, batter, statLine, reasons) => {
+  // ── Simplified pick row (one line each) ──
+  const pickRow = (icon, label, batter, keyStat) => {
     if (!batter) return '';
-    const vs = vsMap.get(batter.id);
-    const vsStr = vs && parseInt(vs.atBats || 0) >= 3
-      ? ` · Career vs pitcher: ${vs.hits||0}/${vs.atBats||0} (${_fmtAvg(vs.avg) || '-'})${parseInt(vs.homeRuns||0) ? ` ${vs.homeRuns}HR` : ''}`
+    const vs     = vsMap.get(batter.id);
+    const vsNote = vs && parseInt(vs.atBats || 0) >= 3
+      ? `<span class="pc-vs-note"> · ${vs.hits||0}/${vs.atBats||0} career</span>`
       : '';
-    return `<div class="pc-pick-row">
-      <span class="pc-pi">${icon}</span>
-      <div class="pc-pick-detail">
-        <div class="pc-pick-name"><span class="pc-pn-abbr">${esc(batter.abbr)}</span> <strong>${esc(lastName(batter.name))}</strong> <span class="pc-pn-stat">${esc(statLine)}</span></div>
-        <div class="pc-pick-reasons">${esc(reasons)}${vsStr ? `<span class="pc-vs-career">${esc(vsStr)}</span>` : ''}</div>
-      </div>
+    return `<div class="pc-row">
+      <span class="pc-ri">${icon}</span>
+      <span class="pc-rl">${esc(label)}</span>
+      <strong class="pc-rn">${esc(lastName(batter.name))}</strong>
+      <span class="pc-rt">${esc(batter.abbr)}</span>
+      <span class="pc-rs">${esc(keyStat)}${vsNote}</span>
     </div>`;
   };
 
   let picksHTML = '';
   if (hasLineup) {
-    const best = (arr, key) => [...arr].sort((a,b) => b[key] - a[key])[0];
+    const best   = (arr, key) => [...arr].sort((a, b) => b[key] - a[key])[0];
+    const topHit = best(allBatters, 'hitScore');
+    const topHR  = best(allBatters, 'hrScore');
+    const topRBI = best(allBatters, 'rbiScore');
+    const topBB  = best(allBatters, 'bbScore');
+    const topSB  = allBatters.filter(b => b.sb >= 3).sort((a, b) => b.sbScore - a.sbScore)[0];
 
-    const topHit  = best(allBatters, 'hitScore');
-    const topHR   = best(allBatters, 'hrScore');
-    const topRBI  = best(allBatters, 'rbiScore');
-    const topBB   = best(allBatters, 'bbScore');
-    const topSB   = allBatters.filter(b => b.sb > 0).sort((a,b) => b.sbScore - a.sbScore)[0];
-    const topHits = best(allBatters, 'hScore');
+    const avg_  = b => _fmtAvg(b?.platAvg || b?.avg) || '-';
+    const hitSt = `${avg_(topHit)} vs ${topHit?.oppHand||'?'}HP`;
+    const hrSt  = `${topHR?.hr||0} HR · ${avg_(topHR)} vs ${topHR?.oppHand||'?'}HP`;
+    const rbiSt = `${topRBI?.rbi||0} RBI · #${topRBI?.pos}`;
+    const bbSt  = `${topBB?.bb||0} BB · ${topBB?.obp||'-'} OBP`;
 
-    const reasonsFor = b => {
-      const parts = [];
-      if (b.hand.label) parts.push(b.hand.label);
-      // Show platoon split when it differs meaningfully from season AVG
-      if (b.platAvg && b.avg && Math.abs(b.platAvg - b.avg) >= 0.018)
-        parts.push(`vs${b.oppHand||'?'}HP: ${_fmtAvg(b.platAvg) || '—'}`);
-      if (b.pitRates?.hr9 >= 1.5) parts.push(`opp HR/9: ${b.pitRates.hr9.toFixed(1)}`);
-      if (b.pitRates?.bb9 >= 3.5) parts.push(`opp BB/9: ${b.pitRates.bb9.toFixed(1)}`);
-      if (b.ops >= 0.900) parts.push(`${b.ops} OPS`);
-      if (b.obp >= 0.360) parts.push(`${b.obp} OBP`);
-      if (b.pos <= 4) parts.push(`#${b.pos} in lineup`);
-      if (parkHR !== 1.0) {
-        const pf = parkHR > 1 ? `park HR+${Math.round((parkHR-1)*100)}%` : `park HR${Math.round((parkHR-1)*100)}%`;
-        parts.push(pf);
-      }
-      if (wind.label && wind.bonus !== 0) parts.push(`wind: ${wind.label}`);
-      if (weather?.temp && parseInt(weather.temp) >= 80) parts.push('warm weather');
-      return parts.join(' · ') || 'season stats';
-    };
-
-    const platLine = b => b.platAvg && b.avg && Math.abs(b.platAvg - b.avg) >= 0.010
-      ? `${_fmtAvg(b.platAvg) || '-'} vs${b.oppHand||'?'}HP`
-      : `${_fmtAvg(b.avg) || '-'} AVG`;
-
-    picksHTML = `<div class="pc-picks-list">
-      ${pickRow('🎯', 'Best Hit',   topHit,  `${platLine(topHit)} · #${topHit?.pos} lineup`,                reasonsFor(topHit))}
-      ${topHR ? pickRow('💣', 'Best HR', topHR, `${topHR.hr} HR · ${_fmtAvg(topHR.platAvg||topHR.avg)||'-'} vs${topHR.oppHand||'?'}HP · ${topHR.ops||'-'} OPS`, reasonsFor(topHR)) : ''}
-      ${pickRow('🏏', 'Most Hits',  topHits, `${topHits?.h} H · ${platLine(topHits)}`,                      reasonsFor(topHits))}
-      ${pickRow('⚡', 'Best RBI',   topRBI,  `${topRBI?.rbi} RBI · #${topRBI?.pos} lineup`,                 reasonsFor(topRBI))}
-      ${pickRow('🚶', 'Best Walk',  topBB,   `${topBB?.bb} BB · ${topBB?.obp || '-'} OBP`,                  reasonsFor(topBB))}
-      ${topSB ? pickRow('🏃', 'Best SB', topSB, `${topSB.sb} SB${topSB.cs ? `/${topSB.sb+topSB.cs} att (${Math.round(topSB.sbSucc*100)}%)` : ''}`, reasonsFor(topSB)) : ''}
+    picksHTML = `<div class="pc-picks">
+      ${pickRow('🎯', 'Hit',  topHit, hitSt)}
+      ${topHR  ? pickRow('💣', 'HR',   topHR,  hrSt)  : ''}
+      ${pickRow('⚡', 'RBI',  topRBI, rbiSt)}
+      ${pickRow('🚶', 'Walk', topBB,  bbSt)}
+      ${topSB  ? pickRow('🏃', 'SB',  topSB,  `${topSB.sb} SB`) : ''}
     </div>`;
   } else {
-    picksHTML = '<div class="pc-no-data">Lineup not posted yet - check back closer to game time</div>';
+    picksHTML = '<div class="pc-no-data">Lineup not posted yet</div>';
   }
 
   return `<div class="picks-card">
-    ${header}
-    ${winPickHTML}
-    ${pitcherRow}
-    ${weatherHTML}
+    <div class="pc-hdr">
+      <span class="pc-teams">${esc(espnGame.awayTeam)} @ ${esc(espnGame.homeTeam)}</span>
+      ${statusLabel}
+    </div>
+    ${favLine ? `<div class="pc-meta">${favLine}</div>` : ''}
+    ${pitcherLine}
+    ${wxLine}
     ${picksHTML}
   </div>`;
 }
