@@ -1538,6 +1538,66 @@ input { font: inherit; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── PICKS ACCURACY BANNER ── */
+#picks-banner {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(0,230,118,.08); border: 1px solid rgba(0,230,118,.2);
+  border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px;
+  font-size: .95rem;
+}
+#picks-banner.pb-hot  { background: rgba(0,230,118,.14); border-color: rgba(0,230,118,.4); }
+#picks-banner.pb-cold { background: rgba(244,67,54,.08);  border-color: rgba(244,67,54,.2); }
+.pb-label  { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); font-weight: 700; }
+.pb-record { display: flex; align-items: baseline; gap: 5px; font-weight: 800; font-size: 1.15rem; }
+.pb-wins   { color: var(--accent); }
+.pb-losses { color: #ef5350; }
+.pb-wl     { font-size: .75rem; font-weight: 600; color: var(--text-muted); margin-left: 1px; }
+.pb-dash   { color: var(--border); }
+.pb-pct    { font-size: .9rem; color: var(--text-2); font-weight: 600; }
+.pb-note   { font-size: .7rem; color: var(--text-muted); margin-left: auto; }
+
+/* ── MLB PICKS PAGE ── */
+.picks-note  { font-size: .82rem; color: var(--text-muted); padding: 10px 4px; }
+.picks-cards { display: flex; flex-direction: column; gap: 12px; }
+.picks-card  {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+  transition: border-color var(--transition);
+}
+.picks-card:hover { border-color: var(--accent-dim); cursor: pointer; }
+.pc-header  { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.pc-matchup { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: .9rem; font-weight: 600; }
+.pc-away    { color: var(--text); }
+.pc-home    { color: var(--text); }
+.pc-at      { color: var(--text-muted); font-size: .8rem; }
+.pc-status  { flex-shrink: 0; }
+.pc-time    { font-size: .78rem; color: var(--text-muted); }
+.pc-win-pick {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;
+  font-size: .88rem;
+}
+.pc-conf-high { background: rgba(0,230,118,.15); border: 1px solid rgba(0,230,118,.35); }
+.pc-conf-med  { background: rgba(0,230,118,.08); border: 1px solid rgba(0,230,118,.2); }
+.pc-conf-low  { background: rgba(255,255,255,.04); border: 1px solid var(--border); }
+.pc-no-data   { background: transparent; border: none; color: var(--text-muted); font-style: italic; font-size: .8rem; padding: 4px 0; }
+.pc-pick-arrow { color: var(--accent); font-weight: 900; font-size: 1rem; }
+.pc-pick-team  { font-weight: 800; font-size: .95rem; color: var(--text); }
+.pc-pick-pct   { font-weight: 700; color: var(--accent); font-size: .88rem; }
+.pc-pick-basis { font-size: .72rem; color: var(--text-muted); margin-left: auto; }
+.pc-team-rows  { display: flex; flex-direction: column; gap: 8px; }
+.pc-team-stats { }
+.pc-team-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); font-weight: 700; margin-bottom: 5px; }
+.pc-stat-row   { display: flex; flex-wrap: wrap; gap: 6px; }
+.pc-stat-chip  {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: .78rem;
+}
+.pc-si { font-size: .85rem; }
+.pc-sv { font-weight: 700; color: var(--text); }
+.pc-sl { color: var(--text-muted); font-size: .72rem; }
+
 /* ── INLINE GAME PICKS & RECORD TAGS ── */
 .game-pick-inline {
   font-size: .72rem; font-weight: 700; color: var(--accent);
