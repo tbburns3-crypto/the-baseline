@@ -65,6 +65,11 @@ function toggleFav(type, id, label) {
   if (S.view === 'favorites') renderFavoritesView();
 }
 
+function toggleFavBtn(btn) {
+  const [type, id] = btn.dataset.favId.split(':');
+  toggleFav(type, id, btn.dataset.favLabel || '');
+}
+
 function renderFavoritesView() {
   const panel = document.getElementById('view-favorites');
   if (!panel) return;
@@ -242,7 +247,7 @@ async function loadFixtures(offset = 0) {
   try {
     const d = dateStr(offset);
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
-    for (const m of results) S.matches.set(m.event_key, m);
+    for (const m of results) S.matches.set(String(m.event_key), m);
     renderMatches(results);
     renderOverview(results);
     renderSidebar(results);
@@ -256,7 +261,7 @@ async function loadLivescores() {
   try {
     const results = await tennisFetch('get_livescore');
     for (const m of results) {
-      S.matches.set(m.event_key, m);
+      S.matches.set(String(m.event_key), m);
       patchRow(m);
     }
     setConn('connected', `Polling — ${results.length} live match${results.length !== 1 ? 'es' : ''}`);
@@ -354,7 +359,6 @@ function wsDisconnect() {
 // ── TENNIS RENDERING ─────────────────────────────────────────
 function renderMatches(all) {
   const area = document.getElementById('matches-area');
-  try {
   const filtered = all.filter(m => filterPasses(m));
 
   if (!filtered.length) {
@@ -428,9 +432,6 @@ function renderMatches(all) {
   }
 
   area.innerHTML = html;
-  } catch(renderErr) {
-    area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Render error: ${renderErr.message}</p><pre style="font-size:.7rem;color:var(--text-muted);white-space:pre-wrap">${renderErr.stack||''}</pre></div>`;
-  }
 }
 
 function buildGroup(g) {
@@ -503,9 +504,8 @@ function buildMatchRow(m, idSuffix = '') {
 
   const pickHTML = (!live && !finished) ? inlineTennisPick(m) : '';
   const favOn = isFav('match', m.event_key);
-  const p1safe = (m.event_first_player||'').replace(/'/g,"\\'");
-  const p2safe = (m.event_second_player||'').replace(/'/g,"\\'");
-  const starBtn = `<button class="star-btn${favOn?' fav-on':''}" data-fav-id="match:${key}" title="${favOn?'Remove from favorites':'Add to favorites'}" onclick="event.stopPropagation();toggleFav('match','${key}','${p1safe} vs ${p2safe}')">★</button>`;
+  const favLabel = esc((m.event_first_player||'') + ' vs ' + (m.event_second_player||''));
+  const starBtn = `<button class="star-btn${favOn?' fav-on':''}" data-fav-id="match:${key}" data-fav-label="${favLabel}" title="${favOn?'Remove from favorites':'Add to favorites'}" onclick="event.stopPropagation();toggleFavBtn(this)">★</button>`;
 
   const detailPanel = `
     <div class="match-detail" id="md-${pid}" style="display:none">
@@ -3286,7 +3286,7 @@ function toggleDetail(panelId, dataKey) {
   if (!showing && !_detailLoaded.has(panelId)) {
     _detailLoaded.add(panelId);
     const container = document.getElementById(`di-${panelId}`);
-    const m = S.matches.get(dataKey || panelId);
+    const m = S.matches.get(String(dataKey || panelId));
     if (container && m) loadTennisMatchDetail(dataKey || panelId, container, m);
   }
 }
