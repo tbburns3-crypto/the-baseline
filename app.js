@@ -676,6 +676,31 @@ async function loadRankings() {
   }
 }
 
+// Background-only rank load — no UI, just fills S.rankIndex then re-runs picks for cached matches.
+// Called on tennis tab open so ranking-based picks generate without waiting for the user to visit Rankings.
+async function preloadRankIndex() {
+  if (S.rankIndex.size > 0) return;
+  try {
+    const [atpR, wtaR] = await Promise.allSettled([
+      tennisFetch('get_standings', { event_type: 'ATP' }),
+      tennisFetch('get_standings', { event_type: 'WTA' })
+    ]);
+    const atp = atpR.status === 'fulfilled' ? atpR.value : [];
+    const wta = wtaR.status === 'fulfilled' ? wtaR.value : [];
+    S.rankIndex.clear();
+    for (const p of [...atp, ...wta]) {
+      if (p.player_key) S.rankIndex.set(String(p.player_key), {
+        rank:   p.place ?? p.standing_place ?? p.ranking ?? 999,
+        points: p.points ?? p.standing_points ?? 0,
+        league: atp.includes(p) ? 'ATP' : 'WTA'
+      });
+    }
+    // Re-run pick generation for all already-cached matches now that rankings are available
+    for (const m of S.matches.values()) inlineTennisPick(m);
+    updatePicksDisplay();
+  } catch { /* silent — rankings are best-effort for pick generation */ }
+}
+
 // ── WEBSOCKET ────────────────────────────────────────────────
 function wsConnect() {
   if (S.ws) { S.ws.onclose = null; S.ws.close(); S.ws = null; }
@@ -1702,6 +1727,7 @@ function switchSport(sport) {
   if (isTennis) {
     wsDisconnect(); wsConnect();
     loadFixtures(S.dateOffset);
+    preloadRankIndex(); // fire-and-forget: fills S.rankIndex and re-runs picks once ready
   } else {
     wsDisconnect();
     setConn('disconnected', `${sport.toUpperCase()} - updating every 30s`);
@@ -2611,29 +2637,26 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
 // ── TENNIS PICKS PAGE ────────────────────────────────────────
 async function loadTennisPicksPage() {
   const area = document.getElementById('mlb-picks-area');
+  area.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Loading picks…</p></div>`;
+
+  // Always fetch — records new picks AND resolves finished matches from any prior session
+  try {
+    const d = dateStr(S.dateOffset);
+    const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
+    for (const m of results) {
+      S.matches.set(String(m.event_key), m);
+      inlineTennisPick(m); // always — records pick (idempotent) for all matches inc. finished
+      if (isFinished(m.event_status) && m.event_winner) {
+        let wln = '';
+        if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player || '');
+        else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
+        else                                          wln = lastName(m.event_winner);
+        if (wln) resolvePick('tn_' + m.event_key, wln);
+      }
+    }
+  } catch {}
 
   let tennisPicks = Object.values(getPicks()).filter(p => (p.sport || 'tennis') === 'tennis');
-
-  if (!tennisPicks.length) {
-    // Fetch today's fixtures in background — inlineTennisPick records picks as a side effect
-    area.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Loading picks…</p></div>`;
-    try {
-      const d = dateStr(S.dateOffset);
-      const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
-      for (const m of results) {
-        S.matches.set(String(m.event_key), m);
-        if (!isLive(m.event_status) && !isFinished(m.event_status)) inlineTennisPick(m);
-        else if (isFinished(m.event_status) && m.event_winner) {
-          let wln = '';
-          if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player || '');
-          else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
-          else                                          wln = lastName(m.event_winner);
-          if (wln) resolvePick('tn_' + m.event_key, wln);
-        }
-      }
-    } catch {}
-    tennisPicks = Object.values(getPicks()).filter(p => (p.sport || 'tennis') === 'tennis');
-  }
 
   if (!tennisPicks.length) {
     area.innerHTML = '<div class="empty-state">No picks available today.<div class="muted">Picks are generated for upcoming matches with seeded or ranked players.</div></div>';
