@@ -57,6 +57,16 @@ function dateStr(offset = 0) {
 
 const CURRENT_SEASON = new Date().getFullYear();
 
+const _SUFFIXES = new Set(['jr','jr.','sr','sr.','ii','iii','iv']);
+function lastName(fullName) {
+  if (!fullName) return '—';
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  const last = parts[parts.length - 1].toLowerCase();
+  if (_SUFFIXES.has(last) && parts.length > 2) return parts[parts.length - 2];
+  return parts[parts.length - 1];
+}
+
 function fmtDateShort(iso) {
   const d = new Date(iso + 'T12:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -1512,7 +1522,7 @@ async function renderMLBGamePreview(espnGame, panel) {
       <div class="gp-player-row">
         ${posTag(b.pos)}
         ${handTag(b.batSide, b.favorable, b.team === awayAbbr ? homeHand : awayHand)}
-        <span class="gp-pname">${esc(b.name.split(' ').slice(-1)[0])}</span>
+        <span class="gp-pname">${esc(lastName(b.name))}</span>
         <span class="gp-team">${esc(b.team)}</span>
         <span class="gp-stats">
           <span class="gp-hr-val">${b.hr}HR</span>
@@ -1525,7 +1535,7 @@ async function renderMLBGamePreview(espnGame, panel) {
       <div class="gp-player-row">
         ${posTag(b.pos)}
         ${handTag(b.batSide, b.favorable, b.team === awayAbbr ? homeHand : awayHand)}
-        <span class="gp-pname">${esc(b.name.split(' ').slice(-1)[0])}</span>
+        <span class="gp-pname">${esc(lastName(b.name))}</span>
         <span class="gp-team">${esc(b.team)}</span>
         <span class="gp-stats">
           <span class="gp-h-val">${b.h}H</span>
@@ -1538,7 +1548,7 @@ async function renderMLBGamePreview(espnGame, panel) {
       <div class="gp-player-row">
         ${posTag(b.pos)}
         ${handTag(b.batSide, b.favorable, b.team === awayAbbr ? homeHand : awayHand)}
-        <span class="gp-pname">${esc(b.name.split(' ').slice(-1)[0])}</span>
+        <span class="gp-pname">${esc(lastName(b.name))}</span>
         <span class="gp-team">${esc(b.team)}</span>
         <span class="gp-stats">
           <span class="gp-avg-val">${b.stat.avg}</span>
@@ -1552,7 +1562,7 @@ async function renderMLBGamePreview(espnGame, panel) {
       <div class="gp-player-row">
         ${posTag(b.pos)}
         ${handTag(b.batSide, b.favorable, b.team === awayAbbr ? homeHand : awayHand)}
-        <span class="gp-pname">${esc(b.name.split(' ').slice(-1)[0])}</span>
+        <span class="gp-pname">${esc(lastName(b.name))}</span>
         <span class="gp-team">${esc(b.team)}</span>
         <span class="gp-stats">
           <span class="gp-avg-val">${b.stat.avg}</span>
