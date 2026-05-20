@@ -191,15 +191,16 @@ function resolvePick(gameId, winnerFull) {
 }
 
 function updatePicksDisplay() {
-  const allPicks = getPicks();
-  const sport    = S.sport;
-  // Only count picks for the current sport
-  const resolved = Object.values(allPicks).filter(p => p.result !== null && (p.sport || 'tennis') === sport);
-  const wins     = resolved.filter(p => p.result === 'win').length;
-  const losses   = resolved.length - wins;
-  const pct      = resolved.length ? Math.round((wins / resolved.length) * 100) : 0;
+  const allPicks   = getPicks();
+  const sport      = S.sport;
+  const sportPicks = Object.values(allPicks).filter(p => (p.sport || 'tennis') === sport);
+  const pending    = sportPicks.filter(p => p.result === null);
+  const resolved   = sportPicks.filter(p => p.result !== null);
+  const wins       = resolved.filter(p => p.result === 'win').length;
+  const losses     = resolved.length - wins;
+  const pct        = resolved.length ? Math.round((wins / resolved.length) * 100) : 0;
 
-  // Small topbar badge
+  // Small topbar badge (only when resolved picks exist)
   const badge = document.getElementById('picks-accuracy');
   if (badge) {
     if (!resolved.length) { badge.textContent = ''; badge.classList.remove('has-picks'); }
@@ -210,20 +211,20 @@ function updatePicksDisplay() {
     }
   }
 
-  // Prominent banner
+  // Prominent banner — show whenever any sport picks exist
   const banner = document.getElementById('picks-banner');
   const pbWins = document.getElementById('pb-wins');
   const pbLoss = document.getElementById('pb-losses');
   const pbPct  = document.getElementById('pb-pct');
   if (banner && pbWins && pbLoss && pbPct) {
-    if (!resolved.length) {
+    if (!sportPicks.length) {
       banner.style.display = 'none';
     } else {
       pbWins.textContent = wins;
       pbLoss.textContent = losses;
-      pbPct.textContent  = `(${pct}%)`;
+      pbPct.textContent  = resolved.length ? `(${pct}%)` : `${pending.length} active`;
       banner.style.display = '';
-      banner.className = pct >= 55 ? 'pb-hot' : pct <= 40 ? 'pb-cold' : '';
+      banner.className = resolved.length && pct >= 55 ? 'pb-hot' : resolved.length && pct <= 40 ? 'pb-cold' : '';
     }
   }
 }
@@ -697,6 +698,7 @@ function renderMatches(all) {
   }
 
   area.innerHTML = html;
+  updatePicksDisplay();
 }
 
 function buildGroup(g) {
@@ -2361,15 +2363,34 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
 }
 
 // ── TENNIS PICKS PAGE ────────────────────────────────────────
-function loadTennisPicksPage() {
+async function loadTennisPicksPage() {
   const area = document.getElementById('mlb-picks-area');
-  const allPicks = getPicks();
-  const tennisPicks = Object.values(allPicks)
-    .filter(p => (p.sport || 'tennis') === 'tennis')
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  let tennisPicks = Object.values(getPicks()).filter(p => (p.sport || 'tennis') === 'tennis');
 
   if (!tennisPicks.length) {
-    area.innerHTML = '<div class="empty-state">No tennis picks yet.<div class="muted">Picks appear automatically when you view today\'s matches with ranked players.</div></div>';
+    // Fetch today's fixtures in background — inlineTennisPick records picks as a side effect
+    area.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Loading picks…</p></div>`;
+    try {
+      const d = dateStr(S.dateOffset);
+      const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
+      for (const m of results) {
+        S.matches.set(String(m.event_key), m);
+        if (!isLive(m.event_status) && !isFinished(m.event_status)) inlineTennisPick(m);
+        else if (isFinished(m.event_status) && m.event_winner) {
+          let wln = '';
+          if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player || '');
+          else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
+          else                                          wln = lastName(m.event_winner);
+          if (wln) resolvePick('tn_' + m.event_key, wln);
+        }
+      }
+    } catch {}
+    tennisPicks = Object.values(getPicks()).filter(p => (p.sport || 'tennis') === 'tennis');
+  }
+
+  if (!tennisPicks.length) {
+    area.innerHTML = '<div class="empty-state">No picks available today.<div class="muted">Picks are generated for upcoming matches with seeded or ranked players.</div></div>';
     updatePicksDisplay();
     return;
   }
