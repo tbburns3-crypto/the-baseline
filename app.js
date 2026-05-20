@@ -37,6 +37,7 @@ const S = {
   lineupsTimer:    null,
   scoresTimer:     null,
   otherDateOffset: 0,
+  picksDateOffset: 0,
   ws:          null,
   wsRetries:   0,
   wsMax:       3,
@@ -180,22 +181,35 @@ function updatePicksDisplay() {
   const losses   = resolved.length - wins;
   const pct      = resolved.length ? Math.round((wins / resolved.length) * 100) : 0;
 
+  // Per-sport breakdown
+  const SPORT_ICONS = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'🏈', nhl:'🏒', soccer:'⚽' };
+  const bySport = new Map();
+  for (const p of resolved) {
+    const sp = p.sport || 'other';
+    if (!bySport.has(sp)) bySport.set(sp, { w: 0, l: 0 });
+    if (p.result === 'win') bySport.get(sp).w++; else bySport.get(sp).l++;
+  }
+  const breakdown = [...bySport.entries()]
+    .map(([sp, r]) => `${SPORT_ICONS[sp] || '🏅'} ${r.w}–${r.l}`)
+    .join('  ');
+
   // Small topbar badge
   const badge = document.getElementById('picks-accuracy');
   if (badge) {
     if (!resolved.length) { badge.classList.remove('has-picks'); }
     else {
       badge.textContent = `${wins}W-${losses}L (${pct}%)`;
-      badge.title = `${wins} correct, ${losses} wrong out of ${resolved.length} picks`;
+      badge.title = breakdown || `${wins} correct, ${losses} wrong`;
       badge.classList.add('has-picks');
     }
   }
 
-  // Prominent banner inside main content
+  // Prominent banner
   const banner  = document.getElementById('picks-banner');
   const pbWins  = document.getElementById('pb-wins');
   const pbLoss  = document.getElementById('pb-losses');
   const pbPct   = document.getElementById('pb-pct');
+  const pbBreak = document.getElementById('pb-breakdown');
   if (banner && pbWins && pbLoss && pbPct) {
     if (!resolved.length) {
       banner.style.display = 'none';
@@ -203,6 +217,7 @@ function updatePicksDisplay() {
       pbWins.textContent = wins;
       pbLoss.textContent = losses;
       pbPct.textContent  = `(${pct}%)`;
+      if (pbBreak) pbBreak.textContent = breakdown;
       banner.style.display = '';
       banner.className = pct >= 55 ? 'pb-hot' : pct <= 40 ? 'pb-cold' : '';
     }
@@ -707,7 +722,8 @@ function buildGroup(g) {
 
 function inlineTennisPick(m) {
   const pickId  = 'tn_' + m.event_key;
-  const matchup = `${lastName(m.event_first_player||'')} vs ${lastName(m.event_second_player||'')}`;
+  const surface = m.event_surface ? ` (${m.event_surface})` : '';
+  const matchup = `${lastName(m.event_first_player||'')} vs ${lastName(m.event_second_player||'')}${surface}`;
   const s1 = parseInt(m.event_first_player_seed) || 0;
   const s2 = parseInt(m.event_second_player_seed) || 0;
   if (s1 || s2) {
@@ -1535,9 +1551,10 @@ function switchSport(sport) {
     secTab.style.display   = '';
     playersTab.style.display  = '';
     lineupsTab.style.display  = sport === 'mlb' ? '' : 'none';
-    picksTab.style.display    = sport === 'mlb' ? '' : 'none';
+    picksTab.style.display    = ['mlb','nba','nfl','nhl','wnba'].includes(sport) ? '' : 'none';
   }
 
+  S.picksDateOffset = 0;
   switchView('scores');
 
   if (isTennis) {
@@ -1583,7 +1600,8 @@ function switchView(view) {
     } else if (view === 'picks') {
       stopScoresTimer();
       document.getElementById('view-mlb-picks').classList.add('active');
-      loadMLBPicksPage();
+      if (S.sport === 'mlb') loadMLBPicksPage();
+      else loadOtherPicksPage(S.sport);
     } else if (view === 'players') {
       stopScoresTimer();
       document.getElementById('view-sport-players').classList.add('active');
@@ -1701,7 +1719,8 @@ async function espnGames(sport, dateOffset = 0) {
       status: st.type?.shortDetail || st.type?.description || '-',
       period: st.period || '',
       time: st.displayClock || '',
-      sport
+      sport,
+      odds: (() => { const o = comp.odds?.[0]; return o ? { spread: o.details || '', overUnder: o.overUnder || null } : null; })()
     };
   });
 }
@@ -2228,6 +2247,8 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const obp      = parseFloat(st.obp     || 0);
     const sbSucc   = (sb + cs) > 0 ? sb / (sb + cs) : 0;
     const posW     = [0,1.1,1.0,1.4,1.5,1.2,1.1,1.0,0.9,0.8][pos] || 0.9;
+    const l30avg   = parseFloat(st.l30avg || 0);
+    const streak   = l30avg && avg ? (l30avg - avg >= 0.040 ? '🔥' : avg - l30avg >= 0.040 ? '❄️' : '') : '';
     // Platoon-specific AVG from actual split data (fallback to season AVG)
     const vsL      = st.vsL || null;
     const vsR      = st.vsR || null;
@@ -2246,7 +2267,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     return {
       id: p.id, name: p.fullName, abbr: teamAbbr, pos,
       batSide, oppPitcherId, oppHand, hand, avg, platAvg, vsL, vsR,
-      hr, rbi, h, bb, sb, cs, sbSucc, ab, ops, obp, pitRates,
+      hr, rbi, h, bb, sb, cs, sbSucc, ab, ops, obp, pitRates, l30avg, streak,
       hitScore, hrScore, rbiScore, bbScore, sbScore, hScore,
     };
   };
@@ -2281,10 +2302,11 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const vsNote = vs && parseInt(vs.atBats || 0) >= 3
       ? `<span class="pc-vs-note"> · ${vs.hits||0}/${vs.atBats||0} career</span>`
       : '';
+    const streakBadge = batter.streak ? `<span class="pc-streak">${batter.streak}</span>` : '';
     return `<div class="pc-row">
       <span class="pc-ri">${icon}</span>
       <span class="pc-rl">${esc(label)}</span>
-      <strong class="pc-rn">${esc(lastName(batter.name))}</strong>
+      <strong class="pc-rn">${esc(lastName(batter.name))}${streakBadge}</strong>
       <span class="pc-rt">${esc(batter.abbr)}</span>
       <span class="pc-rs">${esc(keyStat)}${vsNote}</span>
     </div>`;
@@ -2292,9 +2314,11 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
 
   let picksHTML = '';
   if (hasLineup) {
-    const best   = (arr, key) => [...arr].sort((a, b) => b[key] - a[key])[0];
+    const ranked = (arr, key) => [...arr].sort((a, b) => b[key] - a[key]);
+    const best   = (arr, key) => ranked(arr, key)[0];
     const topHit = best(allBatters, 'hitScore');
-    const topHR  = best(allBatters, 'hrScore');
+    const hrList = ranked(allBatters, 'hrScore');
+    const topHR  = hrList[0]?.id === topHit?.id ? hrList[1] : hrList[0];
     const topRBI = best(allBatters, 'rbiScore');
     const topBB  = best(allBatters, 'bbScore');
     const topSB  = allBatters.filter(b => b.sb >= 3).sort((a, b) => b.sbScore - a.sbScore)[0];
@@ -2328,20 +2352,108 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   </div>`;
 }
 
+// ── PICKS DATE NAV ───────────────────────────────────────────
+function picksDateNavHTML() {
+  const off = S.picksDateOffset;
+  const d   = new Date(); d.setDate(d.getDate() + off);
+  const lbl = off === 0 ? 'Today'
+    : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: Math.abs(off) > 180 ? 'numeric' : undefined });
+  const dv  = dateStr(off);
+  const isNFL = S.sport === 'nfl';
+  return `<div class="other-date-nav" style="margin-bottom:10px">
+    ${isNFL ? `<button class="odn-btn odn-wk" onclick="picksDateNav(-7)">&#171; Week</button>` : ''}
+    <button class="odn-btn" onclick="picksDateNav(-1)">&#8249;</button>
+    <label class="odn-date-label">
+      <input type="date" class="odn-date-input" value="${dv}" onchange="picksDatePickerChange(this.value)">
+      <span class="odn-date-text">${esc(lbl)}</span>
+    </label>
+    <button class="odn-btn" onclick="picksDateNav(1)">&#8250;</button>
+    ${isNFL ? `<button class="odn-btn odn-wk" onclick="picksDateNav(7)">Week &#187;</button>` : ''}
+    ${off !== 0 ? `<button class="odn-today" onclick="picksDateNav(0, true)">Today</button>` : ''}
+  </div>`;
+}
+function picksDateNav(delta, reset = false) {
+  S.picksDateOffset = reset ? 0 : S.picksDateOffset + delta;
+  if (S.sport === 'mlb') loadMLBPicksPage();
+  else loadOtherPicksPage(S.sport);
+}
+function picksDatePickerChange(val) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  S.picksDateOffset = Math.round((new Date(val + 'T12:00:00') - today) / 86400000);
+  if (S.sport === 'mlb') loadMLBPicksPage();
+  else loadOtherPicksPage(S.sport);
+}
+
+// ── ALL-SPORTS WIN PREDICTION CARD ───────────────────────────
+function buildWinPredCard(g) {
+  const { fin, live } = gameRowState(g);
+  const awayWP = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
+  let favLine = '';
+  if (g.awayRec || g.homeRec) {
+    const rawHome = homeWP * 1.03, total = awayWP + rawHome;
+    const homePct = Math.round((rawHome / total) * 100);
+    const favTeam = homePct >= 50 ? g.homeTeam : g.awayTeam;
+    const pct     = Math.max(homePct, 100 - homePct);
+    const margin  = Math.abs(homePct - 50);
+    if (!fin && margin >= 3) recordPick(String(g.id), favTeam.split(' ').pop(), `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '');
+    favLine = margin >= 3
+      ? `<span class="pc-fav">${esc(favTeam.split(' ').pop())} favored ${pct}%</span>`
+      : `<span class="pc-fav pc-fav-even">Even matchup</span>`;
+  }
+  const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
+                    : live ? '<span class="live-badge">LIVE</span>'
+                    : `<span class="pc-time">${esc(g.status)}</span>`;
+  const oddsLine = g.odds?.spread
+    ? `<span class="pc-odds">${esc(g.odds.spread)}${g.odds.overUnder ? ` · O/U ${g.odds.overUnder}` : ''}</span>` : '';
+  const recLine = (g.awayRec || g.homeRec)
+    ? `<div class="pc-meta pc-recs">${esc(g.awayTeam)} ${esc(g.awayRec||'?')}  ·  ${esc(g.homeTeam)} ${esc(g.homeRec||'?')}</div>` : '';
+  return `<div class="picks-card">
+    <div class="pc-hdr">
+      <span class="pc-teams">${esc(g.awayTeam)} @ ${esc(g.homeTeam)}</span>
+      ${statusLabel}
+    </div>
+    ${recLine}
+    ${favLine || oddsLine ? `<div class="pc-meta">${favLine}${oddsLine ? `<span class="pc-meta-sep">·</span>${oddsLine}` : ''}</div>` : ''}
+  </div>`;
+}
+
+async function loadOtherPicksPage(sport) {
+  const area = document.getElementById('mlb-picks-area');
+  const nav  = picksDateNavHTML();
+  area.innerHTML = `${nav}<div class="loading-spinner"><div class="spinner"></div><p>Loading ${sport.toUpperCase()} picks…</p></div>`;
+  try {
+    const off   = S.picksDateOffset;
+    const games = await espnGames(sport, off);
+    if (!games.length) {
+      const isNFL = sport === 'nfl' && off === 0;
+      area.innerHTML = nav + `<div class="empty-state"><p>No ${sport.toUpperCase()} games on this date.</p>${isNFL ? '<p class="muted">Use the date navigation above to browse the schedule.</p>' : ''}</div>`;
+      return;
+    }
+    const cards = games.map(g => buildWinPredCard(g)).join('');
+    const note  = off !== 0 ? '' : `<div class="pc-data-note">Win predictions based on season records · ESPN odds where available</div>`;
+    area.innerHTML = nav + note + `<div class="picks-cards">${cards}</div>`;
+    updatePicksDisplay();
+  } catch (err) {
+    area.innerHTML = nav + `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load ${sport.toUpperCase()} picks: ${esc(err.message)}</p></div>`;
+  }
+}
+
 async function loadMLBPicksPage() {
   const area = document.getElementById('mlb-picks-area');
-  area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading matchup data…</p></div>';
+  const off  = S.picksDateOffset;
+  const nav  = picksDateNavHTML();
+  area.innerHTML = `${nav}<div class="loading-spinner"><div class="spinner"></div><p>Loading matchup data…</p></div>`;
   try {
     // Phase 1: fast parallel fetches
     const [espnResult, schedResult] = await Promise.allSettled([
-      espnGames('mlb'),
-      getMLBSchedule()
+      espnGames('mlb', off),
+      getMLBSchedule(off)
     ]);
     const games    = espnResult.status  === 'fulfilled' ? espnResult.value  : [];
     const schedule = schedResult.status === 'fulfilled' ? schedResult.value : [];
 
     if (!games.length) {
-      area.innerHTML = '<div class="empty-state"><p>No MLB games today.</p></div>';
+      area.innerHTML = nav + '<div class="empty-state"><p>No MLB games on this date.</p></div>';
       return;
     }
 
@@ -2371,13 +2483,13 @@ async function loadMLBPicksPage() {
       nameMatch(sg.teams.home.team?.name||'', g.homeTeam)
     ) || null;
 
-    // Phase 5: build cards (vs-pitcher calls happen here, cached after first load)
+    // Phase 5: build cards
     const cardHTMLs = await Promise.all(games.map(g => buildMLBPicksGameCard(g, findSched(g))));
-
-    area.innerHTML = `<div class="pc-data-note">${CURRENT_SEASON} matchups · actual L/R platoon splits · park factors · pitcher HR/9 &amp; BB/9 · career vs-pitcher where available</div><div class="picks-cards">${cardHTMLs.join('')}</div>`;
+    const note = `<div class="pc-data-note">Platoon splits · park factors · pitcher HR/9 &amp; BB/9 · career vs-pitcher where available</div>`;
+    area.innerHTML = nav + note + `<div class="picks-cards">${cardHTMLs.join('')}</div>`;
     updatePicksDisplay();
   } catch (err) {
-    area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load picks: ${esc(err.message)}</p></div>`;
+    area.innerHTML = nav + `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load picks: ${esc(err.message)}</p></div>`;
   }
 }
 
@@ -2965,15 +3077,17 @@ async function fetchBatterPreview(batterId) {
   if (_batterCache.has(batterId)) return _batterCache.get(batterId);
   try {
     const [r1, r2] = await Promise.all([
-      fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=season,statSplits&season=${CURRENT_SEASON}&group=hitting&sitCodes=vl,vr`).then(r => r.json()),
+      fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=season,statSplits&season=${CURRENT_SEASON}&group=hitting&sitCodes=vl,vr,lastMonth`).then(r => r.json()),
       fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}?fields=people,id,batSide`).then(r => r.json())
     ]);
-    const stat    = r1.stats?.find(s => s.type?.displayName === 'season')?.splits?.[0]?.stat || null;
-    const splitArr = r1.stats?.find(s => s.type?.displayName === 'statSplits')?.splits || [];
-    const vsL     = splitArr.find(s => s.split?.code === 'vl')?.stat || null;
-    const vsR     = splitArr.find(s => s.split?.code === 'vr')?.stat || null;
-    const batSide = r2.people?.[0]?.batSide?.code || null;
-    const result  = stat ? { ...stat, batSide, vsL, vsR } : { batSide, vsL, vsR };
+    const stat      = r1.stats?.find(s => s.type?.displayName === 'season')?.splits?.[0]?.stat || null;
+    const splitArr  = r1.stats?.find(s => s.type?.displayName === 'statSplits')?.splits || [];
+    const vsL       = splitArr.find(s => s.split?.code === 'vl')?.stat || null;
+    const vsR       = splitArr.find(s => s.split?.code === 'vr')?.stat || null;
+    const lm        = splitArr.find(s => s.split?.code === 'lastMonth' || s.split?.description?.toLowerCase().includes('last month'))?.stat || null;
+    const l30avg    = lm ? parseFloat(lm.avg || 0) : null;
+    const batSide   = r2.people?.[0]?.batSide?.code || null;
+    const result    = stat ? { ...stat, batSide, vsL, vsR, l30avg } : { batSide, vsL, vsR, l30avg };
     _batterCache.set(batterId, result);
     return result;
   } catch { _batterCache.set(batterId, null); return null; }
@@ -2992,16 +3106,16 @@ async function fetchVsStats(batterId, pitcherId) {
   } catch { _vsCache.set(key, null); return null; }
 }
 
-async function getMLBSchedule() {
-  const today = dateStr(0);
-  if (_mlbSchedCache && _mlbSchedDate === today) return _mlbSchedCache;
+async function getMLBSchedule(dateOffset = 0) {
+  const target = dateStr(dateOffset);
+  if (dateOffset === 0 && _mlbSchedCache && _mlbSchedDate === target) return _mlbSchedCache;
   try {
-    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${today}&hydrate=lineups,probablePitcher,team,linescore,weather`);
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${target}&hydrate=lineups,probablePitcher,team,linescore,weather`);
     const j   = await res.json();
-    _mlbSchedCache = j.dates?.[0]?.games || [];
-    _mlbSchedDate  = today;
-  } catch { _mlbSchedCache = []; }
-  return _mlbSchedCache;
+    const games = j.dates?.[0]?.games || [];
+    if (dateOffset === 0) { _mlbSchedCache = games; _mlbSchedDate = target; }
+    return games;
+  } catch { if (dateOffset === 0) _mlbSchedCache = []; return []; }
 }
 
 async function loadBatterStatsForCard(game) {
