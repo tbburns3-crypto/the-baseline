@@ -1,5 +1,5 @@
 /* ============================================================
-   THE BASELINE — Style Sheet
+   THE BASELINE - Style Sheet
    Dark forest green theme, AuDHD-friendly layout
    ============================================================ */
 
@@ -1532,6 +1532,62 @@ input { font: inherit; }
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ── INLINE GAME PICKS & RECORD TAGS ── */
+.game-pick-inline {
+  font-size: .72rem; font-weight: 700; color: var(--accent);
+  white-space: nowrap; display: inline-block;
+}
+.rec-tag {
+  font-size: .68rem; color: var(--text-muted); font-weight: 400;
+  white-space: nowrap; margin-left: 4px;
+}
+.series-tag {
+  font-size: .65rem; color: var(--accent-dim); font-weight: 600;
+  margin-left: 5px; white-space: nowrap;
+}
+
+/* ── MLB PRE-LINEUP STAT CARDS ── */
+.pre-team-block { margin-bottom: 12px; }
+.pre-team-hdr {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--accent); font-weight: 700; margin-bottom: 6px;
+}
+.pre-stat-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.pre-stat-chip {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; font-size: .76rem;
+}
+.pre-stat-pit { border-color: rgba(244,67,54,.3); background: rgba(244,67,54,.06); }
+.pre-stat-icon { font-size: .9rem; }
+.pre-stat-lbl  { font-size: .62rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+.pre-stat-name { font-weight: 600; }
+.pre-stat-val  { font-weight: 700; color: var(--accent); }
+
+/* ── PREDICTION ACCURACY BADGE ── */
+#picks-accuracy {
+  font-size: .72rem; font-weight: 700; color: var(--accent);
+  background: rgba(0,230,118,.1); border: 1px solid rgba(0,230,118,.25);
+  border-radius: 4px; padding: 2px 7px; cursor: pointer;
+  white-space: nowrap; display: none;
+}
+#picks-accuracy.has-picks { display: inline-block; }
+
+/* ── LIVE MLB SITUATION ── */
+.gp-live-sit {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  background: rgba(244,67,54,.08); border: 1px solid rgba(244,67,54,.25);
+  border-radius: 6px; padding: 7px 10px; margin-bottom: 8px; font-size: .8rem;
+}
+.gp-live-badge {
+  font-size: .65rem; font-weight: 700; background: var(--live);
+  color: #fff; border-radius: 3px; padding: 1px 5px; letter-spacing: .05em;
+}
+.gp-sit-batter  { font-weight: 700; color: var(--accent); }
+.gp-sit-pitcher { font-weight: 600; color: var(--text-2); }
+.gp-sit-count   { color: var(--text-muted); font-size: .75rem; }
+.gp-sit-bases   { color: #ffb300; font-size: .75rem; font-weight: 600; }
 
 /* ── RESPONSIVE ── */
 @media (max-width: 900px) {
