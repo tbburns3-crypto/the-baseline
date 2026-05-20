@@ -1612,7 +1612,8 @@ input { font: inherit; }
 .pb-wl     { font-size: .75rem; font-weight: 600; color: var(--text-muted); margin-left: 1px; }
 .pb-dash   { color: var(--border); }
 .pb-pct    { font-size: .9rem; color: var(--text-2); font-weight: 600; }
-.pb-note   { font-size: .7rem; color: var(--text-muted); margin-left: auto; }
+.pb-note      { font-size: .7rem; color: var(--text-muted); margin-left: auto; }
+.pb-breakdown { font-size: .7rem; color: var(--text-muted); }
 
 /* ── MLB PICKS PAGE — CLEAN CARDS ── */
 .picks-cards  { display: flex; flex-direction: column; gap: 12px; }
@@ -1628,6 +1629,8 @@ input { font: inherit; }
 .pc-wx        { font-size: .74rem; color: var(--text-muted); margin-bottom: 8px; }
 .pc-no-data   { color: var(--text-muted); font-style: italic; font-size: .78rem; padding: 3px 0; }
 .pc-data-note { font-size: .7rem; color: var(--text-muted); padding: 4px 2px 10px; }
+.pc-odds      { font-size: .78rem; color: var(--text-muted); }
+.pc-meta-sep  { color: var(--border); margin: 0 5px; }
 
 /* Pick rows — one clean line each */
 .pc-picks { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); margin-top: 8px; }
@@ -1645,7 +1648,8 @@ input { font: inherit; }
 .pc-rn  { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pc-rt  { font-size: .66rem; color: var(--accent-dim); font-weight: 700; background: rgba(0,200,83,.1); border-radius: 3px; padding: 1px 5px; white-space: nowrap; }
 .pc-rs  { font-size: .78rem; color: var(--text-muted); text-align: right; white-space: nowrap; }
-.pc-vs-note { color: var(--accent); font-size: .72rem; }
+.pc-vs-note  { color: var(--accent); font-size: .72rem; }
+.pc-streak   { font-size: .78rem; margin-left: 3px; }
 
 /* ── PICKS HISTORY MODAL ── */
 .ph-modal {
