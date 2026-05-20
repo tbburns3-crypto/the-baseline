@@ -172,26 +172,29 @@ function showPicksHistory() {
     </div>`;
   };
 
-  // Group game picks by sport (exclude player picks — those go in Players tab)
+  // Group ALL picks by sport (game picks + player picks together)
   const groups     = new Map();
   const pendingMap = new Map();
-  for (const p of resolved.filter(p => p.type !== 'player')) {
+  for (const p of resolved) {
     const sp = p.sport || (p.matchup?.includes(' vs ') ? 'tennis' : 'other');
     if (!groups.has(sp)) groups.set(sp, []);
     groups.get(sp).push(p);
   }
-  for (const p of pending.filter(p => p.type !== 'player')) {
+  for (const p of pending) {
     const sp = p.sport || 'other';
     if (!pendingMap.has(sp)) pendingMap.set(sp, []);
     pendingMap.get(sp).push(p);
   }
+
+  // Use the right renderer based on pick type
+  const renderRow  = p => p.type === 'player' ? makePlayerRow(p) : makeRow(p);
+  const renderPend = p => p.type === 'player' ? makePlayerRow(p) : makePendingRow(p);
 
   const renderTabContent = sp => {
     if (sp === 'players') {
       if (!playerPicks.length) return '<div class="ph-empty">No player picks yet — visit the MLB Picks tab to generate them.</div>';
       const pPend = playerPicks.filter(p => p.result === null);
       const pRes  = playerPicks.filter(p => p.result !== null);
-      // Per-category accuracy summary
       const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃' };
       const cats = {};
       for (const p of pRes) {
@@ -220,11 +223,11 @@ function showPicksHistory() {
     const pend  = sp === 'all' ? pending  : (pendingMap.get(sp) || []);
     if (!items.length && !pend.length) return '<div class="ph-empty">No picks for this sport yet.</div>';
     let html = items.length
-      ? items.map(makeRow).join('')
+      ? items.map(renderRow).join('')
       : '<div class="ph-empty">No resolved picks yet — results come in after games finish.</div>';
     if (pend.length) {
       html += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pend.length})</div>`;
-      html += pend.map(makePendingRow).join('');
+      html += pend.map(renderPend).join('');
     }
     return html;
   };
