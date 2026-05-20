@@ -191,41 +191,30 @@ function resolvePick(gameId, winnerFull) {
 }
 
 function updatePicksDisplay() {
-  const picks    = getPicks();
-  const resolved = Object.values(picks).filter(p => p.result !== null);
+  const allPicks = getPicks();
+  const sport    = S.sport;
+  // Only count picks for the current sport
+  const resolved = Object.values(allPicks).filter(p => p.result !== null && (p.sport || 'tennis') === sport);
   const wins     = resolved.filter(p => p.result === 'win').length;
   const losses   = resolved.length - wins;
   const pct      = resolved.length ? Math.round((wins / resolved.length) * 100) : 0;
 
-  // Per-sport breakdown
-  const SPORT_ICONS = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'🏈', nhl:'🏒', soccer:'⚽' };
-  const bySport = new Map();
-  for (const p of resolved) {
-    const sp = p.sport || 'other';
-    if (!bySport.has(sp)) bySport.set(sp, { w: 0, l: 0 });
-    if (p.result === 'win') bySport.get(sp).w++; else bySport.get(sp).l++;
-  }
-  const breakdown = [...bySport.entries()]
-    .map(([sp, r]) => `${SPORT_ICONS[sp] || '🏅'} ${r.w}–${r.l}`)
-    .join('  ');
-
   // Small topbar badge
   const badge = document.getElementById('picks-accuracy');
   if (badge) {
-    if (!resolved.length) { badge.classList.remove('has-picks'); }
+    if (!resolved.length) { badge.textContent = ''; badge.classList.remove('has-picks'); }
     else {
       badge.textContent = `${wins}W-${losses}L (${pct}%)`;
-      badge.title = breakdown || `${wins} correct, ${losses} wrong`;
+      badge.title = `${wins} correct, ${losses} wrong`;
       badge.classList.add('has-picks');
     }
   }
 
   // Prominent banner
-  const banner  = document.getElementById('picks-banner');
-  const pbWins  = document.getElementById('pb-wins');
-  const pbLoss  = document.getElementById('pb-losses');
-  const pbPct   = document.getElementById('pb-pct');
-  const pbBreak = document.getElementById('pb-breakdown');
+  const banner = document.getElementById('picks-banner');
+  const pbWins = document.getElementById('pb-wins');
+  const pbLoss = document.getElementById('pb-losses');
+  const pbPct  = document.getElementById('pb-pct');
   if (banner && pbWins && pbLoss && pbPct) {
     if (!resolved.length) {
       banner.style.display = 'none';
@@ -233,7 +222,6 @@ function updatePicksDisplay() {
       pbWins.textContent = wins;
       pbLoss.textContent = losses;
       pbPct.textContent  = `(${pct}%)`;
-      if (pbBreak) pbBreak.textContent = breakdown;
       banner.style.display = '';
       banner.className = pct >= 55 ? 'pb-hot' : pct <= 40 ? 'pb-cold' : '';
     }
@@ -1550,7 +1538,7 @@ function switchSport(sport) {
     secTab.style.display   = '';
     playersTab.style.display  = 'none';
     lineupsTab.style.display  = 'none';
-    picksTab.style.display    = 'none';
+    picksTab.style.display    = '';
   } else if (sport === 'golf') {
     secTab.style.display   = 'none';
     playersTab.style.display  = 'none';
@@ -1572,6 +1560,7 @@ function switchSport(sport) {
 
   S.picksDateOffset = 0;
   switchView('scores');
+  updatePicksDisplay();
 
   if (isTennis) {
     wsDisconnect(); wsConnect();
@@ -1597,6 +1586,9 @@ function switchView(view) {
   if (S.sport === 'tennis') {
     if (view === 'scores') {
       document.getElementById('view-tennis-scores').classList.add('active');
+    } else if (view === 'picks') {
+      document.getElementById('view-mlb-picks').classList.add('active');
+      loadTennisPicksPage();
     } else {
       document.getElementById('view-tennis-rankings').classList.add('active');
       loadRankings();
@@ -2366,6 +2358,50 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     ${wxLine}
     ${picksHTML}
   </div>`;
+}
+
+// ── TENNIS PICKS PAGE ────────────────────────────────────────
+function loadTennisPicksPage() {
+  const area = document.getElementById('mlb-picks-area');
+  const allPicks = getPicks();
+  const tennisPicks = Object.values(allPicks)
+    .filter(p => (p.sport || 'tennis') === 'tennis')
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  if (!tennisPicks.length) {
+    area.innerHTML = '<div class="empty-state">No tennis picks yet.<div class="muted">Picks appear automatically when you view today\'s matches with ranked players.</div></div>';
+    updatePicksDisplay();
+    return;
+  }
+
+  const pending  = tennisPicks.filter(p => p.result === null);
+  const resolved = tennisPicks.filter(p => p.result !== null);
+
+  const makeRow = p => {
+    const win  = p.result === 'win';
+    const icon = p.result === null ? '⏳' : (win ? '✓' : '✗');
+    const cls  = p.result === null ? 'ph-pending-row' : (win ? 'ph-win' : 'ph-loss');
+    return `<div class="ph-row ${cls}">
+      <span class="ph-icon">${icon}</span>
+      <span class="ph-date">${esc(p.date)}</span>
+      <span class="ph-matchup">${esc(p.matchup || p.team)}</span>
+      <span class="ph-pick">→ ${esc(p.team)}</span>
+    </div>`;
+  };
+
+  let html = '';
+  if (pending.length) {
+    html += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pending.length})</div>`;
+    html += pending.map(makeRow).join('');
+  }
+  if (resolved.length) {
+    const w = resolved.filter(p => p.result === 'win').length;
+    html += `<div class="ph-sport-hdr">Results — ${w}W ${resolved.length - w}L</div>`;
+    html += resolved.map(makeRow).join('');
+  }
+
+  area.innerHTML = `<div class="pc-data-note">Picks based on seedings &amp; live rankings · last 14 days</div><div class="ph-list">${html}</div>`;
+  updatePicksDisplay();
 }
 
 // ── PICKS DATE NAV ───────────────────────────────────────────
