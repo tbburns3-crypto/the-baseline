@@ -368,10 +368,10 @@ function renderMatches(all) {
   let html = '';
   if (liveMatches.length) {
     const singlesBlock = liveSingles.length
-      ? `<div class="live-sub-hdr">Singles</div>${liveSingles.map(m => buildMatchRow(m, true)).join('')}`
+      ? `<div class="live-sub-hdr">Singles</div>${liveSingles.map(m => buildMatchRow(m, 'live')).join('')}`
       : '';
     const doublesBlock = liveDoubles.length
-      ? `<div class="live-sub-hdr live-sub-doubles">Doubles</div>${liveDoubles.map(m => buildMatchRow(m, true)).join('')}`
+      ? `<div class="live-sub-hdr live-sub-doubles">Doubles</div>${liveDoubles.map(m => buildMatchRow(m, 'live')).join('')}`
       : '';
     html += `
       <div class="live-now-section">
@@ -467,7 +467,10 @@ function inlineTennisPick(m) {
   return `<span class="match-pick-inline" title="Seeding pick">→ ${esc(pick)}</span>`;
 }
 
-function buildMatchRow(m, liteMode = false) {
+// idSuffix: when provided (e.g. 'live'), creates a unique panel ID so the same
+// match can have an independent expandable panel in the LIVE NOW section and the
+// category section simultaneously without duplicate IDs.
+function buildMatchRow(m, idSuffix = '') {
   const live     = isLive(m.event_status);
   const finished = isFinished(m.event_status);
   const sets     = parseSets(m);
@@ -492,20 +495,17 @@ function buildMatchRow(m, liteMode = false) {
   const p2serve = serve === '2' ? '<span class="serve-dot">▶</span>' : '';
 
   const key = esc(m.event_key);
+  const pid = idSuffix ? `${key}-${idSuffix}` : key;
 
-  let pickHTML = '';
-  let starBtn = '';
-  if (!liteMode) {
-    if (!live && !finished) pickHTML = inlineTennisPick(m);
-    const favOn = isFav('match', m.event_key);
-    const p1safe = (m.event_first_player||'').replace(/'/g,"\\'");
-    const p2safe = (m.event_second_player||'').replace(/'/g,"\\'");
-    starBtn = `<button class="star-btn${favOn?' fav-on':''}" data-fav-id="match:${key}" title="${favOn?'Remove from favorites':'Add to favorites'}" onclick="event.stopPropagation();toggleFav('match','${key}','${p1safe} vs ${p2safe}')">★</button>`;
-  }
+  const pickHTML = (!live && !finished) ? inlineTennisPick(m) : '';
+  const favOn = isFav('match', m.event_key);
+  const p1safe = (m.event_first_player||'').replace(/'/g,"\\'");
+  const p2safe = (m.event_second_player||'').replace(/'/g,"\\'");
+  const starBtn = `<button class="star-btn${favOn?' fav-on':''}" data-fav-id="match:${key}" title="${favOn?'Remove from favorites':'Add to favorites'}" onclick="event.stopPropagation();toggleFav('match','${key}','${p1safe} vs ${p2safe}')">★</button>`;
 
-  const detailPanel = liteMode ? '' : `
-    <div class="match-detail" id="md-${key}" style="display:none">
-      <div class="detail-inner" id="di-${key}">
+  const detailPanel = `
+    <div class="match-detail" id="md-${pid}" style="display:none">
+      <div class="detail-inner" id="di-${pid}">
         <div class="td-loading"><div class="spinner"></div> Loading match stats…</div>
       </div>
     </div>`;
@@ -513,7 +513,7 @@ function buildMatchRow(m, liteMode = false) {
   return `
     <div class="match-row ${live?'live':''} ${finished?'finished':''}"
          data-key="${key}"
-         onclick="${liteMode ? `jumpTo('${slugify(m.tournament_name||m.league_name||'')}')` : `toggleDetail('${key}')`}">
+         onclick="toggleDetail('${pid}','${key}')">
       <div class="match-status">${statusHTML}</div>
       <div class="match-players">
         <div class="player p1 ${serve==='1'?'serving':''}">
@@ -544,8 +544,22 @@ async function loadTennisMatchDetail(key, container, m) {
     const surface = m.tournament_surface || '';
     let h2h = [];
     try {
-      const raw = await tennisFetch('get_H2H', { event_key: key });
-      h2h = Array.isArray(raw) ? raw : (Array.isArray(raw?.H2H) ? raw.H2H : []);
+      // Abort if api-tennis takes more than 6 seconds to respond
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), 6000);
+      const url  = new URL(CFG.tennis.base);
+      url.searchParams.set('method', 'get_H2H');
+      url.searchParams.set('APIkey', CFG.tennis.key);
+      url.searchParams.set('event_key', key);
+      const res  = await fetch(url.toString(), { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success !== 0) {
+          const raw = json.result || [];
+          h2h = Array.isArray(raw) ? raw : (Array.isArray(raw?.H2H) ? raw.H2H : []);
+        }
+      }
     } catch {}
     container.innerHTML = buildTennisDetailHTML(m, h2h, surface);
   } catch (err) {
@@ -3260,16 +3274,16 @@ function toggleGroup(header) {
   group.dataset.expanded = expanded ? 'false' : 'true';
 }
 
-function toggleDetail(key) {
-  const el = document.getElementById(`md-${key}`);
+function toggleDetail(panelId, dataKey) {
+  const el = document.getElementById(`md-${panelId}`);
   if (!el) return;
   const showing = el.style.display !== 'none';
   el.style.display = showing ? 'none' : 'block';
-  if (!showing && !_detailLoaded.has(key)) {
-    _detailLoaded.add(key);
-    const container = document.getElementById(`di-${key}`);
-    const m = S.matches.get(key);
-    if (container && m) loadTennisMatchDetail(key, container, m);
+  if (!showing && !_detailLoaded.has(panelId)) {
+    _detailLoaded.add(panelId);
+    const container = document.getElementById(`di-${panelId}`);
+    const m = S.matches.get(dataKey || panelId);
+    if (container && m) loadTennisMatchDetail(dataKey || panelId, container, m);
   }
 }
 
