@@ -86,70 +86,76 @@ function recordPick(gameId, pickedTeam, matchup = '', sport = '') {
 
 function showPicksHistory() {
   document.getElementById('picks-history-modal')?.remove();
-  const picks   = getPicks();
-  const allVals = Object.values(picks);
-  const pending = allVals.filter(p => p.result === null);
+  const picks    = getPicks();
+  const allVals  = Object.values(picks);
+  const pending  = allVals.filter(p => p.result === null);
   const resolved = allVals
     .filter(p => p.result !== null)
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  // Sport labels + icons
-  const SPORT_LABEL = { tennis:'Tennis 🎾', mlb:'MLB ⚾', nba:'NBA 🏀', wnba:'WNBA 🏀', nfl:'NFL 🏈', nhl:'NHL 🏒', soccer:'Soccer ⚽', golf:'Golf ⛳' };
+  const SPORT_LABEL = { tennis:'🎾 Tennis', mlb:'⚾ MLB', nba:'🏀 NBA', wnba:'🏀 WNBA', nfl:'🏈 NFL', nhl:'🏒 NHL', soccer:'⚽ Soccer', golf:'⛳ Golf' };
 
-  // Group resolved picks by sport
-  const groups = new Map();
+  const makeRow = p => {
+    const win = p.result === 'win';
+    return `<div class="ph-row ${win ? 'ph-win' : 'ph-loss'}">
+      <span class="ph-icon">${win ? '✓' : '✗'}</span>
+      <span class="ph-date">${esc(p.date)}</span>
+      <span class="ph-matchup">${esc(p.matchup || p.team)}</span>
+      <span class="ph-pick">→ ${esc(p.team)}</span>
+    </div>`;
+  };
+
+  const makePendingRow = p => `<div class="ph-row ph-pending-row">
+    <span class="ph-icon">⏳</span>
+    <span class="ph-date">${esc(p.date)}</span>
+    <span class="ph-matchup">${esc(p.matchup || p.team)}</span>
+    <span class="ph-pick">→ ${esc(p.team)}</span>
+  </div>`;
+
+  // Group by sport
+  const groups     = new Map();
+  const pendingMap = new Map();
   for (const p of resolved) {
     const sp = p.sport || (p.matchup?.includes(' vs ') ? 'tennis' : 'other');
     if (!groups.has(sp)) groups.set(sp, []);
     groups.get(sp).push(p);
   }
+  for (const p of pending) {
+    const sp = p.sport || 'other';
+    if (!pendingMap.has(sp)) pendingMap.set(sp, []);
+    pendingMap.get(sp).push(p);
+  }
 
-  const makeRow = p => {
-    const win     = p.result === 'win';
-    const display = p.matchup || p.team;
-    return `<div class="ph-row ${win ? 'ph-win' : 'ph-loss'}">
-      <span class="ph-icon">${win ? '✓' : '✗'}</span>
-      <span class="ph-date">${esc(p.date)}</span>
-      <span class="ph-matchup">${esc(display)}</span>
-      <span class="ph-pick">→ ${esc(p.team)}</span>
-    </div>`;
+  const renderTabContent = sp => {
+    const items = sp === 'all' ? resolved : (groups.get(sp) || []);
+    const pend  = sp === 'all' ? pending  : (pendingMap.get(sp) || []);
+    if (!items.length && !pend.length) return '<div class="ph-empty">No picks for this sport yet.</div>';
+    let html = items.length
+      ? items.map(makeRow).join('')
+      : '<div class="ph-empty">No resolved picks yet — results come in after games finish.</div>';
+    if (pend.length) {
+      html += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pend.length})</div>`;
+      html += pend.map(makePendingRow).join('');
+    }
+    return html;
   };
 
-  let bodyHTML = '';
-  if (groups.size === 0) {
-    bodyHTML = '<div class="ph-empty">No resolved picks yet — results come in after games finish.</div>';
-  } else {
-    for (const [sp, items] of groups) {
-      const label  = SPORT_LABEL[sp] || sp.toUpperCase();
-      const wins   = items.filter(p => p.result === 'win').length;
-      const record = `${wins}W–${items.length - wins}L`;
-      bodyHTML += `<div class="ph-sport-hdr">${esc(label)} <span class="ph-sport-rec">${record}</span></div>`;
-      bodyHTML += items.map(makeRow).join('');
-    }
-  }
+  // All sports that have any picks
+  const allSports = [...new Set([...groups.keys(), ...pendingMap.keys()])];
 
-  // Pending picks section
-  let pendingHTML = '';
-  if (pending.length) {
-    const pendingGroups = new Map();
-    for (const p of pending) {
-      const sp = p.sport || 'other';
-      if (!pendingGroups.has(sp)) pendingGroups.set(sp, []);
-      pendingGroups.get(sp).push(p);
-    }
-    pendingHTML = `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pending.length})</div>`;
-    for (const [sp, items] of pendingGroups) {
-      pendingHTML += items.map(p => `<div class="ph-row ph-pending-row">
-        <span class="ph-icon">⏳</span>
-        <span class="ph-date">${esc(p.date)}</span>
-        <span class="ph-matchup">${esc(p.matchup || p.team)}</span>
-        <span class="ph-pick">→ ${esc(p.team)}</span>
-      </div>`).join('');
-    }
-  }
+  const tabsHTML = [
+    `<button class="ph-tab ph-tab-active" data-ph-tab="all">All</button>`,
+    ...allSports.map(sp => {
+      const label = SPORT_LABEL[sp] || sp.toUpperCase();
+      const wins  = (groups.get(sp) || []).filter(p => p.result === 'win').length;
+      const total = (groups.get(sp) || []).length;
+      const rec   = total ? `<span class="ph-tab-rec">${wins}–${total - wins}</span>` : '';
+      return `<button class="ph-tab" data-ph-tab="${esc(sp)}">${esc(label)}${rec}</button>`;
+    })
+  ].join('');
 
   const modal = document.createElement('div');
-  modal.id = 'picks-history-modal';
+  modal.id    = 'picks-history-modal';
   modal.className = 'ph-modal';
   modal.innerHTML = `<div class="ph-panel">
     <div class="ph-hdr">
@@ -157,8 +163,18 @@ function showPicksHistory() {
       <span class="ph-sub">last 14 days</span>
       <button class="ph-close" onclick="document.getElementById('picks-history-modal').remove()">✕</button>
     </div>
-    <div class="ph-list">${bodyHTML}${pendingHTML}</div>
+    <div class="ph-tabs">${tabsHTML}</div>
+    <div class="ph-list" id="ph-list-content">${renderTabContent('all')}</div>
   </div>`;
+
+  modal.querySelector('.ph-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('[data-ph-tab]');
+    if (!btn) return;
+    modal.querySelectorAll('.ph-tab').forEach(b => b.classList.remove('ph-tab-active'));
+    btn.classList.add('ph-tab-active');
+    modal.querySelector('#ph-list-content').innerHTML = renderTabContent(btn.dataset.phTab);
+  });
+
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
 }
