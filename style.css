@@ -1686,7 +1686,9 @@ input { font: inherit; }
 }
 .ph-tab:hover { background: var(--bg-hover); color: var(--text); }
 .ph-tab-active { background: var(--accent-glow); color: var(--accent); border-color: rgba(0,230,118,.3); }
-.ph-tab-rec { font-size: .65rem; color: var(--text-muted); margin-left: 4px; font-weight: 600; }
+.ph-tab-rec  { font-size: .65rem; color: var(--text-muted); margin-left: 4px; font-weight: 600; }
+.ph-prop-badge { font-size: .72rem; background: rgba(0,230,118,.1); color: var(--accent); border-radius: 3px; padding: 1px 5px; margin-right: 3px; font-weight: 700; white-space: nowrap; }
+.ph-player-row .ph-matchup { font-size: .8rem; display: flex; align-items: center; gap: 4px; }
 .ph-list   { padding: 6px 0; }
 .ph-row    {
   display: grid; grid-template-columns: 1.4rem 5.5rem 1fr auto;
