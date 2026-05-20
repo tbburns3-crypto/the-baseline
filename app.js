@@ -2433,13 +2433,14 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const wxLine = wxParts.length ? `<div class="pc-wx">${wxParts.map(s => esc(s)).join(' · ')}</div>` : '';
 
   // ── Elite pitcher warning ──
-  const _pitWarn = (pd, rates, facingAbbr) => {
+  const _pitWarn = (pd, rates, facingAbbr, pitName) => {
+    if (!pitName || pitName === 'TBD') return '';
     const era = parseFloat(pd?.season?.era || 99);
-    if (era < 3.10 && rates.k9 > 9.0) return `⚠️ ${esc(lastName(pd?.name||''))} ${era.toFixed(2)} ERA · ${rates.k9.toFixed(1)} K/9 — tough day for ${esc(facingAbbr)} bats`;
+    if (era < 3.10 && rates.k9 > 9.0) return `⚠️ ${esc(lastName(pitName))} ${era.toFixed(2)} ERA · ${rates.k9.toFixed(1)} K/9 — tough day for ${esc(facingAbbr)} bats`;
     return '';
   };
-  const warnAway = _pitWarn(awayPD, awayRates, homeAbbr); // home batters face away pitcher
-  const warnHome = _pitWarn(homePD, homeRates, awayAbbr); // away batters face home pitcher
+  const warnAway = _pitWarn(awayPD, awayRates, homeAbbr, awayPName); // home batters face away pitcher
+  const warnHome = _pitWarn(homePD, homeRates, awayAbbr, homePName); // away batters face home pitcher
   const pitWarnLine = (warnAway || warnHome)
     ? `<div class="pc-pit-warn">${[warnAway, warnHome].filter(Boolean).join('<br>')}</div>` : '';
 
