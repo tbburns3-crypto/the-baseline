@@ -49,8 +49,13 @@ const S = {
 function dateStr(offset = 0) {
   const d = new Date();
   d.setDate(d.getDate() + offset);
-  return d.toISOString().split('T')[0];
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dy = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dy}`;
 }
+
+const CURRENT_SEASON = new Date().getFullYear();
 
 function fmtDateShort(iso) {
   const d = new Date(iso + 'T12:00:00');
@@ -1954,7 +1959,7 @@ async function fetchPitcherPreview(pitcherId) {
   if (_pitcherCache.has(pitcherId)) return _pitcherCache.get(pitcherId);
   try {
     const [r1, r2] = await Promise.all([
-      fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season,gameLog&season=2025&group=pitching&limit=1`).then(r => r.json()),
+      fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season,gameLog&season=${CURRENT_SEASON}&group=pitching&limit=1`).then(r => r.json()),
       fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}?fields=people,id,pitchHand`).then(r => r.json())
     ]);
     const result = {
@@ -1971,7 +1976,7 @@ async function fetchBatterPreview(batterId) {
   if (_batterCache.has(batterId)) return _batterCache.get(batterId);
   try {
     const [r1, r2] = await Promise.all([
-      fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=season&season=2025&group=hitting`).then(r => r.json()),
+      fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=season&season=${CURRENT_SEASON}&group=hitting`).then(r => r.json()),
       fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}?fields=people,id,batSide`).then(r => r.json())
     ]);
     const stat    = r1.stats?.[0]?.splits?.[0]?.stat || null;
@@ -2466,8 +2471,8 @@ async function loadMLBFullStandings() {
   showLoading('other-standings-area', 'Loading MLB standings…');
   try {
     const [standRes, leadRes] = await Promise.all([
-      fetch('https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=2025&standingsTypes=regularSeason&hydrate=division,team,record'),
-      fetch('https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=homeRuns,battingAverage,rbi,stolenBases,hits,earnedRunAverage,strikeouts,wins,saves&season=2025&sportId=1&limit=10&hydrate=person,team')
+      fetch(`https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${CURRENT_SEASON}&standingsTypes=regularSeason&hydrate=division,team,record`),
+      fetch(`https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=homeRuns,battingAverage,rbi,stolenBases,hits,earnedRunAverage,strikeouts,wins,saves&season=${CURRENT_SEASON}&sportId=1&limit=10&hydrate=person,team`)
     ]);
     if (!standRes.ok) throw new Error(`HTTP ${standRes.status}`);
     if (!leadRes.ok)  throw new Error(`HTTP ${leadRes.status}`);
@@ -2612,7 +2617,7 @@ async function ppView(playerId, view, chipEl) {
   try {
     let data;
     if (view === 'season') {
-      const r = await fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=stats(group=[hitting,pitching],type=season,season=2025),currentTeam,position`);
+      const r = await fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}?hydrate=stats(group=[hitting,pitching],type=season,season=${CURRENT_SEASON}),currentTeam,position`);
       const j = await r.json();
       const p = j.people?.[0];
       const all = p?.stats || [];
@@ -2623,8 +2628,8 @@ async function ppView(playerId, view, chipEl) {
       };
     } else if (view === 'log') {
       const [hr, pr] = await Promise.allSettled([
-        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&season=2025&group=hitting&limit=20`).then(r=>r.json()),
-        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&season=2025&group=pitching&limit=20`).then(r=>r.json()),
+        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&season=${CURRENT_SEASON}&group=hitting&limit=20`).then(r=>r.json()),
+        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=gameLog&season=${CURRENT_SEASON}&group=pitching&limit=20`).then(r=>r.json()),
       ]);
       data = {
         hLog: hr.status==='fulfilled' ? hr.value?.stats?.[0]?.splits||[] : [],
@@ -2636,8 +2641,8 @@ async function ppView(playerId, view, chipEl) {
       const days  = view==='last7' ? 7 : view==='last14' ? 14 : 30;
       const start = dateStr(-days), end = dateStr(0);
       const [hr, pr] = await Promise.allSettled([
-        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=byDateRange&startDate=${start}&endDate=${end}&group=hitting&season=2025`).then(r=>r.json()),
-        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=byDateRange&startDate=${start}&endDate=${end}&group=pitching&season=2025`).then(r=>r.json()),
+        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=byDateRange&startDate=${start}&endDate=${end}&group=hitting&season=${CURRENT_SEASON}`).then(r=>r.json()),
+        fetch(`https://statsapi.mlb.com/api/v1/people/${playerId}/stats?stats=byDateRange&startDate=${start}&endDate=${end}&group=pitching&season=${CURRENT_SEASON}`).then(r=>r.json()),
       ]);
       data = {
         hitting: hr.status==='fulfilled' ? hr.value?.stats?.[0]?.splits?.[0]?.stat : null,
