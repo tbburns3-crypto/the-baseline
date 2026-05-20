@@ -1326,8 +1326,8 @@ async function espnGames(sport) {
   const d = dateStr(0).replace(/-/g, '');
   const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${paths[sport]}/scoreboard?dates=${d}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const d = await res.json();
-  return (d.events || []).map(ev => {
+  const json = await res.json();
+  return (json.events || []).map(ev => {
     const comp = ev.competitions[0];
     const home = comp.competitors.find(c => c.homeAway === 'home') || comp.competitors[0];
     const away = comp.competitors.find(c => c.homeAway === 'away') || comp.competitors[1];
