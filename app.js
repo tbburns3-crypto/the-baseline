@@ -308,13 +308,19 @@ function updatePicksDisplay() {
     }
   }
 
-  // Banner — sport-specific only
+  // Banner — only visible when this sport has picks
   const banner  = document.getElementById('picks-banner');
   const pbWins  = document.getElementById('pb-wins');
   const pbLoss  = document.getElementById('pb-losses');
   const pbPct   = document.getElementById('pb-pct');
   const pbBreak = document.getElementById('pb-breakdown');
   if (!banner || !pbWins || !pbLoss || !pbPct) return;
+
+  // Hide entirely when sport has no picks at all
+  if (!sportPicks.length) {
+    banner.style.display = 'none';
+    return;
+  }
 
   banner.style.display = '';
 
@@ -324,16 +330,11 @@ function updatePicksDisplay() {
     pbPct.textContent  = `(${sPct}%)`;
     if (pbBreak) pbBreak.textContent = sportPend.length ? `+${sportPend.length} active` : '';
     banner.className = sPct >= 55 ? 'pb-hot' : sPct <= 40 ? 'pb-cold' : '';
-  } else if (sportPend.length) {
+  } else {
+    // Picks exist but none resolved yet
     pbWins.textContent = '—';
     pbLoss.textContent = '—';
     pbPct.textContent  = `${sportPend.length} active`;
-    if (pbBreak) pbBreak.textContent = '';
-    banner.className = '';
-  } else {
-    pbWins.textContent = '—';
-    pbLoss.textContent = '—';
-    pbPct.textContent  = 'making picks…';
     if (pbBreak) pbBreak.textContent = '';
     banner.className = '';
   }
@@ -1675,6 +1676,9 @@ function switchSport(sport) {
   S.sport = sport;
   S.otherDateOffset = 0;
   document.querySelectorAll('.sport-tab').forEach(t => t.classList.toggle('active', t.dataset.sport === sport));
+  // Hide banner immediately on sport switch; updatePicksDisplay re-shows if this sport has picks
+  const _b = document.getElementById('picks-banner');
+  if (_b) _b.style.display = 'none';
 
   const isTennis = sport === 'tennis';
   document.querySelectorAll('.tennis-only').forEach(el => el.style.display = isTennis ? '' : 'none');
