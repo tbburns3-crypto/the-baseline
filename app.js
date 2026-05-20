@@ -180,12 +180,52 @@ function surfaceClass(surface = '') {
   return 'hard';
 }
 
-// api-tennis.com does not return tournament_surface; infer from name
+// api-tennis.com does not return tournament_surface; infer from name/location
 function inferSurface(name = '') {
   const n = name.toLowerCase();
-  if (/roland.garros|french.open|rome|madrid|barcelona|monte.carlo|monte carlo|hamburg|lyon|geneva|estoril|istanbul|marrakech|munich|belgrade|gstaad|bastad|kitzbühel|umag|buenos.aires|rio.open|cordoba|bogota|santiago/.test(n)) return 'Clay';
-  if (/wimbledon|queen.?s.club|eastbourne|halle|hertogenbosch|birmingham|nottingham|mallorca/.test(n)) return 'Grass';
+
   if (/indoor|carpet/.test(n)) return 'Indoor Hard';
+
+  // Explicit grass tournaments
+  if (/wimbledon|queen.?s.club|eastbourne|halle|hertogenbosch|'s-hertogenbosch|birmingham|nottingham|mallorca|rosmalen/.test(n)) return 'Grass';
+
+  // Explicit ATP/WTA clay events
+  if (/roland.garros|french.open/.test(n)) return 'Clay';
+
+  // Clay-surface cities/tournaments (ATP, WTA, Challenger, ITF)
+  const clayNames = [
+    'hamburg','rome','madrid','barcelona','monte.carlo','monte carlo',
+    'lyon','geneva','geneve','istanbul','marrakech','munich','belgrade',
+    'gstaad','bastad','båstad','kitzbühel','kitzbuhel','umag','estoril',
+    'buenos.aires','buenos aires','rio open','cordoba','bogota','santiago',
+    'strasbourg','rabat','prague','warsaw','varsovie','budapest',
+    'bucharest','sofia','palermo','lausanne','lausanne',
+    'portoroz','portorož','klagenfurt','bol ','cervia','bologna',
+    'parma','florence','firenze','napoli','naples','verona','venezia',
+    'cagliari','palermo','ravenna','torino','genova',
+    'marbella','benalmadena','seville','sevilla','valencia','mallorca open',
+    'estepona','alicante','gran canaria','tenerife','gijon','vigo',
+    'casablanca','tunis','cairo','sousse',
+    'mataro','manacor','granollers','saint-gaudens','croissy',
+    'deauville','rouen','saint-brieuc','chartres','rennes',
+    'prostejov','brno','ostrava','pilsen',
+    'bastad','vilamoura','estoril',
+    'zagreb','split','dubrovnik','rijeka','varazdin',
+    'kayseri','ankara','antalya','izmir',
+    'luan','shenzhen clay','chengdu clay',
+    'lima','bogota','medellin','guayaquil','quito',
+    'belgrade','novi sad','nis',
+    'poznan','warsaw','gdynia',
+    'plovdiv','sofia','varna',
+    'aix-en-provence','nice','cannes',
+    'roland garros','paris clay',
+  ];
+  if (clayNames.some(c => n.includes(c))) return 'Clay';
+
+  // Country-based clay inference for ITF/Challenger events:
+  // Countries where outdoor tournaments are almost always clay
+  if (/\b(italy|italia|spain|espana|spain\)|france|turkey|croatia|argentina|chile|brazil|brasil|colombia|peru|ecuador|mexico|morocco|tunisia|egypt|algeria|portugal|serbia|bulgaria|romania|czech|slovakia|austria|switzerland|slovenia|poland|hungary|greece|cyprus)\b/.test(n)) return 'Clay';
+
   return 'Hard';
 }
 
@@ -436,7 +476,7 @@ function renderMatches(all) {
     if (!catMap.has(cat)) catMap.set(cat, new Map());
     const tKey = m.tournament_name || m.league_name || m.event_type_type || 'Other';
     const tMap = catMap.get(cat);
-    if (!tMap.has(tKey)) tMap.set(tKey, { name: tKey, surface: m.tournament_surface || '', type: m.event_type_type || '', matches: [] });
+    if (!tMap.has(tKey)) tMap.set(tKey, { name: tKey, surface: m.tournament_surface || inferSurface(tKey), type: m.event_type_type || '', matches: [] });
     tMap.get(tKey).matches.push(m);
   }
 
@@ -916,7 +956,7 @@ function renderSidebar(matches) {
   const groups = new Map();
   for (const m of matches) {
     const name = m.tournament_name || m.league_name || 'Unknown';
-    if (!groups.has(name)) groups.set(name, { name, surface: m.tournament_surface || '', count: 0, live: 0 });
+    if (!groups.has(name)) groups.set(name, { name, surface: m.tournament_surface || inferSurface(name), count: 0, live: 0 });
     const g = groups.get(name);
     g.count++;
     if (isLive(m.event_status)) g.live++;
