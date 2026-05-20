@@ -1570,8 +1570,8 @@ async function espnGames(sport) {
       awayTeam: away?.team?.shortDisplayName || away?.team?.name || '-',
       homeAbbr: home?.team?.abbreviation || '',
       awayAbbr: away?.team?.abbreviation || '',
-      homeRec: home?.record?.[0]?.summary || '',
-      awayRec: away?.record?.[0]?.summary || '',
+      homeRec: ((home?.records || home?.record || []).find(r => r.type === 'total') || (home?.records || home?.record || [])[0])?.summary || '',
+      awayRec: ((away?.records || away?.record || []).find(r => r.type === 'total') || (away?.records || away?.record || [])[0])?.summary || '',
       series: comp.series ? { summary: comp.series.summary || '', title: comp.series.title || '' } : null,
       homeScore: state !== 'pre' ? (home?.score ?? '') : '',
       awayScore: state !== 'pre' ? (away?.score ?? '') : '',
@@ -1970,55 +1970,73 @@ function buildMLBPreStats(leaders) {
 }
 
 // ── MLB PICKS PAGE ───────────────────────────────────────────
+// Returns Map<teamAbbr, {name, value}> for a given stat category
 function _leadsByTeam(leadData, category) {
   const cat = (leadData?.leagueLeaders || []).find(c => c.leaderCategory === category);
   const map = new Map();
   for (const l of (cat?.leaders || [])) {
     const abbr = l.team?.abbreviation || '';
-    if (abbr && !map.has(abbr)) map.set(abbr, { name: l.person?.fullName || '', value: l.value, abbr });
+    if (abbr && !map.has(abbr)) {
+      map.set(abbr, {
+        name:  l.person?.fullName || '',
+        value: l.value,
+        abbr
+      });
+    }
   }
   return map;
 }
 
-function buildMLBPickCard(g, hrMap, avgMap, rbiMap, opsMap) {
+// Each stat category descriptor: icon, short label, map key, value suffix
+const PC_CATS = [
+  { key: 'avg',  icon: '🎯', label: 'Best Hit',   mapKey: 'battingAverage', suffix: ' AVG',  title: 'Highest batting average - most likely to get a hit' },
+  { key: 'hr',   icon: '💣', label: 'Best HR',    mapKey: 'homeRuns',       suffix: ' HR',   title: 'Most home runs this season' },
+  { key: 'rbi',  icon: '⚡', label: 'Best RBI',   mapKey: 'rbi',            suffix: ' RBI',  title: 'Most RBIs this season' },
+  { key: 'h',    icon: '🏏', label: 'Most Hits',  mapKey: 'hits',           suffix: ' H',    title: 'Most hits this season' },
+  { key: 'bb',   icon: '🚶', label: 'Best Walk',  mapKey: 'baseOnBalls',    suffix: ' BB',   title: 'Most walks (on-base ability) this season' },
+  { key: 'sb',   icon: '🏃', label: 'Best SB',    mapKey: 'stolenBases',    suffix: ' SB',   title: 'Most stolen bases this season' },
+];
+
+function buildMLBPickCard(g, maps) {
   const { fin, live } = gameRowState(g);
 
-  // Win pick calculation (same logic as inlineGamePick but full card)
+  // Win pick
   const awayWP = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
-  let winPickHTML = '<div class="pc-win-pick pc-no-data">Not enough record data to pick</div>';
+  let winPickHTML = '';
   if (g.awayRec || g.homeRec) {
     const rawHome = homeWP * 1.03, total = awayWP + rawHome;
     const homePct = Math.round((rawHome / total) * 100);
     const awayPct = 100 - homePct;
     const margin  = Math.abs(homePct - 50);
-    if (margin >= 3) {
-      const favTeam = homePct > awayPct ? g.homeTeam : g.awayTeam;
-      const pct     = Math.max(homePct, awayPct);
-      const conf    = pct >= 65 ? 'pc-conf-high' : pct >= 58 ? 'pc-conf-med' : 'pc-conf-low';
-      recordPick(String(g.id), favTeam.split(' ').pop());
-      winPickHTML = `<div class="pc-win-pick ${conf}">
-        <span class="pc-pick-arrow">→</span>
-        <span class="pc-pick-team">${esc(favTeam)}</span>
-        <span class="pc-pick-pct">${pct}% win probability</span>
-        <span class="pc-pick-basis">${esc(g.awayRec || '?')} vs ${esc(g.homeRec || '?')}</span>
-      </div>`;
-    }
+    const favTeam = homePct > awayPct ? g.homeTeam : g.awayTeam;
+    const pct     = Math.max(homePct, awayPct);
+    if (!fin && margin >= 3) recordPick(String(g.id), favTeam.split(' ').pop());
+    const cls = margin < 3 ? 'pc-conf-low' : pct >= 63 ? 'pc-conf-high' : 'pc-conf-med';
+    const label = margin < 3 ? 'Even matchup' : `→ ${esc(favTeam)} ${pct}%`;
+    winPickHTML = `<div class="pc-win-pick ${cls}">
+      <span class="pc-win-label">${label}</span>
+      <span class="pc-pick-basis">${esc(g.awayRec || '?')} vs ${esc(g.homeRec || '?')}</span>
+    </div>`;
+  } else {
+    winPickHTML = '<div class="pc-win-pick pc-no-data">Records loading — win pick pending</div>';
   }
 
-  const shortName = n => n ? n.split(' ').pop() : '-';
-  const teamStatRow = (abbr, teamName) => {
-    const hr  = hrMap.get(abbr);
-    const avg = avgMap.get(abbr);
-    const rbi = rbiMap.get(abbr);
-    const ops = opsMap ? opsMap.get(abbr) : null;
-    if (!hr && !avg && !rbi) return '';
+  const sn = n => (n || '-').split(' ').pop();
+
+  const teamBlock = (abbr, teamName) => {
+    const chips = PC_CATS.map(cat => {
+      const entry = maps[cat.mapKey]?.get(abbr);
+      if (!entry) return '';
+      return `<span class="pc-stat-chip" title="${esc(cat.title)}">
+        <span class="pc-si">${cat.icon}</span>
+        <span class="pc-sv">${esc(sn(entry.name))}</span>
+        <span class="pc-sl">${esc(cat.label)}: ${esc(String(entry.value))}${esc(cat.suffix)}</span>
+      </span>`;
+    }).filter(Boolean);
+    if (!chips.length) return '';
     return `<div class="pc-team-stats">
       <div class="pc-team-label">${esc(teamName)}</div>
-      <div class="pc-stat-row">
-        ${avg ? `<span class="pc-stat-chip"><span class="pc-si">🎯</span><span class="pc-sv">${esc(shortName(avg.name))}</span><span class="pc-sl">${esc(avg.value)} AVG</span></span>` : ''}
-        ${hr  ? `<span class="pc-stat-chip"><span class="pc-si">💣</span><span class="pc-sv">${esc(shortName(hr.name))}</span><span class="pc-sl">${esc(hr.value)} HR</span></span>` : ''}
-        ${rbi ? `<span class="pc-stat-chip"><span class="pc-si">⚡</span><span class="pc-sv">${esc(shortName(rbi.name))}</span><span class="pc-sl">${esc(rbi.value)} RBI</span></span>` : ''}
-      </div>
+      <div class="pc-stat-row">${chips.join('')}</div>
     </div>`;
   };
 
@@ -2026,7 +2044,7 @@ function buildMLBPickCard(g, hrMap, avgMap, rbiMap, opsMap) {
                     : live ? '<span class="live-badge">LIVE</span>'
                     : `<span class="pc-time">${esc(g.status)}</span>`;
 
-  return `<div class="picks-card" onclick="switchSport('mlb');switchView('scores')" title="View scores">
+  return `<div class="picks-card">
     <div class="pc-header">
       <div class="pc-matchup">
         <span class="pc-away">${esc(g.awayTeam)}</span>${g.awayRec ? ` <span class="rec-tag">${esc(g.awayRec)}</span>` : ''}
@@ -2038,8 +2056,8 @@ function buildMLBPickCard(g, hrMap, avgMap, rbiMap, opsMap) {
     </div>
     ${winPickHTML}
     <div class="pc-team-rows">
-      ${teamStatRow(g.awayAbbr, g.awayTeam)}
-      ${teamStatRow(g.homeAbbr, g.homeTeam)}
+      ${teamBlock(g.awayAbbr, g.awayTeam)}
+      ${teamBlock(g.homeAbbr, g.homeTeam)}
     </div>
   </div>`;
 }
@@ -2048,11 +2066,12 @@ async function loadMLBPicksPage() {
   const area = document.getElementById('mlb-picks-area');
   area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading today\'s picks…</p></div>';
   try {
-    // Fetch games + season leaders in parallel (leaders may already be cached)
+    const cats = 'homeRuns,battingAverage,rbi,hits,stolenBases,baseOnBalls,onBasePlusSlugging';
     const [games, leadRes] = await Promise.all([
       espnGames('mlb'),
-      _mlbLeadData ? Promise.resolve(null) :
-        fetch(`https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=homeRuns,battingAverage,rbi,hits,onBasePlusSlugging&season=${CURRENT_SEASON}&sportId=1&limit=30&hydrate=person,team`).then(r => r.json())
+      _mlbLeadData
+        ? Promise.resolve(null)
+        : fetch(`https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${cats}&season=${CURRENT_SEASON}&sportId=1&limit=30&hydrate=person,team`).then(r => r.json())
     ]);
     if (leadRes) _mlbLeadData = leadRes;
 
@@ -2061,15 +2080,13 @@ async function loadMLBPicksPage() {
       return;
     }
 
-    const hrMap  = _leadsByTeam(_mlbLeadData, 'homeRuns');
-    const avgMap = _leadsByTeam(_mlbLeadData, 'battingAverage');
-    const rbiMap = _leadsByTeam(_mlbLeadData, 'rbi');
-    const opsMap = _leadsByTeam(_mlbLeadData, 'onBasePlusSlugging');
+    // Build lookup maps, one per stat category
+    const maps = {};
+    for (const cat of PC_CATS) maps[cat.mapKey] = _leadsByTeam(_mlbLeadData, cat.mapKey);
 
-    const hasPick = games.some(g => { const { fin } = gameRowState(g); return !fin && (g.awayRec || g.homeRec); });
-    const note    = hasPick ? '' : '<div class="picks-note">Records not yet available — picks will appear once the season is underway.</div>';
-
-    area.innerHTML = `${note}<div class="picks-cards">${games.map(g => buildMLBPickCard(g, hrMap, avgMap, rbiMap, opsMap)).join('')}</div>`;
+    const cards = games.map(g => buildMLBPickCard(g, maps)).join('');
+    const season = CURRENT_SEASON;
+    area.innerHTML = `<div class="pc-data-note">${season} season stats - best performer on each team per category</div><div class="picks-cards">${cards}</div>`;
     updatePicksDisplay();
   } catch (err) {
     area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load picks: ${esc(err.message)}</p></div>`;
