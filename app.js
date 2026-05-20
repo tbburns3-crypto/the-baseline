@@ -1969,124 +1969,281 @@ function buildMLBPreStats(leaders) {
     : '<div class="gp-no-lineup">Lineups not posted yet - check back closer to game time</div>';
 }
 
-// ── MLB PICKS PAGE ───────────────────────────────────────────
-// Returns Map<teamAbbr, {name, value}> for a given stat category
-function _leadsByTeam(leadData, category) {
-  const cat = (leadData?.leagueLeaders || []).find(c => c.leaderCategory === category);
-  const map = new Map();
-  for (const l of (cat?.leaders || [])) {
-    const abbr = l.team?.abbreviation || '';
-    if (abbr && !map.has(abbr)) {
-      map.set(abbr, {
-        name:  l.person?.fullName || '',
-        value: l.value,
-        abbr
-      });
-    }
-  }
-  return map;
+// ── MLB PICKS PAGE — REAL MATCHUP ENGINE ─────────────────────
+
+function _windHRBonus(weather) {
+  if (!weather?.wind) return { bonus: 0, label: '' };
+  const w = weather.wind.toLowerCase();
+  const mph = parseInt(w.match(/(\d+)/)?.[1] || 0);
+  const out = /out/i.test(w);
+  const inn = /in/i.test(w);
+  if (out && mph >= 15) return { bonus: 2, label: `${mph}mph out (HR+)` };
+  if (out && mph >= 8)  return { bonus: 1, label: `${mph}mph out` };
+  if (inn && mph >= 15) return { bonus: -2, label: `${mph}mph in (HR-)` };
+  if (inn && mph >= 8)  return { bonus: -1, label: `${mph}mph in` };
+  return { bonus: 0, label: mph >= 5 ? `${mph}mph` : '' };
 }
 
-// Each stat category descriptor: icon, short label, map key, value suffix
-const PC_CATS = [
-  { key: 'avg',  icon: '🎯', label: 'Best Hit',   mapKey: 'battingAverage', suffix: ' AVG',  title: 'Highest batting average - most likely to get a hit' },
-  { key: 'hr',   icon: '💣', label: 'Best HR',    mapKey: 'homeRuns',       suffix: ' HR',   title: 'Most home runs this season' },
-  { key: 'rbi',  icon: '⚡', label: 'Best RBI',   mapKey: 'rbi',            suffix: ' RBI',  title: 'Most RBIs this season' },
-  { key: 'h',    icon: '🏏', label: 'Most Hits',  mapKey: 'hits',           suffix: ' H',    title: 'Most hits this season' },
-  { key: 'bb',   icon: '🚶', label: 'Best Walk',  mapKey: 'baseOnBalls',    suffix: ' BB',   title: 'Most walks (on-base ability) this season' },
-  { key: 'sb',   icon: '🏃', label: 'Best SB',    mapKey: 'stolenBases',    suffix: ' SB',   title: 'Most stolen bases this season' },
-];
+function _handAdv(batSide, pitcherHand) {
+  if (!batSide || !pitcherHand) return { adv: 0, label: '' };
+  if (batSide === 'S') return { adv: 1, label: 'switch hitter' };
+  if (batSide !== pitcherHand) return { adv: 2, label: `${batSide}HB vs ${pitcherHand}HP (favorable)` };
+  return { adv: -1, label: `${batSide}HB vs ${pitcherHand}HP (same hand)` };
+}
 
-function buildMLBPickCard(g, maps) {
-  const { fin, live } = gameRowState(g);
+function _fmtAvg(v) {
+  const n = parseFloat(v);
+  if (!n) return null;
+  return '.' + String(n.toFixed(3)).replace('0.', '').replace('.', '');
+}
 
-  // Win pick
-  const awayWP = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
-  let winPickHTML = '';
-  if (g.awayRec || g.homeRec) {
+async function buildMLBPicksGameCard(espnGame, mlbGame) {
+  const { fin, live } = gameRowState(espnGame);
+
+  // ── Win pick ──
+  const awayWP = parseWinPct(espnGame.awayRec), homeWP = parseWinPct(espnGame.homeRec);
+  let winPickHTML = '<div class="pc-win-pick pc-no-data">Win pick loading...</div>';
+  if (espnGame.awayRec || espnGame.homeRec) {
     const rawHome = homeWP * 1.03, total = awayWP + rawHome;
     const homePct = Math.round((rawHome / total) * 100);
-    const awayPct = 100 - homePct;
-    const margin  = Math.abs(homePct - 50);
-    const favTeam = homePct > awayPct ? g.homeTeam : g.awayTeam;
-    const pct     = Math.max(homePct, awayPct);
-    if (!fin && margin >= 3) recordPick(String(g.id), favTeam.split(' ').pop());
+    const favTeam = homePct >= 50 ? espnGame.homeTeam : espnGame.awayTeam;
+    const pct = Math.max(homePct, 100 - homePct);
+    const margin = Math.abs(homePct - 50);
+    if (!fin && margin >= 3) recordPick(String(espnGame.id), favTeam.split(' ').pop());
     const cls = margin < 3 ? 'pc-conf-low' : pct >= 63 ? 'pc-conf-high' : 'pc-conf-med';
-    const label = margin < 3 ? 'Even matchup' : `→ ${esc(favTeam)} ${pct}%`;
+    const lbl = margin < 3 ? 'Even matchup - too close to pick' : `→ ${esc(favTeam)} ${pct}% win probability`;
     winPickHTML = `<div class="pc-win-pick ${cls}">
-      <span class="pc-win-label">${label}</span>
-      <span class="pc-pick-basis">${esc(g.awayRec || '?')} vs ${esc(g.homeRec || '?')}</span>
+      <span class="pc-win-label">${lbl}</span>
+      <span class="pc-pick-basis">Records: ${esc(espnGame.awayTeam)} ${esc(espnGame.awayRec || '?')} | ${esc(espnGame.homeTeam)} ${esc(espnGame.homeRec || '?')}</span>
     </div>`;
-  } else {
-    winPickHTML = '<div class="pc-win-pick pc-no-data">Records loading — win pick pending</div>';
   }
-
-  const sn = n => (n || '-').split(' ').pop();
-
-  const teamBlock = (abbr, teamName) => {
-    const chips = PC_CATS.map(cat => {
-      const entry = maps[cat.mapKey]?.get(abbr);
-      if (!entry) return '';
-      return `<span class="pc-stat-chip" title="${esc(cat.title)}">
-        <span class="pc-si">${cat.icon}</span>
-        <span class="pc-sv">${esc(sn(entry.name))}</span>
-        <span class="pc-sl">${esc(cat.label)}: ${esc(String(entry.value))}${esc(cat.suffix)}</span>
-      </span>`;
-    }).filter(Boolean);
-    if (!chips.length) return '';
-    return `<div class="pc-team-stats">
-      <div class="pc-team-label">${esc(teamName)}</div>
-      <div class="pc-stat-row">${chips.join('')}</div>
-    </div>`;
-  };
 
   const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
                     : live ? '<span class="live-badge">LIVE</span>'
-                    : `<span class="pc-time">${esc(g.status)}</span>`;
+                    : `<span class="pc-time">${esc(espnGame.status)}</span>`;
+
+  // ── Header ──
+  const header = `<div class="pc-header">
+    <div class="pc-matchup">
+      <span class="pc-away">${esc(espnGame.awayTeam)}</span>${espnGame.awayRec ? ` <span class="rec-tag">${esc(espnGame.awayRec)}</span>` : ''}
+      <span class="pc-at">@</span>
+      <span class="pc-home">${esc(espnGame.homeTeam)}</span>${espnGame.homeRec ? ` <span class="rec-tag">${esc(espnGame.homeRec)}</span>` : ''}
+      ${espnGame.series?.summary ? `<span class="series-tag">${esc(espnGame.series.summary)}</span>` : ''}
+    </div>
+    <div class="pc-status">${statusLabel}</div>
+  </div>`;
+
+  // If no MLB schedule data, return just win pick
+  if (!mlbGame) {
+    return `<div class="picks-card">${header}${winPickHTML}<div class="pc-no-data" style="font-size:.78rem;padding:6px 0">Detailed matchup data not available yet</div></div>`;
+  }
+
+  const away = mlbGame.teams.away, home = mlbGame.teams.home;
+  const awayAbbr = away.team?.abbreviation || espnGame.awayAbbr;
+  const homeAbbr = home.team?.abbreviation || espnGame.homeAbbr;
+  const awayPitcherId = away.probablePitcher?.id;
+  const homePitcherId = home.probablePitcher?.id;
+  const awayPName = away.probablePitcher?.fullName || 'TBD';
+  const homePName = home.probablePitcher?.fullName || 'TBD';
+  const weather   = mlbGame.weather || null;
+  const wind      = _windHRBonus(weather);
+
+  // Pitcher stats (already pre-fetched)
+  const awayPD = awayPitcherId ? _pitcherCache.get(awayPitcherId) : null;
+  const homePD = homePitcherId ? _pitcherCache.get(homePitcherId) : null;
+  const awayHand = awayPD?.pitchHand || null;
+  const homeHand = homePD?.pitchHand || null;
+
+  // ── Pitcher matchup summary ──
+  const pitcherSlot = (name, pd, hand, abbr) => {
+    const s = pd?.season;
+    const handStr = hand ? `${hand}HP` : '';
+    const era = s?.era ? `ERA ${s.era}` : '';
+    const whip = s?.whip ? `WHIP ${s.whip}` : '';
+    const k = s?.strikeOuts ? `${s.strikeOuts}K` : '';
+    const rec = s ? `${s.wins??0}-${s.losses??0}` : '';
+    const stats = [era, whip, k, rec].filter(Boolean).join(' · ');
+    return `<div class="pc-pitcher-slot"><span class="pc-pit-abbr">${esc(abbr)}</span><span class="pc-pit-hand">${esc(handStr)}</span><span class="pc-pit-name">${esc(lastName(name))}</span>${stats ? `<span class="pc-pit-stats">${esc(stats)}</span>` : ''}</div>`;
+  };
+
+  const pitcherRow = `<div class="pc-pitchers">
+    ${pitcherSlot(awayPName, awayPD, awayHand, awayAbbr)}
+    <span class="pc-pit-vs">vs</span>
+    ${pitcherSlot(homePName, homePD, homeHand, homeAbbr)}
+  </div>`;
+
+  // ── Weather ──
+  const weatherHTML = weather
+    ? `<div class="pc-weather">
+        ${weather.condition ? `<span>${esc(weather.condition)}</span>` : ''}
+        ${weather.temp ? `<span>${esc(weather.temp)}°F</span>` : ''}
+        ${weather.wind ? `<span class="${wind.bonus > 0 ? 'pc-wind-out' : wind.bonus < 0 ? 'pc-wind-in' : ''}">${esc(weather.wind)}</span>` : ''}
+      </div>`
+    : '';
+
+  // ── Build batter objects ──
+  const awayLineup = mlbGame.lineups?.awayPlayers || [];
+  const homeLineup = mlbGame.lineups?.homePlayers || [];
+
+  const mkBatter = (p, pos, oppHand, teamAbbr, oppPitcherId) => {
+    const st = _batterCache.get(p.id) || {};
+    const batSide  = st.batSide || null;
+    const hand     = _handAdv(batSide, oppHand);
+    const avg      = parseFloat(st.avg     || 0);
+    const hr       = parseInt(st.homeRuns  || 0);
+    const rbi      = parseInt(st.rbi       || 0);
+    const h        = parseInt(st.hits      || 0);
+    const bb       = parseInt(st.baseOnBalls || 0);
+    const sb       = parseInt(st.stolenBases  || 0);
+    const cs       = parseInt(st.caughtStealing || 0);
+    const ab       = parseInt(st.atBats    || 0);
+    const ops      = parseFloat(st.ops     || 0);
+    const obp      = parseFloat(st.obp     || 0);
+    const sbSucc   = (sb + cs) > 0 ? sb / (sb + cs) : 0;
+    const posW     = [0,1.1,1.0,1.4,1.5,1.2,1.1,1.0,0.9,0.8][pos] || 1.0;
+    // Scoring — higher = better pick in category
+    const hitScore  = (avg * 1000) + hand.adv * 15 + (ab >= 100 ? 5 : 0);
+    const hrScore   = hr * 10 + ops * 200 + hand.adv * 8 + wind.bonus * 5;
+    const rbiScore  = rbi + posW * 10 + hand.adv * 5;
+    const bbScore   = bb + obp * 200;
+    const sbScore   = sb * 10 + sbSucc * 50;
+    const hScore    = h + avg * 200;
+    return {
+      id: p.id, name: p.fullName, abbr: teamAbbr, pos,
+      batSide, oppPitcherId, hand, avg, hr, rbi, h, bb, sb, cs, sbSucc, ab, ops, obp,
+      hitScore, hrScore, rbiScore, bbScore, sbScore, hScore,
+    };
+  };
+
+  const awayBatters = awayLineup.slice(0, 6).map((p, i) => mkBatter(p, i+1, homeHand, awayAbbr, homePitcherId));
+  const homeBatters = homeLineup.slice(0, 6).map((p, i) => mkBatter(p, i+1, awayHand, homeAbbr, awayPitcherId));
+  const allBatters  = [...awayBatters, ...homeBatters].filter(b => b.ab >= 5);
+
+  const hasLineup = allBatters.length > 0;
+
+  // ── Fetch career vs-pitcher stats for top hit + HR candidates ──
+  let vsMap = new Map(); // batterId -> vs stat
+  if (hasLineup) {
+    const topHit = [...allBatters].sort((a,b) => b.hitScore - a.hitScore)[0];
+    const topHR  = [...allBatters].sort((a,b) => b.hrScore  - a.hrScore)[0];
+    const toFetch = [...new Set([topHit, topHR].filter(b => b?.id && b?.oppPitcherId).map(b => b.id))];
+    const vsRes = await Promise.allSettled(
+      toFetch.map(bid => {
+        const batter = allBatters.find(b => b.id === bid);
+        return fetchVsStats(bid, batter.oppPitcherId).then(s => ({ bid, s }));
+      })
+    );
+    for (const r of vsRes) {
+      if (r.status === 'fulfilled' && r.value?.s) vsMap.set(r.value.bid, r.value.s);
+    }
+  }
+
+  // ── Pick row builder ──
+  const pickRow = (icon, label, batter, statLine, reasons) => {
+    if (!batter) return '';
+    const vs = vsMap.get(batter.id);
+    const vsStr = vs && parseInt(vs.atBats || 0) >= 3
+      ? ` · Career vs pitcher: ${vs.hits||0}/${vs.atBats||0} (${_fmtAvg(vs.avg) || '-'})${parseInt(vs.homeRuns||0) ? ` ${vs.homeRuns}HR` : ''}`
+      : '';
+    return `<div class="pc-pick-row">
+      <span class="pc-pi">${icon}</span>
+      <div class="pc-pick-detail">
+        <div class="pc-pick-name"><span class="pc-pn-abbr">${esc(batter.abbr)}</span> <strong>${esc(lastName(batter.name))}</strong> <span class="pc-pn-stat">${esc(statLine)}</span></div>
+        <div class="pc-pick-reasons">${esc(reasons)}${vsStr ? `<span class="pc-vs-career">${esc(vsStr)}</span>` : ''}</div>
+      </div>
+    </div>`;
+  };
+
+  let picksHTML = '';
+  if (hasLineup) {
+    const best = (arr, key) => [...arr].sort((a,b) => b[key] - a[key])[0];
+
+    const topHit  = best(allBatters, 'hitScore');
+    const topHR   = best(allBatters, 'hrScore');
+    const topRBI  = best(allBatters, 'rbiScore');
+    const topBB   = best(allBatters, 'bbScore');
+    const topSB   = allBatters.filter(b => b.sb > 0).sort((a,b) => b.sbScore - a.sbScore)[0];
+    const topHits = best(allBatters, 'hScore');
+
+    const reasonsFor = b => {
+      const parts = [];
+      if (b.hand.label) parts.push(b.hand.label);
+      if (b.ops >= 0.900) parts.push(`${b.ops} OPS`);
+      if (b.obp >= 0.360) parts.push(`${b.obp} OBP`);
+      if (b.pos <= 4) parts.push(`#${b.pos} in lineup`);
+      if (wind.label && wind.bonus > 0) parts.push(`wind: ${wind.label}`);
+      if (weather?.temp && parseInt(weather.temp) >= 80) parts.push('warm weather (HR+)');
+      return parts.join(' · ') || 'season stats';
+    };
+
+    picksHTML = `<div class="pc-picks-list">
+      ${pickRow('🎯', 'Best Hit', topHit,  `${_fmtAvg(topHit?.avg) || '-'} AVG · #${topHit?.pos} lineup`,  reasonsFor(topHit))}
+      ${topHR ? pickRow('💣', 'Best HR',  topHR,  `${topHR.hr} HR · ${topHR.ops || '-'} OPS`,             reasonsFor(topHR)) : ''}
+      ${pickRow('🏏', 'Most Hits', topHits, `${topHits?.h} H · ${_fmtAvg(topHits?.avg) || '-'} AVG`,      reasonsFor(topHits))}
+      ${pickRow('⚡', 'Best RBI', topRBI,  `${topRBI?.rbi} RBI · #${topRBI?.pos} lineup`,                  reasonsFor(topRBI))}
+      ${pickRow('🚶', 'Best Walk', topBB,   `${topBB?.bb} BB · ${topBB?.obp || '-'} OBP`,                  reasonsFor(topBB))}
+      ${topSB ? pickRow('🏃', 'Best SB', topSB, `${topSB.sb} SB${topSB.cs ? `/${topSB.sb+topSB.cs} att (${Math.round(topSB.sbSucc*100)}%)` : ''}`, reasonsFor(topSB)) : ''}
+    </div>`;
+  } else {
+    picksHTML = '<div class="pc-no-data">Lineup not posted yet - check back closer to game time</div>';
+  }
 
   return `<div class="picks-card">
-    <div class="pc-header">
-      <div class="pc-matchup">
-        <span class="pc-away">${esc(g.awayTeam)}</span>${g.awayRec ? ` <span class="rec-tag">${esc(g.awayRec)}</span>` : ''}
-        <span class="pc-at">@</span>
-        <span class="pc-home">${esc(g.homeTeam)}</span>${g.homeRec ? ` <span class="rec-tag">${esc(g.homeRec)}</span>` : ''}
-        ${g.series?.summary ? `<span class="series-tag">${esc(g.series.summary)}</span>` : ''}
-      </div>
-      <div class="pc-status">${statusLabel}</div>
-    </div>
+    ${header}
     ${winPickHTML}
-    <div class="pc-team-rows">
-      ${teamBlock(g.awayAbbr, g.awayTeam)}
-      ${teamBlock(g.homeAbbr, g.homeTeam)}
-    </div>
+    ${pitcherRow}
+    ${weatherHTML}
+    ${picksHTML}
   </div>`;
 }
 
 async function loadMLBPicksPage() {
   const area = document.getElementById('mlb-picks-area');
-  area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading today\'s picks…</p></div>';
+  area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading matchup data…</p></div>';
   try {
-    const cats = 'homeRuns,battingAverage,rbi,hits,stolenBases,baseOnBalls,onBasePlusSlugging';
-    const [games, leadRes] = await Promise.all([
+    // Phase 1: fast parallel fetches
+    const [espnResult, schedResult] = await Promise.allSettled([
       espnGames('mlb'),
-      _mlbLeadData
-        ? Promise.resolve(null)
-        : fetch(`https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=${cats}&season=${CURRENT_SEASON}&sportId=1&limit=30&hydrate=person,team`).then(r => r.json())
+      getMLBSchedule()
     ]);
-    if (leadRes) _mlbLeadData = leadRes;
+    const games    = espnResult.status  === 'fulfilled' ? espnResult.value  : [];
+    const schedule = schedResult.status === 'fulfilled' ? schedResult.value : [];
 
     if (!games.length) {
       area.innerHTML = '<div class="empty-state"><p>No MLB games today.</p></div>';
       return;
     }
 
-    // Build lookup maps, one per stat category
-    const maps = {};
-    for (const cat of PC_CATS) maps[cat.mapKey] = _leadsByTeam(_mlbLeadData, cat.mapKey);
+    // Phase 2: pre-fetch all probable pitcher stats
+    const pitcherIds = new Set();
+    for (const g of schedule) {
+      if (g.teams.away.probablePitcher?.id) pitcherIds.add(g.teams.away.probablePitcher.id);
+      if (g.teams.home.probablePitcher?.id) pitcherIds.add(g.teams.home.probablePitcher.id);
+    }
+    await Promise.allSettled([...pitcherIds].map(id => fetchPitcherPreview(id)));
 
-    const cards = games.map(g => buildMLBPickCard(g, maps)).join('');
-    const season = CURRENT_SEASON;
-    area.innerHTML = `<div class="pc-data-note">${season} season stats - best performer on each team per category</div><div class="picks-cards">${cards}</div>`;
+    // Phase 3: pre-fetch batter stats for all lineups (top 6 per team)
+    const batterIds = new Set();
+    for (const g of schedule) {
+      const all = [...(g.lineups?.awayPlayers || []).slice(0,6), ...(g.lineups?.homePlayers || []).slice(0,6)];
+      for (const p of all) if (p.id) batterIds.add(p.id);
+    }
+    await Promise.allSettled([...batterIds].map(id => fetchBatterPreview(id)));
+
+    // Phase 4: match ESPN games to schedule games
+    const nameMatch = (full, short) => {
+      const f = (full||'').toLowerCase(), s = (short||'').toLowerCase();
+      return f === s || f.endsWith(' '+s) || f.includes(s);
+    };
+    const findSched = g => schedule.find(sg =>
+      nameMatch(sg.teams.away.team?.name||'', g.awayTeam) &&
+      nameMatch(sg.teams.home.team?.name||'', g.homeTeam)
+    ) || null;
+
+    // Phase 5: build cards (vs-pitcher calls happen here, cached after first load)
+    const cardHTMLs = await Promise.all(games.map(g => buildMLBPicksGameCard(g, findSched(g))));
+
+    area.innerHTML = `<div class="pc-data-note">${CURRENT_SEASON} season matchups · career vs-pitcher shown where available · click Scores tab for live updates</div><div class="picks-cards">${cardHTMLs.join('')}</div>`;
     updatePicksDisplay();
   } catch (err) {
     area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load picks: ${esc(err.message)}</p></div>`;
@@ -2615,6 +2772,7 @@ async function renderESPNGamePreview(game, panel) {
 // ── GAME PREVIEW DATA ────────────────────────────────────────
 const _pitcherCache   = new Map();
 const _batterCache    = new Map();
+const _vsCache        = new Map(); // `${batterId}_${pitcherId}` -> career vs-pitcher stat
 const _otherGamesMap  = new Map(); // espn event id → game object
 const _schedCache     = new Map(); // `${sport}_${teamId}` → events[]
 let   _mlbSchedCache  = null;
@@ -2685,6 +2843,19 @@ async function fetchBatterPreview(batterId) {
     _batterCache.set(batterId, result);
     return result;
   } catch { _batterCache.set(batterId, null); return null; }
+}
+
+async function fetchVsStats(batterId, pitcherId) {
+  if (!batterId || !pitcherId) return null;
+  const key = `${batterId}_vs_${pitcherId}`;
+  if (_vsCache.has(key)) return _vsCache.get(key);
+  try {
+    const r = await fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=vsPlayer&opposingPlayerId=${pitcherId}&sportId=1&group=hitting`);
+    const j = await r.json();
+    const stat = j.stats?.[0]?.splits?.[0]?.stat || null;
+    _vsCache.set(key, stat);
+    return stat;
+  } catch { _vsCache.set(key, null); return null; }
 }
 
 async function getMLBSchedule() {
