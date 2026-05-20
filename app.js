@@ -312,9 +312,17 @@ function renderMatches(all) {
   }
 
   // ── LIVE NOW section ──
-  const liveMatches = filtered.filter(m => isLive(m.event_status));
+  const liveMatches  = filtered.filter(m => isLive(m.event_status));
+  const liveSingles  = liveMatches.filter(m => matchCategory(m.event_type_type || '') !== 'doubles');
+  const liveDoubles  = liveMatches.filter(m => matchCategory(m.event_type_type || '') === 'doubles');
   let html = '';
   if (liveMatches.length) {
+    const singlesBlock = liveSingles.length
+      ? `<div class="live-sub-hdr">Singles</div>${liveSingles.map(m => buildMatchRow(m, true)).join('')}`
+      : '';
+    const doublesBlock = liveDoubles.length
+      ? `<div class="live-sub-hdr live-sub-doubles">Doubles</div>${liveDoubles.map(m => buildMatchRow(m, true)).join('')}`
+      : '';
     html += `
       <div class="live-now-section">
         <div class="live-now-header">
@@ -322,7 +330,7 @@ function renderMatches(all) {
           LIVE NOW
           <span class="live-now-count">${liveMatches.length} match${liveMatches.length !== 1 ? 'es' : ''}</span>
         </div>
-        ${liveMatches.map(m => buildMatchRow(m, true)).join('')}
+        ${singlesBlock}${doublesBlock}
       </div>`;
   }
 
@@ -330,11 +338,11 @@ function renderMatches(all) {
   const CATS = [
     { key: 'atp',          label: 'ATP Singles' },
     { key: 'wta',          label: 'WTA Singles' },
-    { key: 'doubles',      label: 'Doubles' },
     { key: 'challenger-m', label: 'Challenger Men' },
     { key: 'challenger-w', label: 'Challenger Women' },
     { key: 'itf-m',        label: 'ITF Men' },
     { key: 'itf-w',        label: 'ITF Women' },
+    { key: 'doubles',      label: 'Doubles' },
     { key: 'other',        label: 'Other' },
   ];
 
@@ -861,7 +869,7 @@ function renderSportPlayerResults(players, q) {
   }
   const isMLB = S.sport === 'mlb';
   resultsEl.innerHTML = `
-    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found${isMLB ? ' — click for 2025 stats' : ''}</div>
+    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found${isMLB ? ` — click for ${CURRENT_SEASON} stats` : ''}</div>
     ${players.map((p, i) => `
       <div class="player-result-row ${isMLB && p.mlbId ? 'clickable' : ''}" id="spr-${i}"
            ${isMLB && p.mlbId ? `onclick="loadMLBPlayerStats(${p.mlbId}, '${esc(p.name).replace(/'/g,"\\'")}', this)"` : ''}>
@@ -2580,7 +2588,7 @@ async function loadMLBPlayerStats(playerId, playerName, rowEl) {
   panel.innerHTML = `
     <div class="pp-header">
       <span class="pp-name">${esc(playerName)}</span>
-      <span class="pp-season">2025</span>
+      <span class="pp-season">${CURRENT_SEASON}</span>
     </div>
     <div class="pp-chips" id="ppc-${playerId}">
       <button class="pp-chip active"  onclick="ppView(${playerId},'season',this)">Season</button>
@@ -2789,7 +2797,7 @@ function renderGameLog(hLog, pLog) {
 // ── STATCAST ────────────────────────────────────────────────
 async function fetchStatcast(playerId) {
   const BASE   = 'https://baseballsavant.mlb.com/statcast_search/csv';
-  const PARAMS = 'hfGT=R%7C&hfSea=2025%7C&group_by=name&sort_col=pitches&sort_order=desc&min_results=0&type=details';
+  const PARAMS = `hfGT=R%7C&hfSea=${CURRENT_SEASON}%7C&group_by=name&sort_col=pitches&sort_order=desc&min_results=0&type=details`;
   for (const type of ['batter', 'pitcher']) {
     try {
       const res = await fetch(`${BASE}?${PARAMS}&player_type=${type}&player_id=${playerId}`);
