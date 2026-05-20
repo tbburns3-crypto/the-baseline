@@ -180,6 +180,15 @@ function surfaceClass(surface = '') {
   return 'hard';
 }
 
+// api-tennis.com does not return tournament_surface; infer from name
+function inferSurface(name = '') {
+  const n = name.toLowerCase();
+  if (/roland.garros|french.open|rome|madrid|barcelona|monte.carlo|monte carlo|hamburg|lyon|geneva|estoril|istanbul|marrakech|munich|belgrade|gstaad|bastad|kitzbühel|umag|buenos.aires|rio.open|cordoba|bogota|santiago/.test(n)) return 'Clay';
+  if (/wimbledon|queen.?s.club|eastbourne|halle|hertogenbosch|birmingham|nottingham|mallorca/.test(n)) return 'Grass';
+  if (/indoor|carpet/.test(n)) return 'Indoor Hard';
+  return 'Hard';
+}
+
 function cleanScore(s) {
   // Strip tiebreak notation "(4)" and any decimals — show only the whole number
   return String(s ?? '').replace(/\(.*?\)/g, '').split('.')[0].trim();
@@ -481,14 +490,22 @@ function buildGroup(g) {
 function inlineTennisPick(m) {
   const s1 = parseInt(m.event_first_player_seed) || 0;
   const s2 = parseInt(m.event_second_player_seed) || 0;
-  if (!s1 && !s2) return '';
-  let pick = '';
-  if (s1 && !s2)      pick = lastName(m.event_first_player || '');
-  else if (s2 && !s1) pick = lastName(m.event_second_player || '');
-  else if (s1 < s2)   pick = lastName(m.event_first_player || '');
-  else if (s2 < s1)   pick = lastName(m.event_second_player || '');
-  if (!pick) return '';
-  return `<span class="match-pick-inline" title="Seeding pick">→ ${esc(pick)}</span>`;
+  if (s1 || s2) {
+    let pick = '';
+    if (s1 && !s2)      pick = lastName(m.event_first_player || '');
+    else if (s2 && !s1) pick = lastName(m.event_second_player || '');
+    else if (s1 < s2)   pick = lastName(m.event_first_player || '');
+    else if (s2 < s1)   pick = lastName(m.event_second_player || '');
+    if (pick && pick !== '—') return `<span class="match-pick-inline" title="Seeding pick">→ ${esc(pick)}</span>`;
+  }
+  // Fall back to live rankings index if loaded
+  const r1 = S.rankIndex.get(String(m.first_player_key  || ''));
+  const r2 = S.rankIndex.get(String(m.second_player_key || ''));
+  if (r1 && r2 && r1.rank !== r2.rank) {
+    const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
+    if (pick && pick !== '—') return `<span class="match-pick-inline" title="Ranking pick: #${r1.rank} vs #${r2.rank}">→ ${esc(pick)}</span>`;
+  }
+  return '';
 }
 
 // idSuffix: when provided (e.g. 'live'), creates a unique panel ID so the same
@@ -564,61 +581,65 @@ function buildDetailSets(sets) {
 
 async function loadTennisMatchDetail(key, container, m) {
   try {
-    const surface = m.tournament_surface || '';
-    let h2h = [];
-    try {
-      // Abort if api-tennis takes more than 6 seconds to respond
-      const ctrl = new AbortController();
-      const tid  = setTimeout(() => ctrl.abort(), 6000);
-      const url  = new URL(CFG.tennis.base);
-      url.searchParams.set('method', 'get_H2H');
-      url.searchParams.set('APIkey', CFG.tennis.key);
-      url.searchParams.set('event_key', key);
-      const res  = await fetch(url.toString(), { signal: ctrl.signal });
-      clearTimeout(tid);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success !== 0) {
-          const raw = json.result || [];
-          h2h = Array.isArray(raw) ? raw : (Array.isArray(raw?.H2H) ? raw.H2H : []);
+    const surface = m.tournament_surface || inferSurface(m.tournament_name);
+    let h2h = [], p1Recent = [], p2Recent = [];
+    if (m.first_player_key && m.second_player_key) {
+      try {
+        const ctrl = new AbortController();
+        const tid  = setTimeout(() => ctrl.abort(), 8000);
+        const url  = new URL(CFG.tennis.base);
+        url.searchParams.set('method', 'get_H2H');
+        url.searchParams.set('APIkey', CFG.tennis.key);
+        url.searchParams.set('first_player_key',  m.first_player_key);
+        url.searchParams.set('second_player_key', m.second_player_key);
+        const res  = await fetch(url.toString(), { signal: ctrl.signal });
+        clearTimeout(tid);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success === 1) {
+            const raw = json.result || {};
+            h2h      = Array.isArray(raw.H2H)                ? raw.H2H                : [];
+            p1Recent = Array.isArray(raw.firstPlayerResults)  ? raw.firstPlayerResults.slice(0, 5)  : [];
+            p2Recent = Array.isArray(raw.secondPlayerResults) ? raw.secondPlayerResults.slice(0, 5) : [];
+          }
         }
-      }
-    } catch {}
-    container.innerHTML = buildTennisDetailHTML(m, h2h, surface);
+      } catch {}
+    }
+    container.innerHTML = buildTennisDetailHTML(m, h2h, surface, p1Recent, p2Recent);
   } catch (err) {
     container.innerHTML = `<div class="td-error">Could not load — ${esc(err.message)}</div>`;
   }
 }
 
-function buildTennisDetailHTML(m, h2h, surface) {
+function buildTennisDetailHTML(m, h2h, surface, p1Recent = [], p2Recent = []) {
   const p1Name = m.event_first_player || '—';
   const p2Name = m.event_second_player || '—';
-  const s1tag = m.event_first_player_seed  ? ` <span class="td-seed">[${m.event_first_player_seed}]</span>`  : '';
-  const s2tag = m.event_second_player_seed ? `<span class="td-seed">[${m.event_second_player_seed}]</span> ` : '';
-  const scLow = surfaceClass(surface);
+  const p1key  = String(m.first_player_key  || '');
+  const p2key  = String(m.second_player_key || '');
+  const s1tag  = m.event_first_player_seed  ? ` <span class="td-seed">[${m.event_first_player_seed}]</span>`  : '';
+  const s2tag  = m.event_second_player_seed ? `<span class="td-seed">[${m.event_second_player_seed}]</span> ` : '';
+  const scLow  = surfaceClass(surface);
   const surfLabel = surface || 'Hard';
 
-  // Filter H2H by surface
-  const surfLow = surface.toLowerCase();
+  // Filter H2H by surface — infer surface of each past match from tournament name
+  const surfLow = surfLabel.toLowerCase();
   const onSurface = h2h.filter(g => {
-    const gs = (g.tournament_surface || '').toLowerCase();
+    const gs = inferSurface(g.tournament_name).toLowerCase();
     if (surfLow.includes('clay'))  return gs.includes('clay');
     if (surfLow.includes('grass')) return gs.includes('grass');
-    if (surfLow.includes('indoor') || surfLow.includes('carpet')) return gs.includes('indoor') || gs.includes('carpet');
-    return !gs.includes('clay') && !gs.includes('grass') && !gs.includes('indoor');
+    if (surfLow.includes('indoor')) return gs.includes('indoor');
+    return gs === 'hard';
   });
 
-  // Count wins by last-name fuzzy match
+  // Count wins using API's "First Player" / "Second Player" convention + player keys
   function countWins(games) {
     let w1 = 0, w2 = 0;
-    const last1 = p1Name.trim().split(/\s+/).pop().toLowerCase();
-    const last2 = p2Name.trim().split(/\s+/).pop().toLowerCase();
     for (const g of games) {
-      const w = (g.event_winner || '').trim();
-      if (!w) continue;
-      const wLast = w.split(/\s+/).pop().toLowerCase();
-      if (w === p1Name || wLast === last1) w1++;
-      else w2++;
+      const winner = g.event_winner;
+      if (!winner) continue;
+      const gp1key = String(g.first_player_key || '');
+      if (winner === 'First Player')  { if (gp1key === p1key) w1++; else w2++; }
+      else if (winner === 'Second Player') { if (gp1key === p1key) w2++; else w1++; }
     }
     return { w1, w2 };
   }
@@ -629,22 +650,43 @@ function buildTennisDetailHTML(m, h2h, surface) {
   const sets = parseSets(m);
   const live = isLive(m.event_status);
 
+  // H2H match rows
   const recentHTML = h2h.length
     ? h2h.slice(0, 6).map(g => {
-        const winner = g.event_winner || '';
-        const wLast = winner.split(/\s+/).pop().toLowerCase();
-        const last1 = p1Name.trim().split(/\s+/).pop().toLowerCase();
-        const isP1  = winner === p1Name || wLast === last1;
-        const date  = g.event_date ? fmtDateShort(g.event_date) : '';
+        const winner   = g.event_winner || '';
+        const gp1key   = String(g.first_player_key || '');
+        const isP1     = (winner === 'First Player' && gp1key === p1key) ||
+                         (winner === 'Second Player' && gp1key === p2key);
+        const winName  = isP1 ? esc(lastName(p1Name)) : esc(lastName(p2Name));
+        const surf     = inferSurface(g.tournament_name);
+        const date     = g.event_date ? fmtDateShort(g.event_date) : '';
         return `<div class="td-h2h-row">
-          <span class="td-h2h-winner ${isP1?'td-p1-win':'td-p2-win'}">${esc(winner || '?')}</span>
+          <span class="td-h2h-winner ${isP1?'td-p1-win':'td-p2-win'}">${winName}</span>
           <span class="td-h2h-result">${esc(g.event_final_result || '')}</span>
-          <span class="td-h2h-meta">${esc(g.tournament_name || '')}${g.tournament_surface?' · '+esc(g.tournament_surface):''}${date?' · '+date:''}</span>
+          <span class="td-h2h-meta">${esc(g.tournament_name || '')} · ${esc(surf)}${date ? ' · '+date : ''}</span>
         </div>`;
       }).join('')
     : '<div class="td-h2h-empty">No previous meetings found</div>';
 
-  const predHTML = buildTennisPrediction(m, h2h, onSurface, aw1, aw2, sw1, sw2, surfLabel);
+  // Recent form dots for each player
+  const formDots = (games, pkey) => games.map(g => {
+    const winner  = g.event_winner;
+    const gp1key  = String(g.first_player_key || '');
+    const won     = (winner === 'First Player'  && gp1key === pkey) ||
+                    (winner === 'Second Player' && gp1key !== pkey);
+    const opp     = gp1key === pkey ? esc(lastName(g.event_second_player || '')) : esc(lastName(g.event_first_player || ''));
+    const result  = g.event_final_result || '';
+    return `<span class="td-form-dot ${won?'td-form-w':'td-form-l'}" title="${won?'W':'L'} vs ${opp} ${esc(result)}">${won?'W':'L'}</span>`;
+  }).join('');
+
+  const formHTML = (p1Recent.length || p2Recent.length) ? `
+    <div class="td-section">
+      <div class="td-section-hdr">Recent Form (last 5)</div>
+      <div class="td-form-row"><span class="td-form-name">${esc(lastName(p1Name))}</span>${formDots(p1Recent, p1key)}</div>
+      <div class="td-form-row"><span class="td-form-name">${esc(lastName(p2Name))}</span>${formDots(p2Recent, p2key)}</div>
+    </div>` : '';
+
+  const predHTML = buildTennisPrediction(m, h2h, onSurface, aw1, aw2, sw1, sw2, surfLabel, p1Recent, p2Recent, p1key, p2key);
 
   return `<div class="td-panel">
     <div class="td-header">
@@ -660,6 +702,7 @@ function buildTennisDetailHTML(m, h2h, surface) {
     ${live && m.event_game_result ? `<div class="td-game-score">Game: ${esc(m.event_game_result)}</div>` : ''}
     <div class="td-sets">${buildDetailSets(sets)}</div>
     ${predHTML}
+    ${formHTML}
     <div class="td-section">
       <div class="td-section-hdr">Head to Head${h2h.length ? ` (${h2h.length} matches)` : ''}</div>
       <div class="td-h2h-summary">
@@ -677,7 +720,7 @@ function buildTennisDetailHTML(m, h2h, surface) {
   </div>`;
 }
 
-function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel) {
+function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel, p1Recent = [], p2Recent = [], p1key = '', p2key = '') {
   const p1Name = m.event_first_player || '—';
   const p2Name = m.event_second_player || '—';
   const s1 = parseInt(m.event_first_player_seed) || 0;
@@ -688,6 +731,7 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   const factors = [];
   let p1Score = 0, p2Score = 0;
 
+  // Seeds
   if (s1 && s2) {
     if (s1 < s2)      { p1Score += 2; factors.push({ win: true, label: 'Seeding', detail: `${l1} [${s1}] vs [${s2}]`, side: 1 }); }
     else if (s2 < s1) { p2Score += 2; factors.push({ win: true, label: 'Seeding', detail: `${l2} [${s2}] vs [${s1}]`, side: 2 }); }
@@ -700,16 +744,46 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     factors.push({ win: true, label: 'Seeding', detail: `${l2} seeded [${s2}], ${l1} unseeded`, side: 2 });
   }
 
+  // Rankings (if loaded and no seeds)
+  if (!s1 && !s2) {
+    const r1 = S.rankIndex.get(p1key);
+    const r2 = S.rankIndex.get(p2key);
+    if (r1 && r2 && r1.rank !== r2.rank) {
+      if (r1.rank < r2.rank) { p1Score += 2; factors.push({ win: true, label: 'Ranking', detail: `${l1} #${r1.rank} vs ${l2} #${r2.rank}`, side: 1 }); }
+      else                   { p2Score += 2; factors.push({ win: true, label: 'Ranking', detail: `${l2} #${r2.rank} vs ${l1} #${r1.rank}`, side: 2 }); }
+    }
+  }
+
+  // H2H overall
   if (h2hAll.length >= 2) {
     if (aw1 > aw2)      { p1Score += 2; factors.push({ win: true, label: 'H2H overall', detail: `${l1} leads ${aw1}–${aw2}`, side: 1 }); }
     else if (aw2 > aw1) { p2Score += 2; factors.push({ win: true, label: 'H2H overall', detail: `${l2} leads ${aw2}–${aw1}`, side: 2 }); }
     else                 {               factors.push({ win: null, label: 'H2H overall', detail: `Even ${aw1}–${aw2}`, side: 0 }); }
   }
 
+  // H2H on this surface
   if (h2hSurf.length >= 2) {
     if (sw1 > sw2)      { p1Score += 3; factors.push({ win: true, label: `On ${esc(surfLabel)}`, detail: `${l1} leads ${sw1}–${sw2}`, side: 1 }); }
     else if (sw2 > sw1) { p2Score += 3; factors.push({ win: true, label: `On ${esc(surfLabel)}`, detail: `${l2} leads ${sw2}–${sw1}`, side: 2 }); }
     else                 {               factors.push({ win: null, label: `On ${esc(surfLabel)}`, detail: `Even ${sw1}–${sw2}`, side: 0 }); }
+  }
+
+  // Recent form (last 5 matches)
+  const formWins = (games, pkey) => {
+    let w = 0;
+    for (const g of games) {
+      const winner = g.event_winner;
+      const gp1key = String(g.first_player_key || '');
+      if ((winner === 'First Player'  && gp1key === pkey) ||
+          (winner === 'Second Player' && gp1key !== pkey)) w++;
+    }
+    return w;
+  };
+  const fw1 = p1Recent.length ? formWins(p1Recent, p1key) : -1;
+  const fw2 = p2Recent.length ? formWins(p2Recent, p2key) : -1;
+  if (fw1 >= 0 && fw2 >= 0 && fw1 !== fw2) {
+    if (fw1 > fw2) { p1Score += 2; factors.push({ win: true, label: 'Recent form', detail: `${l1} ${fw1}/5 vs ${l2} ${fw2}/5`, side: 1 }); }
+    else           { p2Score += 2; factors.push({ win: true, label: 'Recent form', detail: `${l2} ${fw2}/5 vs ${l1} ${fw1}/5`, side: 2 }); }
   }
 
   if (!factors.length) return '';
