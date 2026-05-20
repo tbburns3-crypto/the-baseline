@@ -84,6 +84,47 @@ function recordPick(gameId, pickedTeam, matchup = '', sport = '') {
   savePicks(picks);
 }
 
+function recordPlayerPick(pickKey, sport, playerName, prop, stat, gameMatchup, gamePk) {
+  const picks = getPicks();
+  if (picks[pickKey]) return;
+  picks[pickKey] = { type: 'player', sport, player: playerName, prop, stat, gameMatchup, gamePk: gamePk || null, date: new Date().toISOString().slice(0,10), result: null };
+  savePicks(picks);
+}
+
+async function resolvePlayerPicksForGame(espnGameId, gamePk) {
+  if (!gamePk) return;
+  const picks = getPicks();
+  const prefix = `plr_${espnGameId}_`;
+  const pending = Object.entries(picks).filter(([k, p]) => p.type === 'player' && p.result === null && k.startsWith(prefix));
+  if (!pending.length) return;
+  try {
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`);
+    const box  = await res.json();
+    const statMap = new Map();
+    for (const side of ['away', 'home']) {
+      for (const pid of (box.teams?.[side]?.batters || [])) {
+        const ps = box.teams[side].players[`ID${pid}`];
+        if (ps) statMap.set(String(pid), ps.stats?.batting || {});
+      }
+    }
+    let changed = false;
+    for (const [k, p] of pending) {
+      const pid = k.split('_')[2];
+      const st  = statMap.get(pid);
+      if (!st) continue;
+      const win =
+        p.prop === 'Hit'  ? parseInt(st.hits         || 0) > 0 :
+        p.prop === 'HR'   ? parseInt(st.homeRuns      || 0) > 0 :
+        p.prop === 'RBI'  ? parseInt(st.rbi           || 0) > 0 :
+        p.prop === 'Walk' ? parseInt(st.baseOnBalls   || 0) > 0 :
+        p.prop === 'SB'   ? parseInt(st.stolenBases   || 0) > 0 : false;
+      picks[k].result = win ? 'win' : 'loss';
+      changed = true;
+    }
+    if (changed) { savePicks(picks); updatePicksDisplay(); }
+  } catch {}
+}
+
 function showPicksHistory() {
   document.getElementById('picks-history-modal')?.remove();
   const picks    = getPicks();
@@ -94,6 +135,12 @@ function showPicksHistory() {
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   const SPORT_LABEL = { tennis:'🎾 Tennis', mlb:'⚾ MLB', nba:'🏀 NBA', wnba:'🏀 WNBA', nfl:'🏈 NFL', nhl:'🏒 NHL', soccer:'⚽ Soccer', golf:'⛳ Golf' };
+
+  // Separate game picks from player picks
+  const allValsTyped = Object.values(picks);
+  const gamePicks    = allValsTyped.filter(p => p.type !== 'player');
+  const playerPicks  = allValsTyped.filter(p => p.type === 'player')
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   const makeRow = p => {
     const win = p.result === 'win';
@@ -112,7 +159,20 @@ function showPicksHistory() {
     <span class="ph-pick">→ ${esc(p.team)}</span>
   </div>`;
 
-  // Group by sport
+  const makePlayerRow = p => {
+    const win  = p.result === 'win';
+    const icon = p.result === null ? '⏳' : (win ? '✓' : '✗');
+    const cls  = p.result === null ? 'ph-pending-row' : (win ? 'ph-win' : 'ph-loss');
+    const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃' };
+    return `<div class="ph-row ph-player-row ${cls}">
+      <span class="ph-icon">${icon}</span>
+      <span class="ph-date">${esc(p.date)}</span>
+      <span class="ph-matchup"><span class="ph-prop-badge">${PROP_ICON[p.prop]||''} ${esc(p.prop)}</span> ${esc(lastName(p.player || ''))}</span>
+      <span class="ph-pick">${esc(p.gameMatchup || '')}</span>
+    </div>`;
+  };
+
+  // Group game picks by sport
   const groups     = new Map();
   const pendingMap = new Map();
   for (const p of resolved) {
@@ -127,6 +187,22 @@ function showPicksHistory() {
   }
 
   const renderTabContent = sp => {
+    if (sp === 'players') {
+      if (!playerPicks.length) return '<div class="ph-empty">No player picks yet — visit the MLB Picks tab to generate them.</div>';
+      const pPend = playerPicks.filter(p => p.result === null);
+      const pRes  = playerPicks.filter(p => p.result !== null);
+      let html = '';
+      if (pPend.length) {
+        html += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pPend.length})</div>`;
+        html += pPend.map(makePlayerRow).join('');
+      }
+      if (pRes.length) {
+        const w = pRes.filter(p => p.result === 'win').length;
+        html += `<div class="ph-sport-hdr">Results — ${w}W ${pRes.length - w}L</div>`;
+        html += pRes.map(makePlayerRow).join('');
+      }
+      return html || '<div class="ph-empty">No player picks yet.</div>';
+    }
     const items = sp === 'all' ? resolved : (groups.get(sp) || []);
     const pend  = sp === 'all' ? pending  : (pendingMap.get(sp) || []);
     if (!items.length && !pend.length) return '<div class="ph-empty">No picks for this sport yet.</div>';
@@ -140,8 +216,11 @@ function showPicksHistory() {
     return html;
   };
 
-  // All sports that have any picks
+  // All sports that have any game picks
   const allSports = [...new Set([...groups.keys(), ...pendingMap.keys()])];
+  const playerResolved = playerPicks.filter(p => p.result !== null);
+  const playerWins = playerResolved.filter(p => p.result === 'win').length;
+  const playerRec  = playerResolved.length ? `<span class="ph-tab-rec">${playerWins}–${playerResolved.length - playerWins}</span>` : '';
 
   const tabsHTML = [
     `<button class="ph-tab ph-tab-active" data-ph-tab="all">All</button>`,
@@ -151,7 +230,8 @@ function showPicksHistory() {
       const total = (groups.get(sp) || []).length;
       const rec   = total ? `<span class="ph-tab-rec">${wins}–${total - wins}</span>` : '';
       return `<button class="ph-tab" data-ph-tab="${esc(sp)}">${esc(label)}${rec}</button>`;
-    })
+    }),
+    `<button class="ph-tab" data-ph-tab="players">🎯 Players${playerRec}</button>`
   ].join('');
 
   const modal = document.createElement('div');
@@ -193,6 +273,7 @@ function resolvePick(gameId, winnerFull) {
 function updatePicksDisplay() {
   const allPicks   = getPicks();
   const sport      = S.sport;
+  // Include both game picks and player picks for current sport
   const sportPicks = Object.values(allPicks).filter(p => (p.sport || 'tennis') === sport);
   const pending    = sportPicks.filter(p => p.result === null);
   const resolved   = sportPicks.filter(p => p.result !== null);
@@ -2338,6 +2419,19 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const hrSt  = `${topHR?.hr||0} HR · ${avg_(topHR)} vs ${topHR?.oppHand||'?'}HP`;
     const rbiSt = `${topRBI?.rbi||0} RBI · #${topRBI?.pos}`;
     const bbSt  = `${topBB?.bb||0} BB · ${topBB?.obp||'-'} OBP`;
+
+    // Record player picks to localStorage
+    const gKey   = String(espnGame.id);
+    const gamePk = mlbGame?.gamePk || null;
+    if (!fin) {
+      if (topHit) recordPlayerPick('plr_' + gKey + '_' + topHit.id + '_hit',  'mlb', topHit.name,  'Hit',  hitSt,  matchup, gamePk);
+      if (topHR)  recordPlayerPick('plr_' + gKey + '_' + topHR.id  + '_hr',   'mlb', topHR.name,   'HR',   hrSt,   matchup, gamePk);
+      if (topRBI) recordPlayerPick('plr_' + gKey + '_' + topRBI.id + '_rbi',  'mlb', topRBI.name,  'RBI',  rbiSt,  matchup, gamePk);
+      if (topBB)  recordPlayerPick('plr_' + gKey + '_' + topBB.id  + '_walk', 'mlb', topBB.name,   'Walk', bbSt,   matchup, gamePk);
+      if (topSB)  recordPlayerPick('plr_' + gKey + '_' + topSB.id  + '_sb',   'mlb', topSB.name,   'SB',   topSB.sb + ' SB', matchup, gamePk);
+    } else {
+      resolvePlayerPicksForGame(gKey, gamePk);
+    }
 
     picksHTML = `<div class="pc-picks">
       ${pickRow('🎯', 'Hit',  topHit, hitSt)}
