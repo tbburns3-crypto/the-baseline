@@ -1665,6 +1665,9 @@ input { font: inherit; }
 .nba-player-stat { font-size: .78rem; font-weight: 700; white-space: nowrap; color: var(--text-2); }
 .nba-pick-win .nba-player-name { color: var(--accent); }
 .nba-pick-loss .nba-player-name { color: #ef5350; }
+.nba-team-block { margin-top: 8px; }
+.nba-team-block:first-child { margin-top: 0; }
+.nba-team-block-hdr { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); margin-bottom: 3px; }
 
 /* Pick rows — one clean line each */
 .pc-picks { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); margin-top: 8px; }
