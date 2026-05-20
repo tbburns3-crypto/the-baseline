@@ -2682,9 +2682,12 @@ function picksDatePickerChange(val) {
   else loadOtherPicksPage(S.sport);
 }
 
-// ── NBA / WNBA PICKS CARD (win prediction + top scorer picks) ─
-function buildNBAPicksCard(g) {
+// ── NBA / WNBA PICKS CARD (win prediction + season stat leaders) ─
+function buildNBAPicksCard(g, summary) {
   const { fin, live } = gameRowState(g);
+  const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
+
+  // Win prediction
   const awayWP = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
   let favLine = '';
   if (g.awayRec || g.homeRec) {
@@ -2693,37 +2696,68 @@ function buildNBAPicksCard(g) {
     const favTeam = homePct >= 50 ? g.homeTeam : g.awayTeam;
     const pct     = Math.max(homePct, 100 - homePct);
     const margin  = Math.abs(homePct - 50);
-    if (!fin && margin >= 3) recordPick(String(g.id), favTeam.split(' ').pop(), `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '');
+    if (!fin && margin >= 3) recordPick(String(g.id), favTeam.split(' ').pop(), matchup, g.sport || '');
     favLine = margin >= 3
       ? `<span class="pc-fav">${esc(favTeam.split(' ').pop())} favored ${pct}%</span>`
       : `<span class="pc-fav pc-fav-even">Even matchup</span>`;
   }
 
-  // Build a player pick row for the top scorer on each team
-  const buildScoreRow = (leaders, teamAbbr) => {
-    const scorer = leaders.find(l => l.stat === 'points' || (l.label || '').toLowerCase().startsWith('pts') || (l.label || '').toLowerCase() === 'scoring');
-    if (!scorer || !scorer.name) return '';
-    const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
-    const safeId  = scorer.id || scorer.name.replace(/\W+/g, '');
-    const pickKey = `plr_${g.id}_${safeId}_pts`;
-    if (!fin) recordPlayerPick(pickKey, g.sport || 'nba', scorer.name, 'Points', `${scorer.value} PPG`, matchup, null);
-    const stored = getPicks()[pickKey];
-    const icon   = stored?.result === 'win' ? '✓' : stored?.result === 'loss' ? '✗' : '🏀';
-    const cls    = stored?.result === 'win' ? 'nba-pick-win' : stored?.result === 'loss' ? 'nba-pick-loss' : '';
-    return `<div class="nba-player-row ${cls}">
-      <span class="nba-pick-icon">${icon}</span>
-      <span class="nba-player-pos">${esc(scorer.pos || '—')}</span>
-      <span class="nba-player-name">${esc(scorer.shortName || scorer.name)}</span>
-      <span class="nba-player-team">${esc(teamAbbr)}</span>
-      <span class="nba-player-stat">${esc(scorer.value)} PPG</span>
-    </div>`;
-  };
+  // Season leaders from game summary (same source as game expand view)
+  // summary.leaders = [ { team:{abbreviation}, leaders:[ {name, displayName, leaders:[{displayValue, athlete}]} ] } ]
+  const STAT_LABEL = { points:'PPG', rebounds:'RPG', assists:'APG', steals:'SPG', blocks:'BPG' };
+  const WANT_STATS = ['points','rebounds','assists'];
+  let playerSection = '';
 
-  const awayRow = buildScoreRow(g.awayLeaders || [], g.awayAbbr || g.awayTeam.split(' ').pop());
-  const homeRow = buildScoreRow(g.homeLeaders || [], g.homeAbbr || g.homeTeam.split(' ').pop());
-  const playerSection = (awayRow || homeRow)
-    ? `<div class="nba-players-section"><div class="nba-players-hdr">Top Scorers to Watch</div>${awayRow}${homeRow}</div>`
-    : '';
+  const teamLeadersList = summary?.leaders || [];
+  if (teamLeadersList.length) {
+    let blocksHTML = '';
+    for (const tl of teamLeadersList) {
+      const tAbbr = tl.team?.abbreviation || tl.team?.shortDisplayName || '';
+      const rows  = [];
+      // Collect top player across all stat categories for this team
+      const playerMap = new Map();
+      for (const cat of (tl.leaders || [])) {
+        if (!WANT_STATS.includes(cat.name)) continue;
+        const top = (cat.leaders || [])[0];
+        if (!top?.athlete?.displayName) continue;
+        const pid = top.athlete.id || top.athlete.displayName;
+        if (!playerMap.has(pid)) playerMap.set(pid, { name: top.athlete.shortName || top.athlete.displayName, id: pid, pos: top.athlete.position?.abbreviation || '', stats: {} });
+        playerMap.get(pid).stats[cat.name] = top.displayValue || '';
+      }
+      // Record picks: top points scorer per team
+      for (const cat of (tl.leaders || [])) {
+        if (cat.name !== 'points') continue;
+        const top = (cat.leaders || [])[0];
+        if (!top?.athlete?.displayName || fin) continue;
+        const pid     = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
+        const pickKey = `plr_${g.id}_${pid}_pts`;
+        recordPlayerPick(pickKey, g.sport || 'nba', top.athlete.displayName, 'Points', `${top.displayValue} PPG`, matchup, null);
+      }
+      if (!playerMap.size) continue;
+      const playerRows = [...playerMap.values()].slice(0, 3).map(p => {
+        const stored  = Object.entries(getPicks()).find(([k]) => k === `plr_${g.id}_${p.id}_pts`)?.[1];
+        const icon    = stored?.result === 'win' ? '✓' : stored?.result === 'loss' ? '✗' : '';
+        const cls     = stored?.result === 'win' ? 'nba-pick-win' : stored?.result === 'loss' ? 'nba-pick-loss' : '';
+        const statStr = WANT_STATS.filter(s => p.stats[s]).map(s => `${p.stats[s]} ${STAT_LABEL[s]||s}`).join(' · ');
+        return `<div class="nba-player-row ${cls}">
+          <span class="nba-pick-icon">${icon}</span>
+          <span class="nba-player-pos">${esc(p.pos)}</span>
+          <span class="nba-player-name">${esc(p.name)}</span>
+          <span class="nba-player-team">${esc(tAbbr)}</span>
+          <span class="nba-player-stat">${esc(statStr)}</span>
+        </div>`;
+      }).join('');
+      blocksHTML += `<div class="nba-team-block">
+        <div class="nba-team-block-hdr">${esc(tAbbr)} Season Avg</div>
+        ${playerRows}
+      </div>`;
+    }
+    if (blocksHTML) playerSection = `<div class="nba-players-section">${blocksHTML}</div>`;
+  }
+
+  if (!playerSection) {
+    playerSection = `<div class="pc-no-data">Player stats loading… open the game to see details</div>`;
+  }
 
   const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
                     : live ? '<span class="live-badge">LIVE</span>'
@@ -2782,16 +2816,31 @@ async function loadOtherPicksPage(sport) {
   const nav  = picksDateNavHTML();
   area.innerHTML = `${nav}<div class="loading-spinner"><div class="spinner"></div><p>Loading ${sport.toUpperCase()} picks…</p></div>`;
   try {
-    const off   = S.picksDateOffset;
+    const off        = S.picksDateOffset;
+    const isNBALeague = ['nba','wnba'].includes(sport);
     const games = await espnGames(sport, off);
     if (!games.length) {
       const isNFL = sport === 'nfl' && off === 0;
       area.innerHTML = nav + `<div class="empty-state"><p>No ${sport.toUpperCase()} games on this date.</p>${isNFL ? '<p class="muted">Use the date navigation above to browse the schedule.</p>' : ''}</div>`;
       return;
     }
-    const isNBALeague = ['nba','wnba'].includes(sport);
-    const cards = games.map(g => isNBALeague ? buildNBAPicksCard(g) : buildWinPredCard(g)).join('');
-    const note  = off !== 0 ? '' : `<div class="pc-data-note">${isNBALeague ? 'Win prediction · top scorer picks from ESPN stats' : 'Win predictions based on season records · ESPN odds where available'}</div>`;
+
+    let summaryMap = new Map();
+    if (isNBALeague) {
+      // Pre-fetch game summaries in parallel — contains season leaders per team
+      const bPath = sport === 'wnba' ? 'basketball/wnba' : 'basketball/nba';
+      const results = await Promise.allSettled(
+        games.map(g => fetch(`https://site.api.espn.com/apis/site/v2/sports/${bPath}/summary?event=${g.id}`)
+          .then(r => r.ok ? r.json() : null).catch(() => null))
+      );
+      games.forEach((g, i) => {
+        const val = results[i].status === 'fulfilled' ? results[i].value : null;
+        if (val) summaryMap.set(String(g.id), val);
+      });
+    }
+
+    const cards = games.map(g => isNBALeague ? buildNBAPicksCard(g, summaryMap.get(String(g.id))) : buildWinPredCard(g)).join('');
+    const note  = off !== 0 ? '' : `<div class="pc-data-note">${isNBALeague ? 'Win prediction · season stat leaders from ESPN' : 'Win predictions based on season records · ESPN odds where available'}</div>`;
     area.innerHTML = nav + note + `<div class="picks-cards">${cards}</div>`;
     updatePicksDisplay();
   } catch (err) {
