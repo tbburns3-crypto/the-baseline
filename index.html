@@ -69,6 +69,7 @@
         <button class="view-tab" data-view="secondary" id="secondary-tab">Rankings</button>
         <button class="view-tab" data-view="lineups" id="lineups-tab" style="display:none">Lineups</button>
         <button class="view-tab" data-view="players" id="players-tab" style="display:none">Players</button>
+        <button class="view-tab" data-view="favorites" id="favorites-tab">★ Faves</button>
       </div>
 
       <!-- ── TENNIS SCORES ── -->
@@ -161,9 +162,14 @@
         </div>
       </section>
 
+      <!-- ── FAVORITES ── -->
+      <section id="view-favorites" class="view-panel">
+        <div class="empty-state">No favorites yet.<div class="muted">Tap ★ on any tennis match to save it here.</div></div>
+      </section>
+
     </div><!-- /main-content -->
   </div><!-- /app-layout -->
 
-  <script src="app.js?v=35"></script>
+  <script src="app.js?v=36"></script>
 </body>
 </html>
