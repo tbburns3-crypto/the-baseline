@@ -1927,6 +1927,51 @@ function gameRowState(g) {
   return { live, fin, periodLabel };
 }
 
+// Returns HTML for the best pick for an MLB game row — player prop if available, else game winner if confident.
+function getGameBestPickHTML(espnGameId, g) {
+  const picks     = getPicks();
+  const gid       = String(espnGameId);
+  const PROP_ORDER = ['HR', 'SB', 'Hit', 'RBI', 'Walk'];
+  const PROP_ICON  = { HR:'💣', SB:'🏃', Hit:'🎯', RBI:'⚡', Walk:'🚶' };
+
+  // Best player prop pick for this game (priority: HR > SB > Hit > RBI > Walk)
+  const plrPicks = Object.entries(picks)
+    .filter(([k]) => k.startsWith(`plr_${gid}_`))
+    .map(([, p]) => p)
+    .sort((a, b) => PROP_ORDER.indexOf(a.prop) - PROP_ORDER.indexOf(b.prop));
+
+  if (plrPicks.length) {
+    const best   = plrPicks[0];
+    const lname  = lastName(best.player || '');
+    const icon   = best.result === 'win' ? '✓' : best.result === 'loss' ? '✗' : (PROP_ICON[best.prop] || '🎯');
+    const resCls = best.result === 'win' ? 'potd-win' : best.result === 'loss' ? 'potd-loss' : '';
+    const tip    = best.stat ? ` title="${esc(best.stat)}"` : '';
+    return `<span class="potd-label ${resCls}"${tip}>${icon} <strong>${esc(lname)}</strong> for a ${esc(best.prop)}</span>`;
+  }
+
+  // Fall back to game winner when margin is convincing (≥10%) and no player props loaded yet
+  const gamePick = picks[gid];
+  if (gamePick?.team && (g.awayRec || g.homeRec)) {
+    const awayWP  = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
+    const rawHome = homeWP * 1.03, total = awayWP + rawHome;
+    const homePct = Math.round((rawHome / total) * 100);
+    const margin  = Math.abs(homePct - 50);
+    const pct     = Math.max(homePct, 100 - homePct);
+    if (margin >= 10) {
+      const { fin } = gameRowState(g);
+      if (fin && gamePick.result !== null) {
+        const icon   = gamePick.result === 'win' ? '✓' : '✗';
+        const resCls = gamePick.result === 'win' ? 'potd-win' : 'potd-loss';
+        return `<span class="potd-label ${resCls}">${icon} <strong>${esc(gamePick.team)}</strong> to win</span>`;
+      }
+      if (!fin) {
+        return `<span class="potd-label" title="${esc(g.awayRec||'?')} vs ${esc(g.homeRec||'?')}">🎯 <strong>${esc(gamePick.team)}</strong> <span class="potd-stat">${pct}%</span></span>`;
+      }
+    }
+  }
+  return '';
+}
+
 // Records pick + immediately resolves if game is finished. Safe to call multiple times.
 function autoRecordAndResolvePick(g) {
   if (!g.awayRec && !g.homeRec) return;
@@ -1967,7 +2012,8 @@ function inlineGamePick(g) {
 function buildOtherRow(g) {
   const { live, fin, periodLabel } = gameRowState(g);
   autoRecordAndResolvePick(g); // record pick for all games and resolve if finished
-  const pick = inlineGamePick(g);
+  const pick     = inlineGamePick(g);
+  const potdHTML = g.league === 'MLB' ? getGameBestPickHTML(String(g.id), g) : '';
   return `
     <div class="other-match-row ${live?'live':''}" id="og-${esc(g.id)}" onclick="toggleGamePreview('${esc(g.id)}')">
       <div class="other-status" id="og-st-${esc(g.id)}">
@@ -1976,6 +2022,7 @@ function buildOtherRow(g) {
       <div class="other-teams">
         <div class="other-team away">${esc(g.awayTeam)}${g.awayRec ? ` <span class="rec-tag">${esc(g.awayRec)}</span>` : ''}</div>
         <div class="other-team home">${esc(g.homeTeam)}${g.homeRec ? ` <span class="rec-tag">${esc(g.homeRec)}</span>` : ''}${g.series?.summary ? ` <span class="series-tag">${esc(g.series.summary)}</span>` : ''}</div>
+        <div class="potd-line" id="og-potd-${esc(g.id)}">${potdHTML}</div>
       </div>
       <div class="other-scores" id="og-sc-${esc(g.id)}">
         <div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '-'}</div>
@@ -2011,10 +2058,11 @@ function renderOtherScores(games, sport, src) {
     for (const g of games) {
       autoRecordAndResolvePick(g);
       const { live, fin, periodLabel } = gameRowState(g);
-      const rowEl = document.getElementById(`og-${g.id}`);
-      const stEl  = document.getElementById(`og-st-${g.id}`);
-      const scEl  = document.getElementById(`og-sc-${g.id}`);
-      const pdEl  = document.getElementById(`og-pd-${g.id}`);
+      const rowEl  = document.getElementById(`og-${g.id}`);
+      const stEl   = document.getElementById(`og-st-${g.id}`);
+      const scEl   = document.getElementById(`og-sc-${g.id}`);
+      const pdEl   = document.getElementById(`og-pd-${g.id}`);
+      const potdEl = document.getElementById(`og-potd-${g.id}`);
       if (!rowEl || !stEl || !scEl || !pdEl) continue;
       rowEl.classList.toggle('live', live);
       stEl.innerHTML = live ? '<span class="live-badge">LIVE</span>'
@@ -2022,6 +2070,7 @@ function renderOtherScores(games, sport, src) {
                      : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`;
       scEl.innerHTML = `<div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '-'}</div><div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '-'}</div>`;
       pdEl.innerHTML = (live && (periodLabel || g.time) ? `<span>${esc(periodLabel)} ${esc(g.time)}</span>` : '') + inlineGamePick(g);
+      if (potdEl && g.league === 'MLB') potdEl.innerHTML = getGameBestPickHTML(String(g.id), g);
     }
     return;
   }
