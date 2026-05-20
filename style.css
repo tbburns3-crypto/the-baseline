@@ -1556,52 +1556,43 @@ input { font: inherit; }
 .pb-pct    { font-size: .9rem; color: var(--text-2); font-weight: 600; }
 .pb-note   { font-size: .7rem; color: var(--text-muted); margin-left: auto; }
 
-/* ── MLB PICKS PAGE ── */
-.picks-note  { font-size: .82rem; color: var(--text-muted); padding: 10px 4px; }
-.picks-cards { display: flex; flex-direction: column; gap: 12px; }
-.picks-card  {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 14px 16px;
-  transition: border-color var(--transition);
-}
-.picks-card:hover { border-color: var(--accent-dim); cursor: pointer; }
-.pc-header  { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.pc-matchup { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: .9rem; font-weight: 600; }
-.pc-away    { color: var(--text); }
-.pc-home    { color: var(--text); }
-.pc-at      { color: var(--text-muted); font-size: .8rem; }
-.pc-status  { flex-shrink: 0; }
-.pc-time    { font-size: .78rem; color: var(--text-muted); }
-.pc-win-pick {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
-  border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;
-  font-size: .88rem;
-}
-.pc-conf-high { background: rgba(0,230,118,.15); border: 1px solid rgba(0,230,118,.35); }
-.pc-conf-med  { background: rgba(0,230,118,.08); border: 1px solid rgba(0,230,118,.2); }
-.pc-conf-low  { background: rgba(255,255,255,.04); border: 1px solid var(--border); }
-.pc-no-data   { background: transparent; border: none; color: var(--text-muted); font-style: italic; font-size: .8rem; padding: 4px 0; }
-.pc-pick-arrow { color: var(--accent); font-weight: 900; font-size: 1rem; }
-.pc-pick-team  { font-weight: 800; font-size: .95rem; color: var(--text); }
-.pc-pick-pct   { font-weight: 700; color: var(--accent); font-size: .88rem; }
-.pc-pick-basis  { font-size: .72rem; color: var(--text-muted); margin-left: auto; }
-.pc-win-label   { font-weight: 700; font-size: .9rem; color: var(--text); }
+/* ── MLB PICKS PAGE — MATCHUP ENGINE ── */
+.picks-cards   { display: flex; flex-direction: column; gap: 14px; }
+.picks-card    { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.pc-header    { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.pc-matchup   { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; font-size: .9rem; font-weight: 700; }
+.pc-at        { color: var(--text-muted); font-size: .8rem; font-weight: 400; }
+.pc-status    { flex-shrink: 0; }
+.pc-time      { font-size: .78rem; color: var(--text-muted); }
+.pc-win-pick  { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; border-radius: 6px; padding: 7px 11px; margin-bottom: 10px; font-size: .85rem; }
+.pc-conf-high { background: rgba(0,230,118,.13); border: 1px solid rgba(0,230,118,.3); }
+.pc-conf-med  { background: rgba(0,230,118,.07); border: 1px solid rgba(0,230,118,.18); }
+.pc-conf-low  { background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+.pc-no-data   { color: var(--text-muted); font-style: italic; font-size: .78rem; padding: 3px 0; }
+.pc-win-label { font-weight: 700; }
 .pc-conf-high .pc-win-label { color: var(--accent); }
-.pc-conf-med  .pc-win-label { color: var(--text); }
 .pc-conf-low  .pc-win-label { color: var(--text-muted); }
-.pc-data-note   { font-size: .72rem; color: var(--text-muted); padding: 4px 2px 10px; }
-.pc-team-rows  { display: flex; flex-direction: column; gap: 8px; }
-.pc-team-stats { }
-.pc-team-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); font-weight: 700; margin-bottom: 5px; }
-.pc-stat-row   { display: flex; flex-wrap: wrap; gap: 6px; }
-.pc-stat-chip  {
-  display: flex; align-items: center; gap: 4px;
-  background: var(--bg-2); border: 1px solid var(--border);
-  border-radius: 6px; padding: 4px 8px; font-size: .78rem;
-}
-.pc-si { font-size: .85rem; }
-.pc-sv { font-weight: 700; color: var(--text); }
-.pc-sl { color: var(--text-muted); font-size: .72rem; }
+.pc-pick-basis { font-size: .7rem; color: var(--text-muted); margin-left: auto; }
+.pc-pitchers  { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; padding: 6px 10px; background: rgba(0,0,0,.2); border-radius: 5px; }
+.pc-pitcher-slot { display: flex; align-items: center; gap: 5px; font-size: .78rem; }
+.pc-pit-abbr  { font-weight: 700; color: var(--accent-dim); font-size: .68rem; }
+.pc-pit-hand  { font-size: .66rem; background: rgba(255,255,255,.07); border-radius: 3px; padding: 0 4px; color: var(--text-muted); }
+.pc-pit-name  { font-weight: 600; }
+.pc-pit-stats { color: var(--text-muted); font-size: .7rem; }
+.pc-pit-vs    { color: var(--text-muted); font-size: .7rem; }
+.pc-weather   { display: flex; gap: 10px; flex-wrap: wrap; font-size: .74rem; color: var(--text-muted); margin-bottom: 8px; }
+.pc-wind-out  { color: var(--accent); font-weight: 600; }
+.pc-wind-in   { color: #ef5350; font-weight: 600; }
+.pc-picks-list { display: flex; flex-direction: column; gap: 8px; }
+.pc-pick-row  { display: flex; align-items: flex-start; gap: 8px; }
+.pc-pi        { font-size: 1rem; flex-shrink: 0; padding-top: 1px; }
+.pc-pick-detail { flex: 1; min-width: 0; }
+.pc-pick-name { font-size: .86rem; line-height: 1.3; }
+.pc-pn-abbr   { font-size: .66rem; color: var(--accent-dim); font-weight: 700; background: rgba(0,200,83,.1); border-radius: 3px; padding: 0 4px; margin-right: 3px; }
+.pc-pn-stat   { font-size: .77rem; color: var(--text-muted); margin-left: 4px; }
+.pc-pick-reasons { font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
+.pc-vs-career { color: var(--accent); font-weight: 600; }
+.pc-data-note { font-size: .7rem; color: var(--text-muted); padding: 4px 2px 10px; }
 
 /* ── INLINE GAME PICKS & RECORD TAGS ── */
 .game-pick-inline {
