@@ -45,6 +45,56 @@ const S = {
   lastUpdate:  null
 };
 
+const _detailLoaded = new Set();
+
+// ── FAVORITES ────────────────────────────────────────────────
+const _FAV_KEY = 'burnsideFavs';
+function getFavs() { try { return JSON.parse(localStorage.getItem(_FAV_KEY) || '{}'); } catch { return {}; } }
+function saveFavs(obj) { try { localStorage.setItem(_FAV_KEY, JSON.stringify(obj)); } catch {} }
+function isFav(type, id) { return !!getFavs()[`${type}:${id}`]; }
+function toggleFav(type, id, label) {
+  const favs = getFavs();
+  const k = `${type}:${id}`;
+  if (favs[k]) delete favs[k];
+  else favs[k] = { type, id, label, added: Date.now() };
+  saveFavs(favs);
+  document.querySelectorAll(`.star-btn[data-fav-id="${k}"]`).forEach(btn => {
+    btn.classList.toggle('fav-on', !!favs[k]);
+    btn.title = favs[k] ? 'Remove from favorites' : 'Add to favorites';
+  });
+  if (S.view === 'favorites') renderFavoritesView();
+}
+
+function renderFavoritesView() {
+  const panel = document.getElementById('view-favorites');
+  if (!panel) return;
+  const favs = getFavs();
+  const entries = Object.values(favs).sort((a, b) => b.added - a.added);
+  if (!entries.length) {
+    panel.innerHTML = '<div class="empty-state">No favorites yet.<div class="muted">Tap ★ on any tennis match to save it here.</div></div>';
+    return;
+  }
+  const matchFavs = entries.filter(e => e.type === 'match');
+  let html = '';
+  if (matchFavs.length) {
+    html += '<div class="fav-section"><div class="fav-section-hdr">Starred Matches</div>';
+    for (const fav of matchFavs) {
+      const m = S.matches.get(fav.id);
+      if (m) {
+        html += buildMatchRow(m);
+      } else {
+        html += `<div class="fav-stale-row">
+          <span class="fav-stale-label">${esc(fav.label)}</span>
+          <span class="fav-stale-meta">Go to Tennis tab to load live data</span>
+          <button class="fav-remove-btn" onclick="toggleFav('match','${esc(fav.id)}','')">✕</button>
+        </div>`;
+      }
+    }
+    html += '</div>';
+  }
+  panel.innerHTML = html || '<div class="empty-state">No favorites yet.</div>';
+}
+
 // ── UTILITIES ───────────────────────────────────────────────
 function dateStr(offset = 0) {
   const d = new Date();
@@ -404,6 +454,19 @@ function buildGroup(g) {
     </div>`;
 }
 
+function inlineTennisPick(m) {
+  const s1 = parseInt(m.event_first_player_seed) || 0;
+  const s2 = parseInt(m.event_second_player_seed) || 0;
+  if (!s1 && !s2) return '';
+  let pick = '';
+  if (s1 && !s2)      pick = lastName(m.event_first_player || '');
+  else if (s2 && !s1) pick = lastName(m.event_second_player || '');
+  else if (s1 < s2)   pick = lastName(m.event_first_player || '');
+  else if (s2 < s1)   pick = lastName(m.event_second_player || '');
+  if (!pick) return '';
+  return `<span class="match-pick-inline" title="Seeding pick">→ ${esc(pick)}</span>`;
+}
+
 function buildMatchRow(m, liteMode = false) {
   const live     = isLive(m.event_status);
   const finished = isFinished(m.event_status);
@@ -430,19 +493,20 @@ function buildMatchRow(m, liteMode = false) {
 
   const key = esc(m.event_key);
 
+  let pickHTML = '';
+  let starBtn = '';
+  if (!liteMode) {
+    if (!live && !finished) pickHTML = inlineTennisPick(m);
+    const favOn = isFav('match', m.event_key);
+    const p1safe = (m.event_first_player||'').replace(/'/g,"\\'");
+    const p2safe = (m.event_second_player||'').replace(/'/g,"\\'");
+    starBtn = `<button class="star-btn${favOn?' fav-on':''}" data-fav-id="match:${key}" title="${favOn?'Remove from favorites':'Add to favorites'}" onclick="event.stopPropagation();toggleFav('match','${key}','${p1safe} vs ${p2safe}')">★</button>`;
+  }
+
   const detailPanel = liteMode ? '' : `
     <div class="match-detail" id="md-${key}" style="display:none">
-      <div class="detail-inner">
-        <div class="detail-header">
-          <span class="detail-player">${esc(m.event_first_player||'—')}</span>
-          <span class="detail-vs">vs</span>
-          <span class="detail-player">${esc(m.event_second_player||'—')}</span>
-        </div>
-        <div class="detail-sets" id="ds-${key}">${buildDetailSets(sets)}</div>
-        <div class="detail-game" id="dg-${key}" style="${live?'':'display:none'}">
-          Current game: ${esc(m.event_game_result||'—')}
-        </div>
-        <div class="detail-status">Status: ${esc(m.event_status||'Unknown')}</div>
+      <div class="detail-inner" id="di-${key}">
+        <div class="td-loading"><div class="spinner"></div> Loading match stats…</div>
       </div>
     </div>`;
 
@@ -461,7 +525,7 @@ function buildMatchRow(m, liteMode = false) {
       </div>
       <div class="match-scores">
         <div class="sets-area">${setsHTML}</div>
-        ${gameHTML}
+        ${gameHTML}${pickHTML}${starBtn}
       </div>
     </div>${detailPanel}`;
 }
@@ -473,6 +537,171 @@ function buildDetailSets(sets) {
       <div class="detail-set-label">Set ${i+1}</div>
       <div class="detail-set-scores">${esc(s.p1)} — ${esc(s.p2)}</div>
     </div>`).join('');
+}
+
+async function loadTennisMatchDetail(key, container, m) {
+  try {
+    const surface = m.tournament_surface || '';
+    let h2h = [];
+    try {
+      const raw = await tennisFetch('get_H2H', { event_key: key });
+      h2h = Array.isArray(raw) ? raw : (Array.isArray(raw?.H2H) ? raw.H2H : []);
+    } catch {}
+    container.innerHTML = buildTennisDetailHTML(m, h2h, surface);
+  } catch (err) {
+    container.innerHTML = `<div class="td-error">Could not load — ${esc(err.message)}</div>`;
+  }
+}
+
+function buildTennisDetailHTML(m, h2h, surface) {
+  const p1Name = m.event_first_player || '—';
+  const p2Name = m.event_second_player || '—';
+  const s1tag = m.event_first_player_seed  ? ` <span class="td-seed">[${m.event_first_player_seed}]</span>`  : '';
+  const s2tag = m.event_second_player_seed ? `<span class="td-seed">[${m.event_second_player_seed}]</span> ` : '';
+  const scLow = surfaceClass(surface);
+  const surfLabel = surface || 'Hard';
+
+  // Filter H2H by surface
+  const surfLow = surface.toLowerCase();
+  const onSurface = h2h.filter(g => {
+    const gs = (g.tournament_surface || '').toLowerCase();
+    if (surfLow.includes('clay'))  return gs.includes('clay');
+    if (surfLow.includes('grass')) return gs.includes('grass');
+    if (surfLow.includes('indoor') || surfLow.includes('carpet')) return gs.includes('indoor') || gs.includes('carpet');
+    return !gs.includes('clay') && !gs.includes('grass') && !gs.includes('indoor');
+  });
+
+  // Count wins by last-name fuzzy match
+  function countWins(games) {
+    let w1 = 0, w2 = 0;
+    const last1 = p1Name.trim().split(/\s+/).pop().toLowerCase();
+    const last2 = p2Name.trim().split(/\s+/).pop().toLowerCase();
+    for (const g of games) {
+      const w = (g.event_winner || '').trim();
+      if (!w) continue;
+      const wLast = w.split(/\s+/).pop().toLowerCase();
+      if (w === p1Name || wLast === last1) w1++;
+      else w2++;
+    }
+    return { w1, w2 };
+  }
+
+  const { w1: aw1, w2: aw2 } = countWins(h2h);
+  const { w1: sw1, w2: sw2 } = countWins(onSurface);
+
+  const sets = parseSets(m);
+  const live = isLive(m.event_status);
+
+  const recentHTML = h2h.length
+    ? h2h.slice(0, 6).map(g => {
+        const winner = g.event_winner || '';
+        const wLast = winner.split(/\s+/).pop().toLowerCase();
+        const last1 = p1Name.trim().split(/\s+/).pop().toLowerCase();
+        const isP1  = winner === p1Name || wLast === last1;
+        const date  = g.event_date ? fmtDateShort(g.event_date) : '';
+        return `<div class="td-h2h-row">
+          <span class="td-h2h-winner ${isP1?'td-p1-win':'td-p2-win'}">${esc(winner || '?')}</span>
+          <span class="td-h2h-result">${esc(g.event_final_result || '')}</span>
+          <span class="td-h2h-meta">${esc(g.tournament_name || '')}${g.tournament_surface?' · '+esc(g.tournament_surface):''}${date?' · '+date:''}</span>
+        </div>`;
+      }).join('')
+    : '<div class="td-h2h-empty">No previous meetings found</div>';
+
+  const predHTML = buildTennisPrediction(m, h2h, onSurface, aw1, aw2, sw1, sw2, surfLabel);
+
+  return `<div class="td-panel">
+    <div class="td-header">
+      <div class="td-player">${esc(p1Name)}${s1tag}</div>
+      <div class="td-vs">VS</div>
+      <div class="td-player td-p2-name">${s2tag}${esc(p2Name)}</div>
+    </div>
+    <div class="td-surface-row">
+      <span class="surface-dot ${scLow}"></span>
+      ${esc(surfLabel)} · ${esc(m.event_type_type || '')}
+      ${m.event_status ? `<span class="td-status-txt">· ${esc(m.event_status)}</span>` : ''}
+    </div>
+    ${live && m.event_game_result ? `<div class="td-game-score">Game: ${esc(m.event_game_result)}</div>` : ''}
+    <div class="td-sets">${buildDetailSets(sets)}</div>
+    ${predHTML}
+    <div class="td-section">
+      <div class="td-section-hdr">Head to Head${h2h.length ? ` (${h2h.length} matches)` : ''}</div>
+      <div class="td-h2h-summary">
+        <span class="td-h2h-count td-p1-win">${aw1}</span>
+        <span class="td-h2h-label">${esc(lastName(p1Name))} vs ${esc(lastName(p2Name))}</span>
+        <span class="td-h2h-count td-p2-win">${aw2}</span>
+      </div>
+      ${onSurface.length ? `<div class="td-h2h-summary td-h2h-surface">
+        <span class="td-h2h-count td-p1-win">${sw1}</span>
+        <span class="td-h2h-label">${esc(surfLabel)} only (${onSurface.length})</span>
+        <span class="td-h2h-count td-p2-win">${sw2}</span>
+      </div>` : ''}
+      ${recentHTML}
+    </div>
+  </div>`;
+}
+
+function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel) {
+  const p1Name = m.event_first_player || '—';
+  const p2Name = m.event_second_player || '—';
+  const s1 = parseInt(m.event_first_player_seed) || 0;
+  const s2 = parseInt(m.event_second_player_seed) || 0;
+  const l1 = esc(lastName(p1Name));
+  const l2 = esc(lastName(p2Name));
+
+  const factors = [];
+  let p1Score = 0, p2Score = 0;
+
+  if (s1 && s2) {
+    if (s1 < s2)      { p1Score += 2; factors.push({ win: true, label: 'Seeding', detail: `${l1} [${s1}] vs [${s2}]`, side: 1 }); }
+    else if (s2 < s1) { p2Score += 2; factors.push({ win: true, label: 'Seeding', detail: `${l2} [${s2}] vs [${s1}]`, side: 2 }); }
+    else               {               factors.push({ win: null, label: 'Seeding', detail: 'Equal seeds', side: 0 }); }
+  } else if (s1) {
+    p1Score += 1;
+    factors.push({ win: true, label: 'Seeding', detail: `${l1} seeded [${s1}], ${l2} unseeded`, side: 1 });
+  } else if (s2) {
+    p2Score += 1;
+    factors.push({ win: true, label: 'Seeding', detail: `${l2} seeded [${s2}], ${l1} unseeded`, side: 2 });
+  }
+
+  if (h2hAll.length >= 2) {
+    if (aw1 > aw2)      { p1Score += 2; factors.push({ win: true, label: 'H2H overall', detail: `${l1} leads ${aw1}–${aw2}`, side: 1 }); }
+    else if (aw2 > aw1) { p2Score += 2; factors.push({ win: true, label: 'H2H overall', detail: `${l2} leads ${aw2}–${aw1}`, side: 2 }); }
+    else                 {               factors.push({ win: null, label: 'H2H overall', detail: `Even ${aw1}–${aw2}`, side: 0 }); }
+  }
+
+  if (h2hSurf.length >= 2) {
+    if (sw1 > sw2)      { p1Score += 3; factors.push({ win: true, label: `On ${esc(surfLabel)}`, detail: `${l1} leads ${sw1}–${sw2}`, side: 1 }); }
+    else if (sw2 > sw1) { p2Score += 3; factors.push({ win: true, label: `On ${esc(surfLabel)}`, detail: `${l2} leads ${sw2}–${sw1}`, side: 2 }); }
+    else                 {               factors.push({ win: null, label: `On ${esc(surfLabel)}`, detail: `Even ${sw1}–${sw2}`, side: 0 }); }
+  }
+
+  if (!factors.length) return '';
+
+  let verdictHTML = '';
+  if (p1Score > p2Score) {
+    const pct = Math.round((p1Score / (p1Score + p2Score)) * 100);
+    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p1Name)}</span> likely to win <span class="gp-pick-count">(${pct}% of factors)</span></div>`;
+  } else if (p2Score > p1Score) {
+    const pct = Math.round((p2Score / (p1Score + p2Score)) * 100);
+    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p2Name)}</span> likely to win <span class="gp-pick-count">(${pct}% of factors)</span></div>`;
+  } else {
+    verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup — too close to call</div>`;
+  }
+
+  const factorsHTML = factors.map(f => {
+    const cls  = f.win === true ? 'gp-pf-win' : 'gp-pf-tie';
+    const icon = f.win === true ? '↑' : '=';
+    return `<div class="gp-pfactor ${cls}">
+      <span class="gp-pf-icon">${icon}</span>
+      <span class="gp-pf-label">${f.label}</span>
+      <span class="gp-pf-detail">${f.detail}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="td-section">
+    <div class="td-section-hdr">Match Prediction</div>
+    <div class="gp-pick-box">${verdictHTML}<div class="gp-pick-factors">${factorsHTML}</div></div>
+  </div>`;
 }
 
 // Patch all instances of a match row (live section + main section)
@@ -980,6 +1209,12 @@ function switchView(view) {
   S.view = view;
   document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
   document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+
+  if (view === 'favorites') {
+    document.getElementById('view-favorites').classList.add('active');
+    renderFavoritesView();
+    return;
+  }
 
   if (S.sport === 'tennis') {
     if (view === 'scores') {
@@ -3026,7 +3261,15 @@ function toggleGroup(header) {
 
 function toggleDetail(key) {
   const el = document.getElementById(`md-${key}`);
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (!el) return;
+  const showing = el.style.display !== 'none';
+  el.style.display = showing ? 'none' : 'block';
+  if (!showing && !_detailLoaded.has(key)) {
+    _detailLoaded.add(key);
+    const container = document.getElementById(`di-${key}`);
+    const m = S.matches.get(key);
+    if (container && m) loadTennisMatchDetail(key, container, m);
+  }
 }
 
 function jumpTo(slug) {
