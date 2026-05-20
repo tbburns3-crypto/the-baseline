@@ -354,6 +354,7 @@ function wsDisconnect() {
 // ── TENNIS RENDERING ─────────────────────────────────────────
 function renderMatches(all) {
   const area = document.getElementById('matches-area');
+  try {
   const filtered = all.filter(m => filterPasses(m));
 
   if (!filtered.length) {
@@ -427,6 +428,9 @@ function renderMatches(all) {
   }
 
   area.innerHTML = html;
+  } catch(renderErr) {
+    area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Render error: ${renderErr.message}</p><pre style="font-size:.7rem;color:var(--text-muted);white-space:pre-wrap">${renderErr.stack||''}</pre></div>`;
+  }
 }
 
 function buildGroup(g) {
