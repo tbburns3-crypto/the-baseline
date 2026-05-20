@@ -234,12 +234,19 @@ async function tennisFetch(method, params = {}) {
   url.searchParams.set('method', method);
   url.searchParams.set('APIkey', CFG.tennis.key);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  // api-tennis.com sends Access-Control-Allow-Origin: * so no proxy needed
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
-  if (json.success === 0) throw new Error(json.errors || 'API error');
-  return json.result || [];
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(url.toString(), { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.success === 0) throw new Error(json.errors || 'API error');
+    return json.result || [];
+  } catch (err) {
+    clearTimeout(tid);
+    throw err.name === 'AbortError' ? new Error('Request timed out') : err;
+  }
 }
 
 async function loadFixtures(offset = 0) {
@@ -294,16 +301,27 @@ async function loadRankings() {
 // ── WEBSOCKET ────────────────────────────────────────────────
 function wsConnect() {
   if (S.ws) { S.ws.onclose = null; S.ws.close(); S.ws = null; }
+  if (S.wsTimer) { clearTimeout(S.wsTimer); S.wsTimer = null; }
   setConn('connecting', 'Connecting to live updates…');
+
+  // If the WebSocket hasn't opened within 10 seconds, give up and poll instead
+  const wsTimeout = setTimeout(() => {
+    if (S.ws && S.ws.readyState !== WebSocket.OPEN) {
+      S.ws.onclose = null;
+      S.ws.close();
+      S.ws = null;
+      startPoll();
+    }
+  }, 10000);
 
   try {
     S.ws = new WebSocket(`${CFG.tennis.ws}?APIkey=${CFG.tennis.key}`);
 
     S.ws.onopen = () => {
+      clearTimeout(wsTimeout);
       S.wsRetries = 0; S.usePoll = false;
       if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
       setConn('connected', 'Live updates active');
-      // Some APIs want key sent as first message
       try { S.ws.send(JSON.stringify({ action: 'subscribe', APIkey: CFG.tennis.key })); } catch {}
     };
 
@@ -314,8 +332,8 @@ function wsConnect() {
         let count = 0;
         for (const u of updates) {
           if (!u.event_key) continue;
-          const merged = { ...(S.matches.get(u.event_key) || {}), ...u };
-          S.matches.set(u.event_key, merged);
+          const merged = { ...(S.matches.get(String(u.event_key)) || {}), ...u };
+          S.matches.set(String(u.event_key), merged);
           patchRow(merged);
           count++;
         }
@@ -326,8 +344,8 @@ function wsConnect() {
     S.ws.onerror = () => {};
 
     S.ws.onclose = () => {
+      clearTimeout(wsTimeout);
       S.ws = null;
-      setConn('disconnected', 'Live updates disconnected');
       if (S.wsRetries < S.wsMax) {
         S.wsRetries++;
         setConn('connecting', `Reconnecting… (${S.wsRetries}/${S.wsMax})`);
@@ -337,6 +355,7 @@ function wsConnect() {
       }
     };
   } catch {
+    clearTimeout(wsTimeout);
     startPoll();
   }
 }
