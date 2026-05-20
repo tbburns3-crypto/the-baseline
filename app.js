@@ -36,6 +36,7 @@ const S = {
   playerDBLoading: false,
   lineupsTimer:    null,
   scoresTimer:     null,
+  otherDateOffset: 0,
   ws:          null,
   wsRetries:   0,
   wsMax:       3,
@@ -1420,6 +1421,7 @@ function startScoresTimer(sport) {
 
 function switchSport(sport) {
   S.sport = sport;
+  S.otherDateOffset = 0;
   document.querySelectorAll('.sport-tab').forEach(t => t.classList.toggle('active', t.dataset.sport === sport));
 
   const isTennis = sport === 'tennis';
@@ -1517,22 +1519,63 @@ function switchView(view) {
   }
 }
 
+// ── OTHER SPORTS DATE NAV ────────────────────────────────────
+function otherDateNavHTML() {
+  const off  = S.otherDateOffset;
+  const d    = new Date();
+  d.setDate(d.getDate() + off);
+  const label = off === 0
+    ? 'Today'
+    : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: off > 180 || off < -30 ? 'numeric' : undefined });
+  const dateVal = dateStr(off);
+  const isNFL   = S.sport === 'nfl';
+  return `<div class="other-date-nav">
+    ${isNFL ? `<button class="odn-btn odn-wk" onclick="otherDateNav(-7)" title="Previous week">&#171; Week</button>` : ''}
+    <button class="odn-btn" onclick="otherDateNav(-1)" title="Previous day">&#8249;</button>
+    <label class="odn-date-label" title="Pick a date">
+      <input type="date" class="odn-date-input" value="${dateVal}" onchange="otherDatePickerChange(this.value)">
+      <span class="odn-date-text">${esc(label)}</span>
+    </label>
+    <button class="odn-btn" onclick="otherDateNav(1)" title="Next day">&#8250;</button>
+    ${isNFL ? `<button class="odn-btn odn-wk" onclick="otherDateNav(7)" title="Next week">Week &#187;</button>` : ''}
+    ${off !== 0 ? `<button class="odn-today" onclick="otherDateReset()">Today</button>` : ''}
+  </div>`;
+}
+
+function otherDateNav(delta) {
+  S.otherDateOffset += delta;
+  loadOtherScores(S.sport);
+}
+
+function otherDateReset() {
+  S.otherDateOffset = 0;
+  loadOtherScores(S.sport);
+}
+
+function otherDatePickerChange(val) {
+  const today  = new Date(); today.setHours(0, 0, 0, 0);
+  const picked = new Date(val + 'T12:00:00');
+  S.otherDateOffset = Math.round((picked - today) / 86400000);
+  loadOtherScores(S.sport);
+}
+
 // ── OTHER SPORTS (ESPN primary, BDL + API-Sports fallback) ────
 async function loadOtherScores(sport) {
   showLoading('other-scores-area', `Loading ${sport.toUpperCase()} games…`);
   try {
+    const off = S.otherDateOffset;
     let games = []; let src = 'ESPN';
     try {
-      games = await espnGames(sport);
+      games = await espnGames(sport, off);
     } catch (e) {
       console.warn('ESPN failed:', e.message, '- trying BallDontLie');
       src = 'BallDontLie';
       try {
-        games = await bdlGames(sport, dateStr(0));
+        games = await bdlGames(sport, dateStr(off));
       } catch (e2) {
         console.warn('BDL failed:', e2.message, '- trying API-Sports');
         src = 'API-Sports';
-        games = await apiSportsGames(sport, dateStr(0));
+        games = await apiSportsGames(sport, dateStr(off));
       }
     }
     renderOtherScores(games, sport, src);
@@ -1544,7 +1587,7 @@ async function loadOtherScores(sport) {
   }
 }
 
-async function espnGames(sport) {
+async function espnGames(sport, dateOffset = 0) {
   const paths = {
     nba:  'basketball/nba',
     wnba: 'basketball/wnba',
@@ -1553,7 +1596,7 @@ async function espnGames(sport) {
     nhl:  'hockey/nhl'
   };
   if (!paths[sport]) throw new Error('unknown sport');
-  const d = dateStr(0).replace(/-/g, '');
+  const d = dateStr(dateOffset).replace(/-/g, '');
   const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${paths[sport]}/scoreboard?dates=${d}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
@@ -1697,9 +1740,14 @@ function buildOtherRow(g) {
 
 function renderOtherScores(games, sport, src) {
   const area = document.getElementById('other-scores-area');
+  const nav  = otherDateNavHTML();
   if (!games.length) {
-    const offMsg = sport === 'nfl' ? '<p class="muted">The NFL season runs September–February.</p>' : '';
-    area.innerHTML = `<div class="empty-state"><p>No ${sport.toUpperCase()} games today.</p>${offMsg}</div>`;
+    const off     = S.otherDateOffset;
+    const dateDesc = off === 0 ? 'today' : 'on this date';
+    const hint     = sport === 'nfl'
+      ? '<p class="muted">NFL season runs Sep–Jan · use the arrows above to browse the schedule</p>'
+      : '';
+    area.innerHTML = `${nav}<div class="empty-state"><p>No ${sport.toUpperCase()} games ${dateDesc}.</p>${hint}</div>`;
     return;
   }
 
@@ -1735,7 +1783,7 @@ function renderOtherScores(games, sport, src) {
     groups.get(key).push(g);
   }
 
-  let html = `<div class="source-badge">Source: ${esc(src)}</div>`;
+  let html = nav + `<div class="source-badge">Source: ${esc(src)}</div>`;
   for (const [league, leagueGames] of groups) {
     html += `
       <div class="league-group">
