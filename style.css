@@ -1681,7 +1681,15 @@ input { font: inherit; }
 .ph-matchup { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ph-pick   { font-size: .78rem; color: var(--text-muted); white-space: nowrap; }
 .ph-empty  { padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: .84rem; }
-.ph-pending { padding: 8px 16px; font-size: .72rem; color: var(--text-muted); text-align: center; }
+.ph-sport-hdr {
+  padding: 8px 16px 4px;
+  font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--accent); background: rgba(0,0,0,.15);
+  display: flex; align-items: center; gap: 8px;
+}
+.ph-sport-rec { color: var(--text-muted); font-weight: 600; font-size: .7rem; margin-left: auto; text-transform: none; letter-spacing: 0; }
+.ph-pending-hdr { color: var(--text-muted); }
+.ph-pending-row .ph-icon { color: var(--text-muted); }
 
 /* ── INLINE GAME PICKS & RECORD TAGS ── */
 .game-pick-inline {
