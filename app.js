@@ -287,41 +287,66 @@ function updatePicksDisplay() {
   const allPicks   = getPicks();
   const allVals    = Object.values(allPicks);
   const sport      = S.sport;
-  const sportPicks = allVals.filter(p => (p.sport || 'tennis') === sport);
-  const sportPend  = sportPicks.filter(p => p.result === null);
-  const sportRes   = sportPicks.filter(p => p.result !== null);
-  const wins       = sportRes.filter(p => p.result === 'win').length;
-  const losses     = sportRes.length - wins;
-  const pct        = sportRes.length ? Math.round((wins / sportRes.length) * 100) : 0;
 
-  // Small topbar badge — sport-specific resolved picks
+  // Sport-specific
+  const sportPicks = allVals.filter(p => (p.sport || 'tennis') === sport);
+  const sportRes   = sportPicks.filter(p => p.result !== null);
+  const sportPend  = sportPicks.filter(p => p.result === null);
+  const sWins      = sportRes.filter(p => p.result === 'win').length;
+  const sLosses    = sportRes.length - sWins;
+  const sPct       = sportRes.length ? Math.round((sWins / sportRes.length) * 100) : 0;
+
+  // Overall (all sports combined)
+  const allRes     = allVals.filter(p => p.result !== null);
+  const allPend    = allVals.filter(p => p.result === null);
+  const allWins    = allRes.filter(p => p.result === 'win').length;
+  const allLosses  = allRes.length - allWins;
+  const allPct     = allRes.length ? Math.round((allWins / allRes.length) * 100) : 0;
+
+  // Small topbar badge — sport-specific resolved picks only
   const badge = document.getElementById('picks-accuracy');
   if (badge) {
     if (!sportRes.length) { badge.textContent = ''; badge.classList.remove('has-picks'); }
     else {
-      badge.textContent = `${wins}W-${losses}L (${pct}%)`;
-      badge.title = `${wins} correct, ${losses} wrong`;
+      badge.textContent = `${sWins}W-${sLosses}L (${sPct}%)`;
+      badge.title = `${sWins} correct, ${sLosses} wrong`;
       badge.classList.add('has-picks');
     }
   }
 
   // Banner — show whenever ANY picks exist in the system (any sport)
-  const banner = document.getElementById('picks-banner');
-  const pbWins = document.getElementById('pb-wins');
-  const pbLoss = document.getElementById('pb-losses');
-  const pbPct  = document.getElementById('pb-pct');
-  if (banner && pbWins && pbLoss && pbPct) {
-    if (!allVals.length) {
-      banner.style.display = 'none';
-    } else {
-      pbWins.textContent = wins;
-      pbLoss.textContent = losses;
-      if (sportRes.length)       pbPct.textContent = `(${pct}%)`;
-      else if (sportPend.length) pbPct.textContent = `${sportPend.length} active`;
-      else                       pbPct.textContent = 'tap for history';
-      banner.style.display = '';
-      banner.className = sportRes.length && pct >= 55 ? 'pb-hot' : sportRes.length && pct <= 40 ? 'pb-cold' : '';
-    }
+  const banner  = document.getElementById('picks-banner');
+  const pbWins  = document.getElementById('pb-wins');
+  const pbLoss  = document.getElementById('pb-losses');
+  const pbPct   = document.getElementById('pb-pct');
+  const pbBreak = document.getElementById('pb-breakdown');
+  if (!banner || !pbWins || !pbLoss || !pbPct) return;
+
+  if (!allVals.length) { banner.style.display = 'none'; return; }
+
+  banner.style.display = '';
+
+  if (sportRes.length) {
+    // Sport has resolved picks — show sport record
+    pbWins.textContent = sWins;
+    pbLoss.textContent = sLosses;
+    pbPct.textContent  = `(${sPct}%)`;
+    if (pbBreak) pbBreak.textContent = sportPend.length ? `+${sportPend.length} active` : '';
+    banner.className = sPct >= 55 ? 'pb-hot' : sPct <= 40 ? 'pb-cold' : '';
+  } else if (allRes.length) {
+    // Current sport has no resolved picks but other sports do — show overall
+    pbWins.textContent = allWins;
+    pbLoss.textContent = allLosses;
+    pbPct.textContent  = `(${allPct}%)`;
+    if (pbBreak) pbBreak.textContent = 'all sports';
+    banner.className = allPct >= 55 ? 'pb-hot' : allPct <= 40 ? 'pb-cold' : '';
+  } else {
+    // All picks still pending — no resolved games yet
+    pbWins.textContent = '—';
+    pbLoss.textContent = '—';
+    pbPct.textContent  = `${allPend.length} picks active`;
+    if (pbBreak) pbBreak.textContent = '';
+    banner.className = '';
   }
 }
 
