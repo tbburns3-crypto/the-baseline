@@ -575,6 +575,7 @@ function buildGroup(g) {
 }
 
 function inlineTennisPick(m) {
+  const pickId = 'tn_' + m.event_key;
   const s1 = parseInt(m.event_first_player_seed) || 0;
   const s2 = parseInt(m.event_second_player_seed) || 0;
   if (s1 || s2) {
@@ -583,14 +584,13 @@ function inlineTennisPick(m) {
     else if (s2 && !s1) pick = lastName(m.event_second_player || '');
     else if (s1 < s2)   pick = lastName(m.event_first_player || '');
     else if (s2 < s1)   pick = lastName(m.event_second_player || '');
-    if (pick && pick !== '-') return `<span class="match-pick-inline" title="Seeding pick">→ ${esc(pick)}</span>`;
+    if (pick && pick !== '-') { recordPick(pickId, pick); return `<span class="match-pick-inline" title="Seeding pick">→ ${esc(pick)}</span>`; }
   }
-  // Fall back to live rankings index if loaded
   const r1 = S.rankIndex.get(String(m.first_player_key  || ''));
   const r2 = S.rankIndex.get(String(m.second_player_key || ''));
   if (r1 && r2 && r1.rank !== r2.rank) {
     const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
-    if (pick && pick !== '-') return `<span class="match-pick-inline" title="Ranking pick: #${r1.rank} vs #${r2.rank}">→ ${esc(pick)}</span>`;
+    if (pick && pick !== '-') { recordPick(pickId, pick); return `<span class="match-pick-inline" title="Ranking pick: #${r1.rank} vs #${r2.rank}">→ ${esc(pick)}</span>`; }
   }
   return '';
 }
@@ -626,6 +626,14 @@ function buildMatchRow(m, idSuffix = '') {
   const pid = idSuffix ? `${key}-${idSuffix}` : key;
 
   const pickHTML = (!live && !finished) ? inlineTennisPick(m) : '';
+  // Resolve stored pick once result is known
+  if (finished && m.event_winner) {
+    let winnerLN = '';
+    if (m.event_winner === 'First Player')       winnerLN = lastName(m.event_first_player  || '');
+    else if (m.event_winner === 'Second Player') winnerLN = lastName(m.event_second_player || '');
+    else                                          winnerLN = lastName(m.event_winner);
+    if (winnerLN) resolvePick('tn_' + m.event_key, winnerLN);
+  }
   const favOn = isFav('match', m.event_key);
   const favLabel = esc((m.event_first_player||'') + ' vs ' + (m.event_second_player||''));
   const starBtn = `<button class="star-btn${favOn?' fav-on':''}" data-fav-id="match:${key}" data-fav-label="${favLabel}" title="${favOn?'Remove from favorites':'Add to favorites'}" onclick="event.stopPropagation();toggleFavBtn(this)">★</button>`;
