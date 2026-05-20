@@ -94,16 +94,39 @@ function resolvePick(gameId, winnerFull) {
 }
 
 function updatePicksDisplay() {
-  const el = document.getElementById('picks-accuracy');
-  if (!el) return;
   const picks    = getPicks();
   const resolved = Object.values(picks).filter(p => p.result !== null);
-  if (!resolved.length) { el.classList.remove('has-picks'); return; }
-  const wins = resolved.filter(p => p.result === 'win').length;
-  const pct  = Math.round((wins / resolved.length) * 100);
-  el.textContent = `Picks ${wins}/${resolved.length} (${pct}%)`;
-  el.title = `${wins} correct out of ${resolved.length} predictions (${pct}% accuracy)`;
-  el.classList.add('has-picks');
+  const wins     = resolved.filter(p => p.result === 'win').length;
+  const losses   = resolved.length - wins;
+  const pct      = resolved.length ? Math.round((wins / resolved.length) * 100) : 0;
+
+  // Small topbar badge
+  const badge = document.getElementById('picks-accuracy');
+  if (badge) {
+    if (!resolved.length) { badge.classList.remove('has-picks'); }
+    else {
+      badge.textContent = `${wins}W-${losses}L (${pct}%)`;
+      badge.title = `${wins} correct, ${losses} wrong out of ${resolved.length} picks`;
+      badge.classList.add('has-picks');
+    }
+  }
+
+  // Prominent banner inside main content
+  const banner  = document.getElementById('picks-banner');
+  const pbWins  = document.getElementById('pb-wins');
+  const pbLoss  = document.getElementById('pb-losses');
+  const pbPct   = document.getElementById('pb-pct');
+  if (banner && pbWins && pbLoss && pbPct) {
+    if (!resolved.length) {
+      banner.style.display = 'none';
+    } else {
+      pbWins.textContent = wins;
+      pbLoss.textContent = losses;
+      pbPct.textContent  = `(${pct}%)`;
+      banner.style.display = '';
+      banner.className = pct >= 55 ? 'pb-hot' : pct <= 40 ? 'pb-cold' : '';
+    }
+  }
 }
 
 function clearOldPicks() {
@@ -1405,6 +1428,7 @@ function switchSport(sport) {
   const secTab      = document.getElementById('secondary-tab');
   const playersTab  = document.getElementById('players-tab');
   const lineupsTab  = document.getElementById('lineups-tab');
+  const picksTab    = document.getElementById('picks-tab');
   if (S.lineupsTimer) { clearInterval(S.lineupsTimer); S.lineupsTimer = null; }
   stopScoresTimer();
   if (isTennis) {
@@ -1412,20 +1436,24 @@ function switchSport(sport) {
     secTab.style.display   = '';
     playersTab.style.display  = 'none';
     lineupsTab.style.display  = 'none';
+    picksTab.style.display    = 'none';
   } else if (sport === 'golf') {
     secTab.style.display   = 'none';
     playersTab.style.display  = 'none';
     lineupsTab.style.display  = 'none';
+    picksTab.style.display    = 'none';
   } else if (sport === 'soccer') {
     secTab.textContent = 'Tables'; secTab.dataset.view = 'secondary';
     secTab.style.display   = '';
     playersTab.style.display  = '';
     lineupsTab.style.display  = 'none';
+    picksTab.style.display    = 'none';
   } else {
     secTab.textContent = 'Standings'; secTab.dataset.view = 'secondary';
     secTab.style.display   = '';
     playersTab.style.display  = '';
     lineupsTab.style.display  = sport === 'mlb' ? '' : 'none';
+    picksTab.style.display    = sport === 'mlb' ? '' : 'none';
   }
 
   switchView('scores');
@@ -1470,6 +1498,10 @@ function switchView(view) {
       loadMLBLineups();
       if (S.lineupsTimer) clearInterval(S.lineupsTimer);
       S.lineupsTimer = setInterval(loadMLBLineups, 5 * 60 * 1000);
+    } else if (view === 'picks') {
+      stopScoresTimer();
+      document.getElementById('view-mlb-picks').classList.add('active');
+      loadMLBPicksPage();
     } else if (view === 'players') {
       stopScoresTimer();
       document.getElementById('view-sport-players').classList.add('active');
@@ -1935,6 +1967,113 @@ function buildMLBPreStats(leaders) {
   return teamCards
     ? `<div class="gp-section"><div class="gp-section-hdr">📊 Most Likely to Produce - Lineups Not Posted Yet</div>${teamCards}</div>`
     : '<div class="gp-no-lineup">Lineups not posted yet - check back closer to game time</div>';
+}
+
+// ── MLB PICKS PAGE ───────────────────────────────────────────
+function _leadsByTeam(leadData, category) {
+  const cat = (leadData?.leagueLeaders || []).find(c => c.leaderCategory === category);
+  const map = new Map();
+  for (const l of (cat?.leaders || [])) {
+    const abbr = l.team?.abbreviation || '';
+    if (abbr && !map.has(abbr)) map.set(abbr, { name: l.person?.fullName || '', value: l.value, abbr });
+  }
+  return map;
+}
+
+function buildMLBPickCard(g, hrMap, avgMap, rbiMap, opsMap) {
+  const { fin, live } = gameRowState(g);
+
+  // Win pick calculation (same logic as inlineGamePick but full card)
+  const awayWP = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
+  let winPickHTML = '<div class="pc-win-pick pc-no-data">Not enough record data to pick</div>';
+  if (g.awayRec || g.homeRec) {
+    const rawHome = homeWP * 1.03, total = awayWP + rawHome;
+    const homePct = Math.round((rawHome / total) * 100);
+    const awayPct = 100 - homePct;
+    const margin  = Math.abs(homePct - 50);
+    if (margin >= 3) {
+      const favTeam = homePct > awayPct ? g.homeTeam : g.awayTeam;
+      const pct     = Math.max(homePct, awayPct);
+      const conf    = pct >= 65 ? 'pc-conf-high' : pct >= 58 ? 'pc-conf-med' : 'pc-conf-low';
+      recordPick(String(g.id), favTeam.split(' ').pop());
+      winPickHTML = `<div class="pc-win-pick ${conf}">
+        <span class="pc-pick-arrow">→</span>
+        <span class="pc-pick-team">${esc(favTeam)}</span>
+        <span class="pc-pick-pct">${pct}% win probability</span>
+        <span class="pc-pick-basis">${esc(g.awayRec || '?')} vs ${esc(g.homeRec || '?')}</span>
+      </div>`;
+    }
+  }
+
+  const shortName = n => n ? n.split(' ').pop() : '-';
+  const teamStatRow = (abbr, teamName) => {
+    const hr  = hrMap.get(abbr);
+    const avg = avgMap.get(abbr);
+    const rbi = rbiMap.get(abbr);
+    const ops = opsMap ? opsMap.get(abbr) : null;
+    if (!hr && !avg && !rbi) return '';
+    return `<div class="pc-team-stats">
+      <div class="pc-team-label">${esc(teamName)}</div>
+      <div class="pc-stat-row">
+        ${avg ? `<span class="pc-stat-chip"><span class="pc-si">🎯</span><span class="pc-sv">${esc(shortName(avg.name))}</span><span class="pc-sl">${esc(avg.value)} AVG</span></span>` : ''}
+        ${hr  ? `<span class="pc-stat-chip"><span class="pc-si">💣</span><span class="pc-sv">${esc(shortName(hr.name))}</span><span class="pc-sl">${esc(hr.value)} HR</span></span>` : ''}
+        ${rbi ? `<span class="pc-stat-chip"><span class="pc-si">⚡</span><span class="pc-sv">${esc(shortName(rbi.name))}</span><span class="pc-sl">${esc(rbi.value)} RBI</span></span>` : ''}
+      </div>
+    </div>`;
+  };
+
+  const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
+                    : live ? '<span class="live-badge">LIVE</span>'
+                    : `<span class="pc-time">${esc(g.status)}</span>`;
+
+  return `<div class="picks-card" onclick="switchSport('mlb');switchView('scores')" title="View scores">
+    <div class="pc-header">
+      <div class="pc-matchup">
+        <span class="pc-away">${esc(g.awayTeam)}</span>${g.awayRec ? ` <span class="rec-tag">${esc(g.awayRec)}</span>` : ''}
+        <span class="pc-at">@</span>
+        <span class="pc-home">${esc(g.homeTeam)}</span>${g.homeRec ? ` <span class="rec-tag">${esc(g.homeRec)}</span>` : ''}
+        ${g.series?.summary ? `<span class="series-tag">${esc(g.series.summary)}</span>` : ''}
+      </div>
+      <div class="pc-status">${statusLabel}</div>
+    </div>
+    ${winPickHTML}
+    <div class="pc-team-rows">
+      ${teamStatRow(g.awayAbbr, g.awayTeam)}
+      ${teamStatRow(g.homeAbbr, g.homeTeam)}
+    </div>
+  </div>`;
+}
+
+async function loadMLBPicksPage() {
+  const area = document.getElementById('mlb-picks-area');
+  area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading today\'s picks…</p></div>';
+  try {
+    // Fetch games + season leaders in parallel (leaders may already be cached)
+    const [games, leadRes] = await Promise.all([
+      espnGames('mlb'),
+      _mlbLeadData ? Promise.resolve(null) :
+        fetch(`https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=homeRuns,battingAverage,rbi,hits,onBasePlusSlugging&season=${CURRENT_SEASON}&sportId=1&limit=30&hydrate=person,team`).then(r => r.json())
+    ]);
+    if (leadRes) _mlbLeadData = leadRes;
+
+    if (!games.length) {
+      area.innerHTML = '<div class="empty-state"><p>No MLB games today.</p></div>';
+      return;
+    }
+
+    const hrMap  = _leadsByTeam(_mlbLeadData, 'homeRuns');
+    const avgMap = _leadsByTeam(_mlbLeadData, 'battingAverage');
+    const rbiMap = _leadsByTeam(_mlbLeadData, 'rbi');
+    const opsMap = _leadsByTeam(_mlbLeadData, 'onBasePlusSlugging');
+
+    const hasPick = games.some(g => { const { fin } = gameRowState(g); return !fin && (g.awayRec || g.homeRec); });
+    const note    = hasPick ? '' : '<div class="picks-note">Records not yet available — picks will appear once the season is underway.</div>';
+
+    area.innerHTML = `${note}<div class="picks-cards">${games.map(g => buildMLBPickCard(g, hrMap, avgMap, rbiMap, opsMap)).join('')}</div>`;
+    updatePicksDisplay();
+  } catch (err) {
+    area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load picks: ${esc(err.message)}</p></div>`;
+  }
 }
 
 async function renderMLBGamePreview(espnGame, panel) {
