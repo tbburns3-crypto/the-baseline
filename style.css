@@ -989,6 +989,14 @@ input { font: inherit; }
   color: var(--text);
 }
 .other-period { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+/* ── POTD (Pick of the Day) line inside game rows ── */
+.potd-line { font-size: .72rem; color: var(--text-muted); margin-top: 3px; min-height: 0; }
+.potd-line:empty { display: none; }
+.potd-label { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.potd-label strong { color: var(--text); font-weight: 700; }
+.potd-label.potd-win strong { color: var(--accent); }
+.potd-label.potd-loss strong { color: #ef5350; }
+.potd-stat { color: var(--text-muted); }
 
 /* ── OTHER SPORTS DATE NAV ── */
 .other-date-nav {
