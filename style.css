@@ -1584,7 +1584,12 @@ input { font: inherit; }
 .pc-pick-arrow { color: var(--accent); font-weight: 900; font-size: 1rem; }
 .pc-pick-team  { font-weight: 800; font-size: .95rem; color: var(--text); }
 .pc-pick-pct   { font-weight: 700; color: var(--accent); font-size: .88rem; }
-.pc-pick-basis { font-size: .72rem; color: var(--text-muted); margin-left: auto; }
+.pc-pick-basis  { font-size: .72rem; color: var(--text-muted); margin-left: auto; }
+.pc-win-label   { font-weight: 700; font-size: .9rem; color: var(--text); }
+.pc-conf-high .pc-win-label { color: var(--accent); }
+.pc-conf-med  .pc-win-label { color: var(--text); }
+.pc-conf-low  .pc-win-label { color: var(--text-muted); }
+.pc-data-note   { font-size: .72rem; color: var(--text-muted); padding: 4px 2px 10px; }
 .pc-team-rows  { display: flex; flex-direction: column; gap: 8px; }
 .pc-team-stats { }
 .pc-team-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); font-weight: 700; margin-bottom: 5px; }
