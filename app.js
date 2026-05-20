@@ -382,13 +382,41 @@ async function loadRankings() {
     ]);
     const atp = atpR.status === 'fulfilled' ? atpR.value : [];
     const wta = wtaR.status === 'fulfilled' ? wtaR.value : [];
-    // Build rank index for cross-referencing in player search
+
+    // Build rank index for pick algorithm cross-referencing
     S.rankIndex.clear();
     for (const p of [...atp, ...wta]) {
-      if (p.player_key) S.rankIndex.set(String(p.player_key), { rank: p.place, points: p.points, league: p.league || (atp.includes(p) ? 'ATP' : 'WTA') });
+      if (p.player_key) S.rankIndex.set(String(p.player_key), {
+        rank:    p.place ?? p.standing_place ?? p.ranking ?? 999,
+        points:  p.points ?? p.standing_points ?? 0,
+        league:  p.league || (atp.includes(p) ? 'ATP' : 'WTA')
+      });
     }
+
+    // Build playerDB directly from API data (always fresh, no external CSV needed)
+    S.playerDB = [...atp.map(p => ({ ...p, _league: 'ATP' })), ...wta.map(p => ({ ...p, _league: 'WTA' }))]
+      .map(p => {
+        const name = (p.player || p.player_name || p.team_name || '').trim();
+        if (!name) return null;
+        const parts = name.split(' ');
+        return {
+          id:        String(p.player_key || ''),
+          firstName: parts[0] || '',
+          lastName:  parts.slice(1).join(' ') || '',
+          fullName:  name,
+          rank:      p.place ?? p.standing_place ?? p.ranking ?? 0,
+          points:    p.points ?? p.standing_points ?? 0,
+          league:    p._league,
+          country:   p.country || p.player_country || p.nationality || '',
+          hand:      '',
+          dob:       '',
+        };
+      })
+      .filter(Boolean);
+    S.playerDBLoaded  = true;
+    S.playerDBLoading = false;
+
     renderRankings(atp, wta);
-    loadPlayerDatabase(); // start loading in background for search
   } catch (err) {
     showError('rankings-area', `Could not load rankings - ${err.message}`, 'loadRankings()');
   }
@@ -584,13 +612,13 @@ function inlineTennisPick(m) {
     else if (s2 && !s1) pick = lastName(m.event_second_player || '');
     else if (s1 < s2)   pick = lastName(m.event_first_player || '');
     else if (s2 < s1)   pick = lastName(m.event_second_player || '');
-    if (pick && pick !== '-') { recordPick(pickId, pick); return `<span class="match-pick-inline" title="Seeding pick">→ ${esc(pick)}</span>`; }
+    if (pick && pick !== '-') { recordPick(pickId, pick); return `<span class="match-pick-inline" title="Pick based on seeding (click match for full H2H + ranking analysis)">→ ${esc(pick)}</span>`; }
   }
   const r1 = S.rankIndex.get(String(m.first_player_key  || ''));
   const r2 = S.rankIndex.get(String(m.second_player_key || ''));
   if (r1 && r2 && r1.rank !== r2.rank) {
     const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
-    if (pick && pick !== '-') { recordPick(pickId, pick); return `<span class="match-pick-inline" title="Ranking pick: #${r1.rank} vs #${r2.rank}">→ ${esc(pick)}</span>`; }
+    if (pick && pick !== '-') { recordPick(pickId, pick); return `<span class="match-pick-inline" title="Pick based on live ranking: #${r1.rank} vs #${r2.rank} (click for full H2H + form analysis)">→ ${esc(pick)} #${Math.min(r1.rank, r2.rank)}</span>`; }
   }
   return '';
 }
@@ -904,8 +932,9 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     </div>`;
   }).join('');
 
+  const factorNames = factors.map(f => f.label).join(', ');
   return `<div class="td-section">
-    <div class="td-section-hdr">Match Prediction</div>
+    <div class="td-section-hdr">Match Prediction <span class="td-pick-basis">based on: ${esc(factorNames)}</span></div>
     <div class="gp-pick-box">${verdictHTML}<div class="gp-pick-factors">${factorsHTML}</div></div>
   </div>`;
 }
@@ -1142,9 +1171,9 @@ function onPlayerSearch(q) {
   resultsEl.style.display  = '';
 
   if (!S.playerDBLoaded) {
-    resultsEl.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading player database…</p></div>';
+    resultsEl.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading rankings…</p></div>';
     _playerSearchTimer = setTimeout(async () => {
-      await loadPlayerDatabase();
+      await loadRankings();
       runPlayerSearch(q.trim());
     }, 300);
     return;
