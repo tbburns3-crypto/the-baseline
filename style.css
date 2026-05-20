@@ -555,7 +555,7 @@ input { font: inherit; }
   padding: 14px 14px 16px;
   animation: slide-down 0.15s ease;
 }
-.detail-inner { max-width: 480px; }
+.detail-inner { max-width: 100%; }
 .detail-header {
   display: flex;
   align-items: center;
@@ -1400,6 +1400,102 @@ input { font: inherit; }
 .golf-wr { font-size: .6rem; color: var(--text-muted); background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
 .golf-group-edge { padding: 7px 14px; font-size: .76rem; background: rgba(0,230,118,.06); border-top: 1px solid rgba(0,230,118,.1); color: var(--text-muted); }
 .golf-group-edge b { color: var(--accent); }
+
+/* ── STAR / INLINE PICK ── */
+.star-btn {
+  font-size: 1rem; color: var(--text-muted);
+  padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
+  transition: color .15s, transform .15s; line-height: 1;
+}
+.star-btn:hover { color: #ffb300; transform: scale(1.2); }
+.star-btn.fav-on { color: #ffb300; }
+.match-pick-inline {
+  font-size: .7rem; color: var(--accent-dim); font-style: italic;
+  white-space: nowrap; flex-shrink: 0;
+}
+
+/* ── TENNIS MATCH DETAIL (rich H2H + prediction) ── */
+.td-loading {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0; font-size: .82rem; color: var(--text-muted);
+}
+.td-loading .spinner { width: 18px; height: 18px; border-width: 2px; flex-shrink: 0; }
+.td-error { color: #ef9a9a; font-size: .82rem; padding: 10px 0; }
+.td-panel { }
+.td-header {
+  display: flex; align-items: baseline; gap: 10px;
+  flex-wrap: wrap; margin-bottom: 8px;
+}
+.td-player { font-size: .9rem; font-weight: 700; color: var(--text); flex: 1; }
+.td-p2-name { text-align: right; }
+.td-vs { color: var(--text-muted); font-size: .75rem; flex-shrink: 0; }
+.td-seed {
+  font-size: .65rem; color: var(--text-muted); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 0 4px; font-weight: 600;
+}
+.td-surface-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: .78rem; color: var(--text-muted); margin-bottom: 8px;
+}
+.td-status-txt { font-style: italic; }
+.td-game-score {
+  font-size: .82rem; color: var(--accent); font-weight: 600; margin-bottom: 8px;
+}
+.td-sets { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.td-section { margin-bottom: 14px; }
+.td-section:last-child { margin-bottom: 0; }
+.td-section-hdr {
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--accent);
+  margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+}
+.td-h2h-summary {
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px; padding: 8px 0; margin-bottom: 4px;
+}
+.td-h2h-surface {
+  background: rgba(255,255,255,.03); border-radius: 5px;
+  padding: 6px 8px; margin-bottom: 6px;
+}
+.td-h2h-count { font-size: 1.5rem; font-weight: 800; }
+.td-h2h-label { color: var(--text-muted); font-size: .72rem; text-align: center; flex: 1; }
+.td-p1-win { color: #64b5f6; }
+.td-p2-win { color: #ef9a9a; }
+.td-h2h-row {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 8px; padding: 6px 0; font-size: .8rem;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.td-h2h-winner { font-weight: 700; flex-shrink: 0; }
+.td-h2h-result { color: var(--text-muted); font-size: .75rem; flex-shrink: 0; }
+.td-h2h-meta { color: var(--text-muted); font-size: .7rem; margin-left: auto; }
+.td-h2h-empty {
+  color: var(--text-muted); font-size: .8rem;
+  font-style: italic; padding: 8px 0;
+}
+
+/* ── FAVORITES VIEW ── */
+.fav-section { margin-bottom: 20px; }
+.fav-section-hdr {
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--text-muted);
+  padding: 8px 4px 6px; margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.fav-stale-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 6px; font-size: .85rem;
+}
+.fav-stale-label { flex: 1; color: var(--text-2); }
+.fav-stale-meta { color: var(--text-muted); font-size: .74rem; }
+.fav-remove-btn {
+  color: var(--text-muted); font-size: .9rem;
+  padding: 2px 6px; transition: color .12s;
+}
+.fav-remove-btn:hover { color: var(--live); }
 
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
