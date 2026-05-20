@@ -172,15 +172,15 @@ function showPicksHistory() {
     </div>`;
   };
 
-  // Group game picks by sport
+  // Group game picks by sport (exclude player picks — those go in Players tab)
   const groups     = new Map();
   const pendingMap = new Map();
-  for (const p of resolved) {
+  for (const p of resolved.filter(p => p.type !== 'player')) {
     const sp = p.sport || (p.matchup?.includes(' vs ') ? 'tennis' : 'other');
     if (!groups.has(sp)) groups.set(sp, []);
     groups.get(sp).push(p);
   }
-  for (const p of pending) {
+  for (const p of pending.filter(p => p.type !== 'player')) {
     const sp = p.sport || 'other';
     if (!pendingMap.has(sp)) pendingMap.set(sp, []);
     pendingMap.get(sp).push(p);
@@ -2245,14 +2245,14 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   // ── Win prediction (folded into header) ──
   const awayWP = parseWinPct(espnGame.awayRec), homeWP = parseWinPct(espnGame.homeRec);
   let favLine = '';
+  const gameMatchup = `${espnGame.awayTeam} @ ${espnGame.homeTeam}`;
   if (espnGame.awayRec || espnGame.homeRec) {
     const rawHome = homeWP * 1.03, total = awayWP + rawHome;
     const homePct = Math.round((rawHome / total) * 100);
     const favTeam = homePct >= 50 ? espnGame.homeTeam : espnGame.awayTeam;
     const pct     = Math.max(homePct, 100 - homePct);
     const margin  = Math.abs(homePct - 50);
-    const matchup = `${espnGame.awayTeam} @ ${espnGame.homeTeam}`;
-    if (!fin && margin >= 3) recordPick(String(espnGame.id), favTeam.split(' ').pop(), matchup, 'mlb');
+    if (!fin && margin >= 3) recordPick(String(espnGame.id), favTeam.split(' ').pop(), gameMatchup, 'mlb');
     favLine = margin >= 3
       ? `<span class="pc-fav">${esc(favTeam.split(' ').pop())} favored ${pct}%</span>`
       : `<span class="pc-fav pc-fav-even">Even matchup</span>`;
@@ -2366,6 +2366,8 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const awayBatters = awayLineup.slice(0, 9).map((p, i) => mkBatter(p, i+1, homeHand, awayAbbr, homePitcherId, homeRates));
   const homeBatters = homeLineup.slice(0, 9).map((p, i) => mkBatter(p, i+1, awayHand, homeAbbr, awayPitcherId, awayRates));
   const allBatters  = [...awayBatters, ...homeBatters].filter(b => b.ab >= 5);
+  const awayValid   = awayBatters.filter(b => b.ab >= 5);
+  const homeValid   = homeBatters.filter(b => b.ab >= 5);
 
   const hasLineup = allBatters.length > 0;
 
@@ -2405,40 +2407,55 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
 
   let picksHTML = '';
   if (hasLineup) {
-    const ranked = (arr, key) => [...arr].sort((a, b) => b[key] - a[key]);
-    const best   = (arr, key) => ranked(arr, key)[0];
-    const topHit = best(allBatters, 'hitScore');
-    const hrList = ranked(allBatters, 'hrScore');
-    const topHR  = hrList[0]?.id === topHit?.id ? hrList[1] : hrList[0];
-    const topRBI = best(allBatters, 'rbiScore');
-    const topBB  = best(allBatters, 'bbScore');
-    const topSB  = allBatters.filter(b => b.sb >= 3).sort((a, b) => b.sbScore - a.sbScore)[0];
+    const top = (arr, key) => [...arr].sort((a, b) => b[key] - a[key])[0];
+    // One best per team per category
+    const aHit = top(awayValid, 'hitScore');
+    const hHit = top(homeValid, 'hitScore');
+    // HR: deduplicate within each team side if same player tops multiple categories
+    const aHR  = top(awayValid, 'hrScore');
+    const hHR  = top(homeValid, 'hrScore');
+    const aRBI = top(awayValid, 'rbiScore');
+    const hRBI = top(homeValid, 'rbiScore');
+    const aBB  = top(awayValid, 'bbScore');
+    const hBB  = top(homeValid, 'bbScore');
+    const aSB  = awayValid.filter(b => b.sb >= 3).sort((a, b) => b.sbScore - a.sbScore)[0];
+    const hSB  = homeValid.filter(b => b.sb >= 3).sort((a, b) => b.sbScore - a.sbScore)[0];
 
-    const avg_  = b => _fmtAvg(b?.platAvg || b?.avg) || '-';
-    const hitSt = `${avg_(topHit)} vs ${topHit?.oppHand||'?'}HP`;
-    const hrSt  = `${topHR?.hr||0} HR · ${avg_(topHR)} vs ${topHR?.oppHand||'?'}HP`;
-    const rbiSt = `${topRBI?.rbi||0} RBI · #${topRBI?.pos}`;
-    const bbSt  = `${topBB?.bb||0} BB · ${topBB?.obp||'-'} OBP`;
+    const avg_    = b => _fmtAvg(b?.platAvg || b?.avg) || '-';
+    const statStr = {
+      hit:  b => b ? `${avg_(b)} vs ${b.oppHand||'?'}HP` : '',
+      hr:   b => b ? `${b.hr||0}HR · ${avg_(b)} vs ${b.oppHand||'?'}HP` : '',
+      rbi:  b => b ? `${b.rbi||0}RBI · #${b.pos}` : '',
+      walk: b => b ? `${b.bb||0}BB · ${b.obp||'-'}OBP` : '',
+      sb:   b => b ? `${b.sb}SB` : '',
+    };
 
-    // Record player picks to localStorage
+    // Record both teams' picks per category
     const gKey   = String(espnGame.id);
     const gamePk = mlbGame?.gamePk || null;
     if (!fin) {
-      if (topHit) recordPlayerPick('plr_' + gKey + '_' + topHit.id + '_hit',  'mlb', topHit.name,  'Hit',  hitSt,  matchup, gamePk);
-      if (topHR)  recordPlayerPick('plr_' + gKey + '_' + topHR.id  + '_hr',   'mlb', topHR.name,   'HR',   hrSt,   matchup, gamePk);
-      if (topRBI) recordPlayerPick('plr_' + gKey + '_' + topRBI.id + '_rbi',  'mlb', topRBI.name,  'RBI',  rbiSt,  matchup, gamePk);
-      if (topBB)  recordPlayerPick('plr_' + gKey + '_' + topBB.id  + '_walk', 'mlb', topBB.name,   'Walk', bbSt,   matchup, gamePk);
-      if (topSB)  recordPlayerPick('plr_' + gKey + '_' + topSB.id  + '_sb',   'mlb', topSB.name,   'SB',   topSB.sb + ' SB', matchup, gamePk);
+      for (const [b, prop] of [[aHit,'hit'],[hHit,'hit'],[aHR,'hr'],[hHR,'hr'],[aRBI,'rbi'],[hRBI,'rbi'],[aBB,'walk'],[hBB,'walk'],[aSB,'sb'],[hSB,'sb']]) {
+        if (b) recordPlayerPick('plr_'+gKey+'_'+b.id+'_'+prop, 'mlb', b.name, prop==='hit'?'Hit':prop==='hr'?'HR':prop==='rbi'?'RBI':prop==='walk'?'Walk':'SB', statStr[prop](b), gameMatchup, gamePk);
+      }
     } else {
       resolvePlayerPicksForGame(gKey, gamePk);
     }
 
+    // Two rows per category (away top + home top), skip if both absent
+    const catRows = (icon, label, away, home, prop) => {
+      const rows = [];
+      if (away) rows.push(pickRow(icon, label, away, statStr[prop](away)));
+      if (home) rows.push(pickRow('', '',    home, statStr[prop](home)));
+      return rows.join('');
+    };
+
+    const hasSB = aSB || hSB;
     picksHTML = `<div class="pc-picks">
-      ${pickRow('🎯', 'Hit',  topHit, hitSt)}
-      ${topHR  ? pickRow('💣', 'HR',   topHR,  hrSt)  : ''}
-      ${pickRow('⚡', 'RBI',  topRBI, rbiSt)}
-      ${pickRow('🚶', 'Walk', topBB,  bbSt)}
-      ${topSB  ? pickRow('🏃', 'SB',  topSB,  `${topSB.sb} SB`) : ''}
+      ${catRows('🎯','Hit',  aHit, hHit, 'hit')}
+      ${catRows('💣','HR',   aHR,  hHR,  'hr')}
+      ${catRows('⚡','RBI',  aRBI, hRBI, 'rbi')}
+      ${catRows('🚶','Walk', aBB,  hBB,  'walk')}
+      ${hasSB ? catRows('🏃','SB', aSB, hSB, 'sb') : ''}
     </div>`;
   } else {
     picksHTML = '<div class="pc-no-data">Lineup not posted yet</div>';
@@ -2735,7 +2752,7 @@ async function renderMLBGamePreview(espnGame, panel) {
 
     const hrThreats   = [...allBatters].filter(b => b.hr > 0).sort((a, b) => b.hr - a.hr).slice(0, 5);
     const topProd     = [...allBatters].sort((a, b) => b.prodScore - a.prodScore).slice(0, 5);
-    const dueForHits  = [...allBatters].filter(b => b.babip !== null && b.babip < 0.270)
+    const dueForHits  = [...allBatters].filter(b => b.babip !== null && b.babip < 0.270 && parseFloat(b.stat.avg || 0) >= 0.235)
                           .sort((a, b) => a.babip - b.babip).slice(0, 4);
     const topHitters  = [...allBatters].filter(b => b.ab >= 50 && parseFloat(b.stat.avg || 0) > 0)
                           .sort((a, b) => parseFloat(b.stat.avg) - parseFloat(a.stat.avg)).slice(0, 5);
@@ -3300,7 +3317,7 @@ async function loadBatterStatsForCard(game) {
       if (st) {
         const babip = calcBABIP(st);
         el.innerHTML = `<span class="bi-avg">${st.avg || '.---'}</span><span class="bi-hr">${st.homeRuns ?? 0}HR</span><span class="bi-rbi">${st.rbi ?? 0}RBI</span>${babipTag(babip)}`;
-        if (babip !== null && babip < 0.270) {
+        if (babip !== null && babip < 0.270 && parseFloat(stat?.avg || 0) >= 0.235) {
           dueList.push({ name: p.fullName, pos: i + 1, babip, avg: st.avg || '.---' });
         }
       } else {
