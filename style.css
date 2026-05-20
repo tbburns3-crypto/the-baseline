@@ -1475,6 +1475,23 @@ input { font: inherit; }
   font-style: italic; padding: 8px 0;
 }
 
+/* Recent form dots */
+.td-form-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 0;
+}
+.td-form-name {
+  font-size: .75rem; color: var(--text-muted);
+  min-width: 60px; flex-shrink: 0;
+}
+.td-form-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  font-size: .65rem; font-weight: 700; cursor: default;
+}
+.td-form-w { background: rgba(0,230,118,.22); color: var(--accent); }
+.td-form-l { background: rgba(255,87,87,.18); color: #ff5757; }
+
 /* ── FAVORITES VIEW ── */
 .fav-section { margin-bottom: 20px; }
 .fav-section-hdr {
