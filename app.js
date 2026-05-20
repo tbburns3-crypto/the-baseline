@@ -1,5 +1,5 @@
 /* ============================================================
-   THE BASELINE — app.js
+   THE BASELINE - app.js
    Live tennis & sports scoreboard for GitHub Pages
    ============================================================ */
 
@@ -70,6 +70,53 @@ function toggleFavBtn(btn) {
   toggleFav(type, id, btn.dataset.favLabel || '');
 }
 
+// ── PREDICTION ACCURACY TRACKER ──────────────────────────────
+const _PICKS_KEY = 'baselinePicks';
+function getPicks()     { try { return JSON.parse(localStorage.getItem(_PICKS_KEY) || '{}'); } catch { return {}; } }
+function savePicks(obj) { try { localStorage.setItem(_PICKS_KEY, JSON.stringify(obj)); } catch {} }
+
+function recordPick(gameId, pickedTeam) {
+  const picks = getPicks();
+  if (picks[gameId]) return; // already recorded
+  picks[gameId] = { team: pickedTeam, date: new Date().toISOString().slice(0,10), result: null };
+  savePicks(picks);
+}
+
+function resolvePick(gameId, winnerFull) {
+  const picks = getPicks();
+  const p = picks[gameId];
+  if (!p || p.result !== null) return;
+  const pickLow   = p.team.toLowerCase();
+  const winnerLow = (winnerFull || '').toLowerCase();
+  p.result = (winnerLow === pickLow || winnerLow.endsWith(' ' + pickLow) || winnerLow.includes(pickLow)) ? 'win' : 'loss';
+  savePicks(picks);
+  updatePicksDisplay();
+}
+
+function updatePicksDisplay() {
+  const el = document.getElementById('picks-accuracy');
+  if (!el) return;
+  const picks    = getPicks();
+  const resolved = Object.values(picks).filter(p => p.result !== null);
+  if (!resolved.length) { el.classList.remove('has-picks'); return; }
+  const wins = resolved.filter(p => p.result === 'win').length;
+  const pct  = Math.round((wins / resolved.length) * 100);
+  el.textContent = `Picks ${wins}/${resolved.length} (${pct}%)`;
+  el.title = `${wins} correct out of ${resolved.length} predictions (${pct}% accuracy)`;
+  el.classList.add('has-picks');
+}
+
+function clearOldPicks() {
+  const picks  = getPicks();
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14);
+  const cutStr = cutoff.toISOString().slice(0,10);
+  let changed  = false;
+  for (const [k, p] of Object.entries(picks)) {
+    if (p.date < cutStr) { delete picks[k]; changed = true; }
+  }
+  if (changed) savePicks(picks);
+}
+
 function renderFavoritesView() {
   const panel = document.getElementById('view-favorites');
   if (!panel) return;
@@ -114,7 +161,7 @@ const CURRENT_SEASON = new Date().getFullYear();
 
 const _SUFFIXES = new Set(['jr','jr.','sr','sr.','ii','iii','iv']);
 function lastName(fullName) {
-  if (!fullName) return '—';
+  if (!fullName) return '-';
   const parts = fullName.trim().split(/\s+/);
   if (parts.length === 1) return parts[0];
   const last = parts[parts.length - 1].toLowerCase();
@@ -230,7 +277,7 @@ function inferSurface(name = '') {
 }
 
 function cleanScore(s) {
-  // Strip tiebreak notation "(4)" and any decimals — show only the whole number
+  // Strip tiebreak notation "(4)" and any decimals - show only the whole number
   return String(s ?? '').replace(/\(.*?\)/g, '').split('.')[0].trim();
 }
 
@@ -309,7 +356,7 @@ async function loadFixtures(offset = 0) {
     renderSidebar(results);
   } catch (err) {
     console.error('Fixtures error:', err);
-    showError('matches-area', `Could not load matches — ${err.message}`, `loadFixtures(${offset})`);
+    showError('matches-area', `Could not load matches - ${err.message}`, `loadFixtures(${offset})`);
   }
 }
 
@@ -320,7 +367,7 @@ async function loadLivescores() {
       S.matches.set(String(m.event_key), m);
       patchRow(m);
     }
-    setConn('connected', `Polling — ${results.length} live match${results.length !== 1 ? 'es' : ''}`);
+    setConn('connected', `Polling - ${results.length} live match${results.length !== 1 ? 'es' : ''}`);
   } catch (err) {
     console.warn('Livescore poll error:', err);
   }
@@ -343,7 +390,7 @@ async function loadRankings() {
     renderRankings(atp, wta);
     loadPlayerDatabase(); // start loading in background for search
   } catch (err) {
-    showError('rankings-area', `Could not load rankings — ${err.message}`, 'loadRankings()');
+    showError('rankings-area', `Could not load rankings - ${err.message}`, 'loadRankings()');
   }
 }
 
@@ -411,7 +458,7 @@ function wsConnect() {
 
 function startPoll() {
   S.usePoll = true;
-  setConn('disconnected', 'Live mode unavailable — polling every 30s');
+  setConn('disconnected', 'Live mode unavailable - polling every 30s');
   if (!S.pollTimer) {
     loadLivescores();
     S.pollTimer = setInterval(loadLivescores, 30000);
@@ -536,14 +583,14 @@ function inlineTennisPick(m) {
     else if (s2 && !s1) pick = lastName(m.event_second_player || '');
     else if (s1 < s2)   pick = lastName(m.event_first_player || '');
     else if (s2 < s1)   pick = lastName(m.event_second_player || '');
-    if (pick && pick !== '—') return `<span class="match-pick-inline" title="Seeding pick">→ ${esc(pick)}</span>`;
+    if (pick && pick !== '-') return `<span class="match-pick-inline" title="Seeding pick">→ ${esc(pick)}</span>`;
   }
   // Fall back to live rankings index if loaded
   const r1 = S.rankIndex.get(String(m.first_player_key  || ''));
   const r2 = S.rankIndex.get(String(m.second_player_key || ''));
   if (r1 && r2 && r1.rank !== r2.rank) {
     const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
-    if (pick && pick !== '—') return `<span class="match-pick-inline" title="Ranking pick: #${r1.rank} vs #${r2.rank}">→ ${esc(pick)}</span>`;
+    if (pick && pick !== '-') return `<span class="match-pick-inline" title="Ranking pick: #${r1.rank} vs #${r2.rank}">→ ${esc(pick)}</span>`;
   }
   return '';
 }
@@ -597,10 +644,10 @@ function buildMatchRow(m, idSuffix = '') {
       <div class="match-status">${statusHTML}</div>
       <div class="match-players">
         <div class="player p1 ${serve==='1'?'serving':''}">
-          <span class="player-name">${esc(m.event_first_player||'—')}</span>${p1serve}
+          <span class="player-name">${esc(m.event_first_player||'-')}</span>${p1serve}
         </div>
         <div class="player p2 ${serve==='2'?'serving':''}">
-          <span class="player-name">${esc(m.event_second_player||'—')}</span>${p2serve}
+          <span class="player-name">${esc(m.event_second_player||'-')}</span>${p2serve}
         </div>
       </div>
       <div class="match-scores">
@@ -615,7 +662,7 @@ function buildDetailSets(sets) {
   return sets.map((s, i) => `
     <div class="detail-set">
       <div class="detail-set-label">Set ${i+1}</div>
-      <div class="detail-set-scores">${esc(s.p1)} — ${esc(s.p2)}</div>
+      <div class="detail-set-scores">${esc(s.p1)} - ${esc(s.p2)}</div>
     </div>`).join('');
 }
 
@@ -647,13 +694,13 @@ async function loadTennisMatchDetail(key, container, m) {
     }
     container.innerHTML = buildTennisDetailHTML(m, h2h, surface, p1Recent, p2Recent);
   } catch (err) {
-    container.innerHTML = `<div class="td-error">Could not load — ${esc(err.message)}</div>`;
+    container.innerHTML = `<div class="td-error">Could not load - ${esc(err.message)}</div>`;
   }
 }
 
 function buildTennisDetailHTML(m, h2h, surface, p1Recent = [], p2Recent = []) {
-  const p1Name = m.event_first_player || '—';
-  const p2Name = m.event_second_player || '—';
+  const p1Name = m.event_first_player || '-';
+  const p2Name = m.event_second_player || '-';
   const p1key  = String(m.first_player_key  || '');
   const p2key  = String(m.second_player_key || '');
   const s1tag  = m.event_first_player_seed  ? ` <span class="td-seed">[${m.event_first_player_seed}]</span>`  : '';
@@ -661,7 +708,7 @@ function buildTennisDetailHTML(m, h2h, surface, p1Recent = [], p2Recent = []) {
   const scLow  = surfaceClass(surface);
   const surfLabel = surface || 'Hard';
 
-  // Filter H2H by surface — infer surface of each past match from tournament name
+  // Filter H2H by surface - infer surface of each past match from tournament name
   const surfLow = surfLabel.toLowerCase();
   const onSurface = h2h.filter(g => {
     const gs = inferSurface(g.tournament_name).toLowerCase();
@@ -761,8 +808,8 @@ function buildTennisDetailHTML(m, h2h, surface, p1Recent = [], p2Recent = []) {
 }
 
 function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel, p1Recent = [], p2Recent = [], p1key = '', p2key = '') {
-  const p1Name = m.event_first_player || '—';
-  const p2Name = m.event_second_player || '—';
+  const p1Name = m.event_first_player || '-';
+  const p2Name = m.event_second_player || '-';
   const s1 = parseInt(m.event_first_player_seed) || 0;
   const s2 = parseInt(m.event_second_player_seed) || 0;
   const l1 = esc(lastName(p1Name));
@@ -836,7 +883,7 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     const pct = Math.round((p2Score / (p1Score + p2Score)) * 100);
     verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p2Name)}</span> likely to win <span class="gp-pick-count">(${pct}% of factors)</span></div>`;
   } else {
-    verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup — too close to call</div>`;
+    verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup - too close to call</div>`;
   }
 
   const factorsHTML = factors.map(f => {
@@ -914,7 +961,7 @@ function patchSingleRow(row, m) {
   const dgEl = document.getElementById(`dg-${m.event_key}`);
   if (dgEl) {
     dgEl.style.display = live ? '' : 'none';
-    dgEl.textContent = `Current game: ${m.event_game_result || '—'}`;
+    dgEl.textContent = `Current game: ${m.event_game_result || '-'}`;
   }
 }
 
@@ -979,8 +1026,8 @@ function renderRankings(atp, wta) {
       <div class="ranking-header-row"><span>#</span><span>Player</span><span>Pts</span><span>Country</span></div>
       ${data.slice(0,100).map((p,i) => {
         const rank    = p.place ?? p.standing_place ?? p.ranking ?? (i+1);
-        const name    = p.player || p.team_name || p.player_name || p.name || '—';
-        const pts     = p.points ?? p.standing_points ?? p.ranking_points ?? '—';
+        const name    = p.player || p.team_name || p.player_name || p.name || '-';
+        const pts     = p.points ?? p.standing_points ?? p.ranking_points ?? '-';
         const country = p.country || p.player_country || p.nationality || '';
         const mov     = p.movement === 'up' ? '<span class="rank-up">▲</span>'
                       : p.movement === 'down' ? '<span class="rank-down">▼</span>'
@@ -1174,8 +1221,8 @@ async function searchNBAPlayers(q) {
   const json = await res.json();
   return (json.data || []).map(p => ({
     name:     `${p.first_name} ${p.last_name}`.trim(),
-    team:     p.team?.full_name || p.team?.abbreviation || '—',
-    position: p.position || '—',
+    team:     p.team?.full_name || p.team?.abbreviation || '-',
+    position: p.position || '-',
     extra:    [
       p.height_feet != null ? `${p.height_feet}'${p.height_inches || 0}"` : '',
       p.weight_pounds ? `${p.weight_pounds} lbs` : '',
@@ -1190,9 +1237,9 @@ async function searchMLBPlayers(q) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   return (json.people || []).map(p => ({
-    name:     p.fullName || '—',
-    team:     p.currentTeam?.name || '—',
-    position: p.primaryPosition?.abbreviation || p.primaryPosition?.name || '—',
+    name:     p.fullName || '-',
+    team:     p.currentTeam?.name || '-',
+    position: p.primaryPosition?.abbreviation || p.primaryPosition?.name || '-',
     extra:    [
       p.batSide?.description ? `Bats ${p.batSide.description}` : '',
       p.pitchHand?.description ? `Throws ${p.pitchHand.description}` : '',
@@ -1209,8 +1256,8 @@ async function searchNHLPlayers(q) {
   const json = await res.json();
   return (json.players || []).map(p => ({
     name:     `${p.firstName?.default || ''} ${p.lastName?.default || ''}`.trim(),
-    team:     p.currentTeamAbbrev || '—',
-    position: p.positionCode || '—',
+    team:     p.currentTeamAbbrev || '-',
+    position: p.positionCode || '-',
     extra:    [
       p.sweaterNumber ? `#${p.sweaterNumber}` : '',
       p.birthCountry  ? p.birthCountry : '',
@@ -1219,7 +1266,7 @@ async function searchNHLPlayers(q) {
 }
 
 async function searchESPNPlayers(sport, q) {
-  // ESPN athletes endpoint — load active roster and filter client-side
+  // ESPN athletes endpoint - load active roster and filter client-side
   const paths = { wnba: 'basketball/wnba', nfl: 'football/nfl' };
   const path  = paths[sport];
   if (!path) throw new Error('Unsupported sport');
@@ -1234,9 +1281,9 @@ async function searchESPNPlayers(sport, q) {
     .filter(a => (a.fullName || a.displayName || '').toLowerCase().includes(qLow))
     .slice(0, 40)
     .map(a => ({
-      name:     a.fullName || a.displayName || '—',
-      team:     a.team?.displayName || a.team?.abbreviation || '—',
-      position: a.position?.abbreviation || a.position?.name || '—',
+      name:     a.fullName || a.displayName || '-',
+      team:     a.team?.displayName || a.team?.abbreviation || '-',
+      position: a.position?.abbreviation || a.position?.name || '-',
       extra:    [a.jersey ? `#${a.jersey}` : ''].filter(Boolean).join(''),
     }));
 }
@@ -1249,7 +1296,7 @@ function renderSportPlayerResults(players, q) {
   }
   const isMLB = S.sport === 'mlb';
   resultsEl.innerHTML = `
-    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found${isMLB ? ` — click for ${CURRENT_SEASON} stats` : ''}</div>
+    <div class="player-results-header">${players.length} player${players.length !== 1 ? 's' : ''} found${isMLB ? ` - click for ${CURRENT_SEASON} stats` : ''}</div>
     ${players.map((p, i) => `
       <div class="player-result-row ${isMLB && p.mlbId ? 'clickable' : ''}" id="spr-${i}"
            ${isMLB && p.mlbId ? `onclick="loadMLBPlayerStats(${p.mlbId}, '${esc(p.name).replace(/'/g,"\\'")}', this)"` : ''}>
@@ -1351,7 +1398,7 @@ function switchSport(sport) {
     loadFixtures(S.dateOffset);
   } else {
     wsDisconnect();
-    setConn('disconnected', `${sport.toUpperCase()} — updating every 30s`);
+    setConn('disconnected', `${sport.toUpperCase()} - updating every 30s`);
     loadSportScores(sport);
   }
 }
@@ -1409,22 +1456,22 @@ async function loadOtherScores(sport) {
     try {
       games = await espnGames(sport);
     } catch (e) {
-      console.warn('ESPN failed:', e.message, '— trying BallDontLie');
+      console.warn('ESPN failed:', e.message, '- trying BallDontLie');
       src = 'BallDontLie';
       try {
         games = await bdlGames(sport, dateStr(0));
       } catch (e2) {
-        console.warn('BDL failed:', e2.message, '— trying API-Sports');
+        console.warn('BDL failed:', e2.message, '- trying API-Sports');
         src = 'API-Sports';
         games = await apiSportsGames(sport, dateStr(0));
       }
     }
     renderOtherScores(games, sport, src);
     const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-    setConn('connected', `${sport.toUpperCase()} — updated ${t} · refreshes every 30s`);
+    setConn('connected', `${sport.toUpperCase()} - updated ${t} · refreshes every 30s`);
   } catch (err) {
-    setConn('disconnected', `${sport.toUpperCase()} — update failed, retrying…`);
-    showError('other-scores-area', `Could not load ${sport.toUpperCase()} — ${err.message}`, `loadOtherScores('${sport}')`);
+    setConn('disconnected', `${sport.toUpperCase()} - update failed, retrying…`);
+    showError('other-scores-area', `Could not load ${sport.toUpperCase()} - ${err.message}`, `loadOtherScores('${sport}')`);
   }
 }
 
@@ -1450,8 +1497,8 @@ async function espnGames(sport) {
     return {
       id: ev.id,
       league: sport.toUpperCase(),
-      homeTeam: home?.team?.shortDisplayName || home?.team?.name || '—',
-      awayTeam: away?.team?.shortDisplayName || away?.team?.name || '—',
+      homeTeam: home?.team?.shortDisplayName || home?.team?.name || '-',
+      awayTeam: away?.team?.shortDisplayName || away?.team?.name || '-',
       homeAbbr: home?.team?.abbreviation || '',
       awayAbbr: away?.team?.abbreviation || '',
       homeRec: home?.record?.[0]?.summary || '',
@@ -1459,7 +1506,7 @@ async function espnGames(sport) {
       series: comp.series ? { summary: comp.series.summary || '', title: comp.series.title || '' } : null,
       homeScore: state !== 'pre' ? (home?.score ?? '') : '',
       awayScore: state !== 'pre' ? (away?.score ?? '') : '',
-      status: st.type?.shortDetail || st.type?.description || '—',
+      status: st.type?.shortDetail || st.type?.description || '-',
       period: st.period || '',
       time: st.displayClock || '',
       sport
@@ -1479,8 +1526,8 @@ async function bdlGames(sport, date) {
   return (d.data || []).map(g => ({
     id: g.id,
     league: leagueName,
-    homeTeam: g.home_team?.full_name || g.home_team?.name || '—',
-    awayTeam: g.visitor_team?.full_name || g.visitor_team?.name || '—',
+    homeTeam: g.home_team?.full_name || g.home_team?.name || '-',
+    awayTeam: g.visitor_team?.full_name || g.visitor_team?.name || '-',
     homeScore: g.home_team_score ?? '',
     awayScore: g.visitor_team_score ?? '',
     status: g.status || '',
@@ -1504,11 +1551,11 @@ async function apiSportsGames(sport, date) {
   return (d.response || []).map(g => ({
     id: g.id,
     league: g.league?.name || sport.toUpperCase(),
-    homeTeam: g.teams?.home?.name || '—',
-    awayTeam: (g.teams?.visitors || g.teams?.away)?.name || '—',
+    homeTeam: g.teams?.home?.name || '-',
+    awayTeam: (g.teams?.visitors || g.teams?.away)?.name || '-',
     homeScore: g.scores?.home?.points ?? g.scores?.home?.total ?? '',
     awayScore: (g.scores?.visitors || g.scores?.away)?.points ?? (g.scores?.visitors || g.scores?.away)?.total ?? '',
-    status: g.status?.long || g.status?.short || '—',
+    status: g.status?.long || g.status?.short || '-',
     period: g.periods?.current || g.quarter || '',
     time: g.status?.clock || '',
     sport
@@ -1528,22 +1575,54 @@ function gameRowState(g) {
   return { live, fin, periodLabel };
 }
 
+function inlineGamePick(g) {
+  const { fin } = gameRowState(g);
+  if (fin) return '';
+  const awayWP = parseWinPct(g.awayRec);
+  const homeWP = parseWinPct(g.homeRec);
+  if (!g.awayRec && !g.homeRec) return '';
+  const rawAway = awayWP, rawHome = homeWP * 1.03;
+  const total   = rawAway + rawHome;
+  const homePct = Math.round((rawHome / total) * 100);
+  const awayPct = 100 - homePct;
+  const margin  = Math.abs(homePct - 50);
+  if (margin < 3) return '';
+  const favTeam = homePct > awayPct ? g.homeTeam : g.awayTeam;
+  const pct     = Math.max(homePct, awayPct);
+  const short   = favTeam.split(' ').pop();
+  recordPick(String(g.id), short);
+  return `<span class="game-pick-inline" title="${esc(g.awayRec || '?')} vs ${esc(g.homeRec || '?')}">→ ${esc(short)} ${pct}%</span>`;
+}
+
 function buildOtherRow(g) {
   const { live, fin, periodLabel } = gameRowState(g);
+  // Resolve any stored pick when game ends
+  if (fin && (g.awayScore !== '' && g.homeScore !== '')) {
+    const aScore = parseFloat(g.awayScore) || 0;
+    const hScore = parseFloat(g.homeScore) || 0;
+    if (aScore !== hScore) {
+      const winner = aScore > hScore ? g.awayTeam.split(' ').pop() : g.homeTeam.split(' ').pop();
+      resolvePick(String(g.id), winner);
+    }
+  }
+  const pick = inlineGamePick(g);
   return `
     <div class="other-match-row ${live?'live':''}" id="og-${esc(g.id)}" onclick="toggleGamePreview('${esc(g.id)}')">
       <div class="other-status" id="og-st-${esc(g.id)}">
         ${live ? '<span class="live-badge">LIVE</span>' : fin ? '<span class="fin-badge">FIN</span>' : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`}
       </div>
       <div class="other-teams">
-        <div class="other-team away">${esc(g.awayTeam)}</div>
-        <div class="other-team home">${esc(g.homeTeam)}</div>
+        <div class="other-team away">${esc(g.awayTeam)}${g.awayRec ? ` <span class="rec-tag">${esc(g.awayRec)}</span>` : ''}</div>
+        <div class="other-team home">${esc(g.homeTeam)}${g.homeRec ? ` <span class="rec-tag">${esc(g.homeRec)}</span>` : ''}${g.series?.summary ? ` <span class="series-tag">${esc(g.series.summary)}</span>` : ''}</div>
       </div>
       <div class="other-scores" id="og-sc-${esc(g.id)}">
-        <div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '—'}</div>
-        <div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '—'}</div>
+        <div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '-'}</div>
+        <div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '-'}</div>
       </div>
-      <div class="other-period" id="og-pd-${esc(g.id)}">${live && (periodLabel || g.time) ? `${esc(periodLabel)} ${esc(g.time)}` : ''}</div>
+      <div class="other-period" id="og-pd-${esc(g.id)}">
+        ${live && (periodLabel || g.time) ? `${esc(periodLabel)} ${esc(g.time)}` : ''}
+        ${pick}
+      </div>
     </div>`;
 }
 
@@ -1573,7 +1652,7 @@ function renderOtherScores(games, sport, src) {
       stEl.innerHTML = live ? '<span class="live-badge">LIVE</span>'
                      : fin  ? '<span class="fin-badge">FIN</span>'
                      : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`;
-      scEl.innerHTML = `<div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '—'}</div><div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '—'}</div>`;
+      scEl.innerHTML = `<div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '-'}</div><div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '-'}</div>`;
       pdEl.textContent = live && (periodLabel || g.time) ? `${periodLabel} ${g.time}`.trim() : '';
     }
     return;
@@ -1660,9 +1739,9 @@ function parseWeatherFactor(w, fmt) {
   if (windText) parts.push(`Wind ${windText}`);
   let impact = '';
   if (windSpeed > 25 || (windSpeed > 15 && hasPrecip)) impact = '⚠ Rough conditions may suppress scoring';
-  else if (windSpeed > 18) impact = '🌬 Windy — may affect passing/HR';
+  else if (windSpeed > 18) impact = '🌬 Windy - may affect passing/HR';
   else if (hasPrecip) impact = '🌧 Wet conditions';
-  else if (temp < 40) impact = '🥶 Cold — may reduce offense';
+  else if (temp < 40) impact = '🥶 Cold - may reduce offense';
   return { display: parts.join(' · ') + (impact ? ` · ${impact}` : ''), isExtreme, windSpeed, hasPrecip, temp, condition };
 }
 
@@ -1692,14 +1771,14 @@ function buildPickSection(awayName, homeName, opts) {
   if (awayRec || homeRec) {
     aScore += aWP * 0.30; hScore += hWP * 0.30;
     const w = aWP > hWP + 0.02 ? 'away' : hWP > aWP + 0.02 ? 'home' : 'tie';
-    factors.push({ label: 'Record', detail: `${esc(aShort)} ${awayRec||'—'} · ${esc(hShort)} ${homeRec||'—'}`, winner: w });
+    factors.push({ label: 'Record', detail: `${esc(aShort)} ${awayRec||'-'} · ${esc(hShort)} ${homeRec||'-'}`, winner: w });
   } else { aScore += 0.15; hScore += 0.15; }
 
   // 2. Home advantage (fixed 4% bump)
   hScore += 0.04;
   factors.push({ label: 'Home court', detail: `${esc(hShort)} at home`, winner: 'home' });
 
-  // 3. Recent form — last 5 games (25%)
+  // 3. Recent form - last 5 games (25%)
   if (awayForm?.recentPlayed >= 3 || homeForm?.recentPlayed >= 3) {
     const aFP = awayForm?.recentPlayed || 0, hFP = homeForm?.recentPlayed || 0;
     const aPct = aFP > 0 ? awayForm.recentWins / aFP : 0.5;
@@ -1745,7 +1824,7 @@ function buildPickSection(awayName, homeName, opts) {
     }
   }
 
-  // 7. Weather — outdoor sports only (NFL, MLB); shown when API returns it
+  // 7. Weather - outdoor sports only (NFL, MLB); shown when API returns it
   if (weather && (sport === 'nfl' || sport === 'mlb' || sport === 'soccer')) {
     const wf = parseWeatherFactor(weather, weatherFmt);
     if (wf) {
@@ -1761,7 +1840,7 @@ function buildPickSection(awayName, homeName, opts) {
   const fTotal = factors.filter(f => f.winner !== 'tie').length;
 
   const verdictHTML = gap < 0.025
-    ? `<div class="gp-pick-verdict gp-verdict-toss">🎲 Toss-up — factors split evenly</div>`
+    ? `<div class="gp-pick-verdict gp-verdict-toss">🎲 Toss-up - factors split evenly</div>`
     : `<div class="gp-pick-verdict">📌 ${gap > 0.14 ? 'Strong lean' : gap > 0.08 ? 'Lean' : 'Slight lean'}: <span class="gp-pick-team">${esc(pickTeam)}</span>${fTotal > 0 ? ` <span class="gp-pick-count">${fWins}/${fTotal} factors</span>` : ''}</div>`;
 
   const factorsHTML = factors.map(f => {
@@ -1777,49 +1856,48 @@ function buildPickSection(awayName, homeName, opts) {
 }
 
 function buildMLBPreStats(leaders) {
-  if (!leaders?.length) return '<div class="gp-no-lineup">Lineups not posted yet — check back closer to game time</div>';
-  const BAT_MAP = { 'Batting Average':'AVG','Home Runs':'HR','RBI':'RBI','Hits':'H','Stolen Bases':'SB','On Base Pct':'OBP','OPS':'OPS','Slugging Pct':'SLG' };
-  const PIT_MAP = { 'ERA':'ERA','Wins':'W','Strikeouts':'K','WHIP':'WHIP','Saves':'SV' };
-  let html = '';
-  for (const tl of leaders) {
-    const tAbbr = tl.team?.abbreviation || '';
-    const batCols = [], pitCols = [];
-    const batMap = new Map(), pitMap = new Map();
+  if (!leaders?.length) return '<div class="gp-no-lineup">Lineups not posted yet - check back closer to game time</div>';
+
+  // Pull out the top-1 leader per category per team, show as clear "most likely" cards
+  const WATCH_CATS = {
+    'Home Runs':       { icon: '💣', label: 'HR Leader' },
+    'Batting Average': { icon: '🎯', label: 'AVG Leader' },
+    'RBI':             { icon: '⚡', label: 'RBI Leader' },
+    'Hits':            { icon: '🏏', label: 'Hits Leader' },
+    'OPS':             { icon: '📈', label: 'OPS Leader' },
+  };
+  const PIT_CATS = {
+    'ERA':        { icon: '🔥', label: 'ERA' },
+    'Strikeouts': { icon: '🌀', label: 'K Leader' },
+  };
+
+  // Build per-team, per-category top player
+  const teamCards = leaders.map(tl => {
+    const tAbbr = tl.team?.abbreviation || tl.team?.name || '';
+    const hits = [], pits = [];
     for (const cat of (tl.leaders || [])) {
-      const cName = cat.displayName || '';
-      const batKey = BAT_MAP[cName], pitKey = PIT_MAP[cName];
-      if (!batKey && !pitKey) continue;
-      const key = batKey || pitKey;
-      const isB = !!batKey;
-      if (isB && !batCols.includes(key)) batCols.push(key);
-      if (!isB && !pitCols.includes(key)) pitCols.push(key);
-      const map = isB ? batMap : pitMap;
-      for (const l of (cat.leaders || []).slice(0, 5)) {
-        const id = l.athlete?.id; if (!id) continue;
-        if (!map.has(id)) map.set(id, { name: l.athlete?.shortName || '—', stats: {} });
-        map.get(id).stats[key] = l.displayValue || String(l.value ?? '—');
-      }
+      const cn  = cat.displayName || '';
+      const wc  = WATCH_CATS[cn];
+      const pc  = PIT_CATS[cn];
+      if (!wc && !pc) continue;
+      const top = (cat.leaders || [])[0];
+      if (!top) continue;
+      const name = top.athlete?.shortName || top.athlete?.displayName || '-';
+      const val  = top.displayValue || String(top.value ?? '-');
+      if (wc) hits.push(`<div class="pre-stat-chip"><span class="pre-stat-icon">${wc.icon}</span><span class="pre-stat-lbl">${wc.label}</span><span class="pre-stat-name">${esc(name)}</span><span class="pre-stat-val">${esc(val)}</span></div>`);
+      if (pc) pits.push(`<div class="pre-stat-chip pre-stat-pit"><span class="pre-stat-icon">${pc.icon}</span><span class="pre-stat-lbl">${pc.label}</span><span class="pre-stat-name">${esc(name)}</span><span class="pre-stat-val">${esc(val)}</span></div>`);
     }
-    const mkBlock = (label, map, cols) => {
-      if (!map.size || !cols.length) return '';
-      const gs = `grid-template-columns:1fr repeat(${cols.length},42px)`;
-      const hdr = cols.map(k => `<span class="nba-sc">${esc(k)}</span>`).join('');
-      const rows = [...map.values()].map(p => {
-        const cells = cols.map(k => `<span class="nba-sc">${esc(p.stats[k] || '—')}</span>`).join('');
-        return `<div class="nba-row" style="${gs}"><span class="nba-pname">${esc(p.name)}</span>${cells}</div>`;
-      }).join('');
-      return `<div class="nba-block">
-        <div class="nba-block-hdr"><span class="nba-hdr-team">${esc(tAbbr)}</span><span class="nba-hdr-label">${label}</span></div>
-        <div class="nba-row nba-row-hdr" style="${gs}"><span class="nba-pname">Player</span>${hdr}</div>
-        ${rows}
-      </div>`;
-    };
-    html += mkBlock('Batting',  batMap, batCols);
-    html += mkBlock('Pitching', pitMap, pitCols);
-  }
-  return html
-    ? `<div class="gp-section"><div class="gp-section-hdr">⚾ Season Leaders — Lineups Not Posted Yet</div>${html}</div>`
-    : '<div class="gp-no-lineup">Lineups not posted yet — check back closer to game time</div>';
+    if (!hits.length && !pits.length) return '';
+    return `<div class="pre-team-block">
+      <div class="pre-team-hdr">${esc(tAbbr)} - Season Leaders</div>
+      ${hits.length ? `<div class="pre-stat-chips">${hits.join('')}</div>` : ''}
+      ${pits.length ? `<div class="pre-stat-chips">${pits.join('')}</div>` : ''}
+    </div>`;
+  }).filter(Boolean).join('');
+
+  return teamCards
+    ? `<div class="gp-section"><div class="gp-section-hdr">📊 Most Likely to Produce - Lineups Not Posted Yet</div>${teamCards}</div>`
+    : '<div class="gp-no-lineup">Lineups not posted yet - check back closer to game time</div>';
 }
 
 async function renderMLBGamePreview(espnGame, panel) {
@@ -1834,7 +1912,7 @@ async function renderMLBGamePreview(espnGame, panel) {
       nameMatch(g.teams.home.team?.name || '', espnGame.homeTeam)
     );
     if (!mlbGame) {
-      panel.innerHTML = '<div class="pp-empty" style="padding:12px">Game preview not available yet — check back closer to game time</div>';
+      panel.innerHTML = '<div class="pp-empty" style="padding:12px">Game preview not available yet - check back closer to game time</div>';
       return;
     }
     const away        = mlbGame.teams.away, home = mlbGame.teams.home;
@@ -1921,7 +1999,7 @@ async function renderMLBGamePreview(espnGame, panel) {
         <span class="gp-team">${esc(b.team)}</span>
         <span class="gp-stats">
           <span class="gp-hr-val">${b.hr}HR</span>
-          <span class="gp-muted">${b.stat.ops || '—'} OPS</span>
+          <span class="gp-muted">${b.stat.ops || '-'} OPS</span>
           <span class="gp-muted">${b.stat.avg || '.---'}</span>
         </span>
       </div>`;
@@ -1949,7 +2027,7 @@ async function renderMLBGamePreview(espnGame, panel) {
           <span class="gp-avg-val">${b.stat.avg}</span>
           ${babipTag(b.babip)}
           ${xbaTag(b.id, b.stat.avg)}
-          <span class="gp-muted">${b.stat.ops || '—'} OPS</span>
+          <span class="gp-muted">${b.stat.ops || '-'} OPS</span>
         </span>
       </div>`;
 
@@ -1963,7 +2041,7 @@ async function renderMLBGamePreview(espnGame, panel) {
           <span class="gp-avg-val">${b.stat.avg}</span>
           ${babipTag(b.babip)}
           ${xbaTag(b.id, b.stat.avg)}
-          <span class="gp-muted">${b.stat.ops || '—'} OPS</span>
+          <span class="gp-muted">${b.stat.ops || '-'} OPS</span>
         </span>
       </div>`;
 
@@ -1974,18 +2052,20 @@ async function renderMLBGamePreview(espnGame, panel) {
       return `<div class="gp-pd-slot">
         <div class="gp-pd-hand">${lh}</div>
         <div class="gp-pd-name">${esc(lastName)}</div>
-        <div class="gp-pd-era ${!s?'pd-tbd':''}">${s?.era || '—'}</div>
+        <div class="gp-pd-era ${!s?'pd-tbd':''}">${s?.era || '-'}</div>
         <div class="gp-pd-era-lbl">ERA</div>
-        ${s ? `<div class="gp-pd-sub">${s.wins??0}-${s.losses??0} &nbsp;·&nbsp; ${s.whip||'—'} WHIP &nbsp;·&nbsp; ${s.strikeOuts??0}K</div>` : ''}
+        ${s ? `<div class="gp-pd-sub">${s.wins??0}-${s.losses??0} &nbsp;·&nbsp; ${s.whip||'-'} WHIP &nbsp;·&nbsp; ${s.strikeOuts??0}K</div>` : ''}
       </div>`;
     };
 
     const noLineup    = allBatters.length === 0;
     const isLiveOrFin = espnState === 'in' || espnState === 'post';
     const mlbBoxHTML  = isLiveOrFin ? renderMLBBoxScore(espnSummary) : '';
+    const sitHTML     = espnState === 'in' ? renderMLBSituation(espnSummary) : '';
 
     panel.innerHTML = `
       <div class="gp-inner">
+        ${sitHTML}
         ${pickHTML}
         <div class="gp-duel">
           ${pdSlot(awayPId, awayPName, awayPD)}
@@ -1997,7 +2077,7 @@ async function renderMLBGamePreview(espnGame, panel) {
           ? (!isLiveOrFin ? buildMLBPreStats(espnSummary?.leaders) : '')
           : `
           <div class="gp-hand-legend"><span class="gp-hand gp-fav">L/R/S</span> = favorable matchup &nbsp;·&nbsp; <span class="gp-babip gp-babip-due">BABIP .240 ↑</span> = unlucky, hits coming &nbsp;·&nbsp; <span class="gp-babip gp-babip-hot">BABIP .360 ↓</span> = running hot</div>
-          ${dueForHits.length ? `<div class="gp-section"><div class="gp-section-hdr">🍀 Due for Hits <span style="font-size:.65rem;font-weight:400;color:var(--text-muted)">— low BABIP = getting unlucky</span></div>${dueForHits.map(dueRow).join('')}</div>` : ''}
+          ${dueForHits.length ? `<div class="gp-section"><div class="gp-section-hdr">🍀 Due for Hits <span style="font-size:.65rem;font-weight:400;color:var(--text-muted)">- low BABIP = getting unlucky</span></div>${dueForHits.map(dueRow).join('')}</div>` : ''}
           ${hrThreats.length ? `<div class="gp-section"><div class="gp-section-hdr">💣 HR Threats</div>${hrThreats.map(hrRow).join('')}</div>` : ''}
           ${topProd.length  ? `<div class="gp-section"><div class="gp-section-hdr">⚡ H + R + RBI Leaders</div>${topProd.map(prodRow).join('')}</div>` : ''}
           ${topHitters.length ? `<div class="gp-section"><div class="gp-section-hdr">🎯 Best Hitters by AVG</div>${topHitters.map(hitRow).join('')}</div>` : ''}
@@ -2007,6 +2087,28 @@ async function renderMLBGamePreview(espnGame, panel) {
   } catch (err) {
     panel.innerHTML = `<div class="pp-error" style="padding:12px">Could not load: ${esc(err.message)}</div>`;
   }
+}
+
+function renderMLBSituation(j) {
+  const sit = j?.situation;
+  if (!sit) return '';
+  const batter  = sit.batter?.athlete?.shortName  || sit.batter?.athlete?.displayName  || '';
+  const pitcher = sit.pitcher?.athlete?.shortName || sit.pitcher?.athlete?.displayName || '';
+  if (!batter && !pitcher) return '';
+  const balls   = sit.balls   ?? '-';
+  const strikes = sit.strikes ?? '-';
+  const outs    = sit.outs    ?? '-';
+  const onBase  = ['onFirst','onSecond','onThird']
+    .filter(b => sit[b])
+    .map(b => b.replace('onFirst','1st').replace('onSecond','2nd').replace('onThird','3rd'));
+  const baseStr = onBase.length ? onBase.join(', ') + ' on base' : 'Bases empty';
+  return `<div class="gp-live-sit">
+    <span class="gp-live-badge">LIVE</span>
+    ${batter  ? `<span class="gp-sit-batter">⚡ ${esc(batter.split(' ').pop())} at bat</span>` : ''}
+    ${pitcher ? `<span class="gp-sit-pitcher">🌀 ${esc(pitcher.split(' ').pop())} pitching</span>` : ''}
+    <span class="gp-sit-count">${balls}-${strikes} · ${outs} out${outs !== 1 ? 's' : ''}</span>
+    <span class="gp-sit-bases">${esc(baseStr)}</span>
+  </div>`;
 }
 
 function renderMLBBoxScore(j) {
@@ -2050,9 +2152,9 @@ function renderMLBBoxScore(j) {
       }
       const colHdr = cols.map(c => `<span class="nba-sc">${esc(c.key)}</span>`).join('');
       const mkRow  = a => {
-        const nm    = a.athlete?.shortName || a.athlete?.displayName || '—';
+        const nm    = a.athlete?.shortName || a.athlete?.displayName || '-';
         const cells = cols.map(({ key, i }) => {
-          const v    = a.stats?.[i] || '—';
+          const v    = a.stats?.[i] || '-';
           const lead = leaders[key] !== undefined && parseFloat(v) === leaders[key];
           return `<span class="nba-sc${lead ? ' nba-lead' : ''}">${esc(v)}</span>`;
         }).join('');
@@ -2100,7 +2202,7 @@ function renderNBABoxScore(j) {
       }
       const colHdr = cols.map(c => `<span class="nba-sc">${esc(c.key)}</span>`).join('');
       const mkRow = a => {
-        const nm = a.athlete?.shortName || a.athlete?.displayName || '—';
+        const nm = a.athlete?.shortName || a.athlete?.displayName || '-';
         const cells = cols.map(({ key, i }) => {
           const v = a.stats?.[i] || '0';
           const lead = leaders[key] !== undefined && parseFloat(v) === leaders[key];
@@ -2220,15 +2322,15 @@ async function renderESPNGamePreview(game, panel) {
             if (!catNames.includes(cName)) catNames.push(cName);
             for (const l of (cat.leaders || []).slice(0, 5)) {
               const id = l.athlete?.id; if (!id) continue;
-              if (!playerMap.has(id)) playerMap.set(id, { name: l.athlete?.shortName || l.athlete?.displayName || '—', stats: {} });
-              playerMap.get(id).stats[cName] = l.displayValue || String(l.value ?? '—');
+              if (!playerMap.has(id)) playerMap.set(id, { name: l.athlete?.shortName || l.athlete?.displayName || '-', stats: {} });
+              playerMap.get(id).stats[cName] = l.displayValue || String(l.value ?? '-');
             }
           }
           if (!playerMap.size || !catNames.length) continue;
           const gs = `grid-template-columns:1fr repeat(${catNames.length},42px)`;
           const colHdr = catNames.map(c => `<span class="nba-sc">${esc(COL_SHORT[c] || c.slice(0,3).toUpperCase())}</span>`).join('');
           const rows   = [...playerMap.values()].map(p => {
-            const cells = catNames.map(c => `<span class="nba-sc">${esc(p.stats[c] || '—')}</span>`).join('');
+            const cells = catNames.map(c => `<span class="nba-sc">${esc(p.stats[c] || '-')}</span>`).join('');
             return `<div class="nba-row" style="${gs}"><span class="nba-pname">${esc(p.name)}</span>${cells}</div>`;
           }).join('');
           tableHTML += `<div class="nba-block">
@@ -2240,7 +2342,7 @@ async function renderESPNGamePreview(game, panel) {
         if (tableHTML) {
           html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Players to Watch</div>${tableHTML}</div>`;
         } else {
-          html += `<div class="gp-no-lineup">Pre-game stats not available yet — check back closer to tip-off</div>`;
+          html += `<div class="gp-no-lineup">Pre-game stats not available yet - check back closer to tip-off</div>`;
         }
       } else {
         // Other sports: category-by-category display
@@ -2253,7 +2355,7 @@ async function renderESPNGamePreview(game, panel) {
             if (cfg.cats.length && !matches) continue;
             if (!catMap[cName]) catMap[cName] = [];
             for (const l of (cat.leaders || []).slice(0, 1)) {
-              catMap[cName].push({ team: tAbbr, name: l.athlete?.shortName || l.athlete?.displayName || '—', val: l.displayValue || String(l.value ?? '—') });
+              catMap[cName].push({ team: tAbbr, name: l.athlete?.shortName || l.athlete?.displayName || '-', val: l.displayValue || String(l.value ?? '-') });
             }
           }
         }
@@ -2267,7 +2369,7 @@ async function renderESPNGamePreview(game, panel) {
           }
           html += `<div class="gp-section"><div class="gp-section-hdr">${cfg.icon} Key Players to Watch</div>${catHTML}</div>`;
         } else {
-          html += `<div class="gp-no-lineup">Pre-game stats not available yet — check back closer to tip-off / puck drop / kickoff</div>`;
+          html += `<div class="gp-no-lineup">Pre-game stats not available yet - check back closer to tip-off / puck drop / kickoff</div>`;
         }
       }
     }
@@ -2295,11 +2397,11 @@ async function renderESPNGamePreview(game, panel) {
               .slice(0, 4);
             for (const { a } of sorted) {
               const statStr = showIdxs
-                .map(i => `<span class="gp-muted">${esc(labels[i])} <b>${esc(a.stats[i] || '—')}</b></span>`)
+                .map(i => `<span class="gp-muted">${esc(labels[i])} <b>${esc(a.stats[i] || '-')}</b></span>`)
                 .join('');
               performers += `<div class="gp-player-row">
                 <span class="gp-team">${esc(tName)}</span>
-                <span class="gp-pname">${esc(a.athlete?.shortName || a.athlete?.displayName || '—')}</span>
+                <span class="gp-pname">${esc(a.athlete?.shortName || a.athlete?.displayName || '-')}</span>
                 <span class="gp-stats" style="gap:6px;flex-wrap:wrap">${statStr}</span>
               </div>`;
             }
@@ -2462,7 +2564,7 @@ async function loadMLBLineups() {
 
     renderMLBLineups(games);
   } catch (err) {
-    showError('mlb-lineups-area', `Could not load lineups — ${err.message}`, 'loadMLBLineups()');
+    showError('mlb-lineups-area', `Could not load lineups - ${err.message}`, 'loadMLBLineups()');
   }
 }
 
@@ -2481,8 +2583,8 @@ function renderMLBLineups(games) {
       const click = canMatchup ? `onclick="toggleMatchup(${bid},${oppPitcherId},'${esc(p.fullName||'').replace(/'/g,"\\'")}','${esc(oppPitcherName).replace(/'/g,"\\'")}','${gamePk}')"` : '';
       return `<div class="lineup-player-row${canMatchup?' matchup-clickable':''}" data-batter-key="${key}" ${click}>
         <span class="lineup-order">${i+1}</span>
-        <span class="lineup-pos-tag">${esc(p.position?.abbreviation || '—')}</span>
-        <span class="lineup-name">${esc(p.fullName || '—')}${hint}</span>
+        <span class="lineup-pos-tag">${esc(p.position?.abbreviation || '-')}</span>
+        <span class="lineup-name">${esc(p.fullName || '-')}${hint}</span>
         <span class="batter-inline-stats" id="bstat-${bid}-${gamePk}"><span class="bi-loading">…</span></span>
       </div>`;
     }).join('');
@@ -2500,12 +2602,12 @@ function renderMLBLineups(games) {
       const lastOpp = ls?.opponent?.abbreviation ? `vs ${ls.opponent.abbreviation}` : '';
       return `<div class="pd-slot">
         <div class="pd-name">${esc(lastName)}</div>
-        <div class="pd-era ${!s ? 'pd-tbd' : ''}">${s ? (s.era || '—') : '—'}</div>
+        <div class="pd-era ${!s ? 'pd-tbd' : ''}">${s ? (s.era || '-') : '-'}</div>
         <div class="pd-era-lbl">ERA</div>
         ${s ? `
           <div class="pd-secondary">
             <span>${s.wins ?? 0}-${s.losses ?? 0}</span>
-            <span>${s.whip || '—'} WHIP</span>
+            <span>${s.whip || '-'} WHIP</span>
             <span>${s.strikeOuts ?? 0}K</span>
           </div>
           ${lastLine ? `<div class="pd-last-start">Last: ${esc(lastLine)} ${esc(lastOpp)}</div>` : ''}
@@ -2521,8 +2623,8 @@ function renderMLBLineups(games) {
 
   area.innerHTML = games.map(g => {
     const away = g.teams.away, home = g.teams.home;
-    const awayName      = away.team?.name || '—';
-    const homeName      = home.team?.name || '—';
+    const awayName      = away.team?.name || '-';
+    const homeName      = home.team?.name || '-';
     const awayAbbr      = away.team?.abbreviation || awayName.slice(0,3).toUpperCase();
     const homeAbbr      = home.team?.abbreviation || homeName.slice(0,3).toUpperCase();
     const awayPitcher   = away.probablePitcher?.fullName || 'TBD';
@@ -2538,7 +2640,7 @@ function renderMLBLineups(games) {
     const homeLineup    = g.lineups?.homePlayers || [];
     const isLiveGame    = g.status?.abstractGameState === 'Live';
     const isFinal       = g.status?.abstractGameState === 'Final';
-    const gameTime      = g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZoneName:'short' }) : '—';
+    const gameTime      = g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZoneName:'short' }) : '-';
     const inning        = g.linescore?.currentInning ? `${g.linescore.inningHalf || ''} ${g.linescore.currentInning}` : '';
     const statusBadge   = isLiveGame ? `<span class="live-badge pulse">LIVE ${esc(inning)}</span>`
                         : isFinal   ? `<span class="fin-badge">FINAL</span>`
@@ -2624,8 +2726,8 @@ async function loadSoccerScores() {
           league:    `${lg.icon} ${lg.name}`,
           leagueId:  lg.id,
           sport:     'soccer',
-          homeTeam:  home?.team?.shortDisplayName || home?.team?.name || '—',
-          awayTeam:  away?.team?.shortDisplayName || away?.team?.name || '—',
+          homeTeam:  home?.team?.shortDisplayName || home?.team?.name || '-',
+          awayTeam:  away?.team?.shortDisplayName || away?.team?.name || '-',
           homeAbbr:  home?.team?.abbreviation || '',
           awayAbbr:  away?.team?.abbreviation || '',
           homeRec:   home?.record?.[0]?.summary || '',
@@ -2633,23 +2735,23 @@ async function loadSoccerScores() {
           series:    comp.series ? { summary: comp.series.summary||'', title: comp.series.title||'' } : null,
           homeScore: state !== 'pre' ? (home?.score ?? '') : '',
           awayScore: state !== 'pre' ? (away?.score ?? '') : '',
-          status:    st.type?.shortDetail || st.type?.description || '—',
+          status:    st.type?.shortDetail || st.type?.description || '-',
           period:    st.period || '',
           time:      st.displayClock || ''
         });
       }
     }
     if (!allGames.length) {
-      document.getElementById('other-scores-area').innerHTML = '<div class="empty-state"><p>No soccer matches today.</p><p class="muted">Check back later — fixtures are loaded day-of.</p></div>';
-      setConn('connected', 'Soccer — no matches today');
+      document.getElementById('other-scores-area').innerHTML = '<div class="empty-state"><p>No soccer matches today.</p><p class="muted">Check back later - fixtures are loaded day-of.</p></div>';
+      setConn('connected', 'Soccer - no matches today');
       return;
     }
     renderOtherScores(allGames, 'soccer', 'ESPN');
     const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-    setConn('connected', `Soccer — updated ${t} · refreshes every 30s`);
+    setConn('connected', `Soccer - updated ${t} · refreshes every 30s`);
   } catch (err) {
-    setConn('disconnected', 'Soccer — update failed');
-    showError('other-scores-area', `Could not load soccer — ${err.message}`, 'loadSoccerScores()');
+    setConn('disconnected', 'Soccer - update failed');
+    showError('other-scores-area', `Could not load soccer - ${err.message}`, 'loadSoccerScores()');
   }
 }
 
@@ -2672,13 +2774,13 @@ async function loadSoccerTables() {
       if (!entries.length) continue;
       html += `<div class="league-group"><div class="league-header">${lg.icon} ${esc(lg.name)}</div><div class="standings-list">`;
       entries.forEach((e, idx) => {
-        const team = e.team?.shortDisplayName || e.team?.name || '—';
+        const team = e.team?.shortDisplayName || e.team?.name || '-';
         const stats = {};
         (e.stats || []).forEach(s => { stats[s.name] = s.displayValue; });
-        const pts = stats.points || stats.pts || '—';
-        const w   = stats.wins   || stats.W   || '—';
-        const d   = stats.ties   || stats.D   || stats.draws || '—';
-        const l2  = stats.losses || stats.L   || '—';
+        const pts = stats.points || stats.pts || '-';
+        const w   = stats.wins   || stats.W   || '-';
+        const d   = stats.ties   || stats.D   || stats.draws || '-';
+        const l2  = stats.losses || stats.L   || '-';
         html += `<div class="standing-row">
           <span class="standing-rank">${idx+1}</span>
           <span class="standing-team">${esc(team)}</span>
@@ -2690,7 +2792,7 @@ async function loadSoccerTables() {
     }
     area.innerHTML = html || '<div class="empty-state">No table data available.</div>';
   } catch (err) {
-    showError('other-standings-area', `Could not load tables — ${err.message}`, 'loadSoccerTables()');
+    showError('other-standings-area', `Could not load tables - ${err.message}`, 'loadSoccerTables()');
   }
 }
 
@@ -2739,19 +2841,19 @@ function renderGolfGroup(group, round, isLive) {
   const pickScore = pick?.score || 'E';
   let pickReason = '';
   if (isLive) {
-    pickReason = (pick?.sortOrder || 9999) <= 5 ? `Leading at #${pick.sortOrder} — momentum is strong` : pickWR && parseInt(pickWR) <= 20 ? `World #${pickWR} — elite talent in this group` : `Best current position in the group`;
+    pickReason = (pick?.sortOrder || 9999) <= 5 ? `Leading at #${pick.sortOrder} - momentum is strong` : pickWR && parseInt(pickWR) <= 20 ? `World #${pickWR} - elite talent in this group` : `Best current position in the group`;
   } else {
-    pickReason = pickWR && parseInt(pickWR) <= 30 ? `World #${pickWR} — highest-ranked player in this group` : `Best placed heading into the round`;
+    pickReason = pickWR && parseInt(pickWR) <= 30 ? `World #${pickWR} - highest-ranked player in this group` : `Best placed heading into the round`;
   }
 
   const rows = players.map(p => {
-    const name = p.athlete?.shortName || p.athlete?.displayName || '—';
+    const name = p.athlete?.shortName || p.athlete?.displayName || '-';
     const total = p.score || 'E';
     const totalNum = total === 'E' ? 0 : parseInt(total);
     const scoreCls = isNaN(totalNum) ? '' : totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
-    const thru  = p.status?.displayValue || '—';
-    const today = p.linescores?.[round - 1]?.displayValue || '—';
-    const pos   = p.sortOrder ? `#${p.sortOrder}` : '—';
+    const thru  = p.status?.displayValue || '-';
+    const today = p.linescores?.[round - 1]?.displayValue || '-';
+    const pos   = p.sortOrder ? `#${p.sortOrder}` : '-';
     const wr    = getWRStr(p);
     const isPick = p === pick;
     return `<div class="golf-group-row${isPick ? ' golf-group-pick-row' : ''}">
@@ -2769,7 +2871,7 @@ function renderGolfGroup(group, round, isLive) {
       <span>POS</span><span>PLAYER</span><span>TOTAL</span><span>TODAY</span><span>THRU</span>
     </div>
     ${rows}
-    <div class="golf-group-edge">📌 Edge: <b>${esc(pickName)}</b> (${esc(pickScore)}) — ${esc(pickReason)}</div>
+    <div class="golf-group-edge">📌 Edge: <b>${esc(pickName)}</b> (${esc(pickScore)}) - ${esc(pickReason)}</div>
   </div>`;
 }
 
@@ -2832,31 +2934,31 @@ async function loadGolfLeaderboard() {
     }
     area.innerHTML = html || '<div class="empty-state"><p>No active golf tournaments right now.</p><p class="muted">Check back when a PGA/LPGA/DP World Tour event is in progress.</p></div>';
     const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-    setConn('connected', `Golf — updated ${t} · refreshes every 30s`);
+    setConn('connected', `Golf - updated ${t} · refreshes every 30s`);
   } catch (err) {
-    setConn('disconnected', 'Golf — update failed');
-    area.innerHTML = `<div class="pp-error" style="padding:16px">Could not load golf — ${esc(err.message)}</div>`;
+    setConn('disconnected', 'Golf - update failed');
+    area.innerHTML = `<div class="pp-error" style="padding:16px">Could not load golf - ${esc(err.message)}</div>`;
   }
 }
 
 function renderGolfRow(p, round) {
-  const name     = p.athlete?.shortName || p.athlete?.displayName || '—';
+  const name     = p.athlete?.shortName || p.athlete?.displayName || '-';
   const total    = p.score || 'E';
   const totalNum = total === 'E' ? 0 : parseInt(total);
   const scoreCls = isNaN(totalNum) ? '' : totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
-  const thru     = p.status?.displayValue || '—';
+  const thru     = p.status?.displayValue || '-';
   const status   = (p.status?.type?.name || '').toLowerCase();
   const isCut    = status === 'cut' || thru === 'CUT' || status === 'wd' || status === 'dq';
-  const today    = p.linescores?.[round - 1]?.displayValue || (p.statistics?.find?.(s => s.name === 'scoringPlayByPlay')?.displayValue) || '—';
-  const pos      = p.sortOrder ? String(p.sortOrder) : '—';
+  const today    = p.linescores?.[round - 1]?.displayValue || (p.statistics?.find?.(s => s.name === 'scoringPlayByPlay')?.displayValue) || '-';
+  const pos      = p.sortOrder ? String(p.sortOrder) : '-';
 
   if (isCut) {
     return `<div class="golf-player-row golf-row-cut">
       <span class="gc-pos golf-cut-lbl">${esc(status.toUpperCase() || 'CUT')}</span>
       <span class="gc-name">${esc(name)}</span>
       <span class="gc-score golf-over">${esc(total)}</span>
-      <span class="gc-today">—</span>
-      <span class="gc-thru">—</span>
+      <span class="gc-today">-</span>
+      <span class="gc-thru">-</span>
     </div>`;
   }
   return `<div class="golf-player-row">
@@ -2885,7 +2987,7 @@ async function loadMLBFullStandings() {
     _mlbLeadData  = await leadRes.json();
     renderMLBStandingsView('standings');
   } catch (err) {
-    showError('other-standings-area', `Could not load MLB stats — ${err.message}`, 'loadMLBFullStandings()');
+    showError('other-standings-area', `Could not load MLB stats - ${err.message}`, 'loadMLBFullStandings()');
   }
 }
 
@@ -2931,10 +3033,10 @@ function renderMLBStandingsView(activeKey) {
             ${teams.map((t, i) => `
               <div class="standing-row">
                 <span class="standing-rank">${i+1}</span>
-                <span class="standing-team">${esc(t.team?.name || '—')}</span>
+                <span class="standing-team">${esc(t.team?.name || '-')}</span>
                 <span class="standing-record">${t.wins}–${t.losses}</span>
-                <span class="standing-gb">${esc(t.gamesBack || '—')}</span>
-                <span class="standing-streak">${esc(t.streak?.streakCode || '—')}</span>
+                <span class="standing-gb">${esc(t.gamesBack || '-')}</span>
+                <span class="standing-streak">${esc(t.streak?.streakCode || '-')}</span>
               </div>`).join('')}
           </div>
         </div>`;
@@ -2951,8 +3053,8 @@ function renderMLBStandingsView(activeKey) {
           ${cat.leaders.slice(0, 10).map(l => `
             <div class="leader-row">
               <span class="leader-rank">${l.rank}</span>
-              <span class="leader-name">${esc(l.person?.fullName || '—')}</span>
-              <span class="leader-team">${esc(l.team?.abbreviation || '—')}</span>
+              <span class="leader-name">${esc(l.person?.fullName || '-')}</span>
+              <span class="leader-team">${esc(l.team?.abbreviation || '-')}</span>
               <span class="leader-val">${esc(l.value)}</span>
             </div>`).join('')}
         </div>`;
@@ -3064,8 +3166,8 @@ async function ppView(playerId, view, chipEl) {
 function renderPPContent(el, data, view) {
   if (view === 'log') { el.innerHTML = renderGameLog(data.hLog, data.pLog); return; }
   if (view === 'statcast') {
-    if (!data) { el.innerHTML = '<div class="pp-empty">No Statcast data available — player may not qualify or Baseball Savant is unavailable</div>'; return; }
-    const f = (v, d=1) => (v && !isNaN(parseFloat(v))) ? parseFloat(v).toFixed(d) : '—';
+    if (!data) { el.innerHTML = '<div class="pp-empty">No Statcast data available - player may not qualify or Baseball Savant is unavailable</div>'; return; }
+    const f = (v, d=1) => (v && !isNaN(parseFloat(v))) ? parseFloat(v).toFixed(d) : '-';
     const isPitcher = data.playerType === 'pitcher';
     el.innerHTML = renderStatBlock(isPitcher ? 'Statcast (Pitching)' : 'Statcast (Hitting)', [
       [['xBA', f(data.estimated_ba_using_speedangle,3)], ['xSLG', f(data.estimated_slg_using_speedangle,3)], ['xwOBA', f(data.estimated_woba_using_speedangle,3)]],
@@ -3097,7 +3199,7 @@ function renderStatBlock(label, rows) {
       <div class="pp-stat-row ${i===0?'pp-stat-row-primary':''}">
         ${row.map(([lbl, val]) => `
           <div class="pp-stat-cell">
-            <div class="pp-stat-val">${val != null ? esc(String(val)) : '—'}</div>
+            <div class="pp-stat-val">${val != null ? esc(String(val)) : '-'}</div>
             <div class="pp-stat-lbl">${lbl}</div>
           </div>`).join('')}
       </div>`).join('')}
@@ -3118,9 +3220,9 @@ function calcBABIP(stat) {
 function babipTag(babip) {
   if (babip === null) return '';
   const val = babip.toFixed(3);
-  if (babip < 0.265) return `<span class="gp-babip gp-babip-due" title="BABIP ${val} — below avg, hits should come">BABIP ${val} ↑</span>`;
-  if (babip > 0.340) return `<span class="gp-babip gp-babip-hot" title="BABIP ${val} — above avg, may cool off">BABIP ${val} ↓</span>`;
-  return                    `<span class="gp-babip gp-babip-avg" title="BABIP ${val} — about average">${val}</span>`;
+  if (babip < 0.265) return `<span class="gp-babip gp-babip-due" title="BABIP ${val} - below avg, hits should come">BABIP ${val} ↑</span>`;
+  if (babip > 0.340) return `<span class="gp-babip gp-babip-hot" title="BABIP ${val} - above avg, may cool off">BABIP ${val} ↓</span>`;
+  return                    `<span class="gp-babip gp-babip-avg" title="BABIP ${val} - about average">${val}</span>`;
 }
 
 function xbaTag(playerId, actualAvg) {
@@ -3130,8 +3232,8 @@ function xbaTag(playerId, actualAvg) {
   const ba  = parseFloat(actualAvg || 0);
   if (!xba || !ba) return '';
   const gap = xba - ba;
-  if (gap >=  0.020) return `<span class="gp-xba-up"   title="xBA ${xba.toFixed(3)} vs AVG ${ba.toFixed(3)} — contact quality says more hits coming">xBA↑</span>`;
-  if (gap <= -0.020) return `<span class="gp-xba-down" title="xBA ${xba.toFixed(3)} vs AVG ${ba.toFixed(3)} — outperforming contact quality, may cool off">xBA↓</span>`;
+  if (gap >=  0.020) return `<span class="gp-xba-up"   title="xBA ${xba.toFixed(3)} vs AVG ${ba.toFixed(3)} - contact quality says more hits coming">xBA↑</span>`;
+  if (gap <= -0.020) return `<span class="gp-xba-down" title="xBA ${xba.toFixed(3)} vs AVG ${ba.toFixed(3)} - outperforming contact quality, may cool off">xBA↓</span>`;
   return '';
 }
 
@@ -3141,7 +3243,7 @@ function renderGameLog(hLog, pLog) {
   if (!log.length) return '<div class="pp-empty">No game log available</div>';
 
   const fmt = (d) => {
-    if (!d) return '—';
+    if (!d) return '-';
     const dt = new Date(d + 'T12:00:00');
     return dt.toLocaleDateString('en-US', { month:'short', day:'numeric' });
   };
@@ -3151,26 +3253,26 @@ function renderGameLog(hLog, pLog) {
     : ['Date','Opp','Dec','IP','H','R','ER','BB','K','ERA'];
 
   const rows = log.slice(0, 15).map(s => {
-    const opp   = (s.isHome ? '' : '@') + (s.opponent?.abbreviation || '—');
+    const opp   = (s.isHome ? '' : '@') + (s.opponent?.abbreviation || '-');
     const d     = fmt(s.date);
     const st    = s.stat;
     if (isBatter) {
       const hasHit = (st.hits || 0) > 0;
       const hasHR  = (st.homeRuns || 0) > 0;
       return `<div class="gl-row ${hasHR?'gl-hr':hasHit?'gl-hit':''}">
-        <span>${d}</span><span>${opp}</span><span>${st.atBats??'—'}</span>
-        <span>${st.hits??'—'}</span><span>${st.homeRuns??'—'}</span><span>${st.rbi??'—'}</span>
-        <span>${st.baseOnBalls??'—'}</span><span>${st.strikeOuts??'—'}</span>
-        <span class="gl-avg">${st.avg??'—'}</span>
+        <span>${d}</span><span>${opp}</span><span>${st.atBats??'-'}</span>
+        <span>${st.hits??'-'}</span><span>${st.homeRuns??'-'}</span><span>${st.rbi??'-'}</span>
+        <span>${st.baseOnBalls??'-'}</span><span>${st.strikeOuts??'-'}</span>
+        <span class="gl-avg">${st.avg??'-'}</span>
       </div>`;
     } else {
-      const dec = s.stat.wins ? 'W' : s.stat.losses ? 'L' : s.stat.saves ? 'SV' : '—';
+      const dec = s.stat.wins ? 'W' : s.stat.losses ? 'L' : s.stat.saves ? 'SV' : '-';
       return `<div class="gl-row ${dec==='W'?'gl-hit':dec==='L'?'gl-loss':''}">
         <span>${d}</span><span>${opp}</span><span class="gl-dec">${dec}</span>
-        <span>${st.inningsPitched??'—'}</span><span>${st.hits??'—'}</span>
-        <span>${st.runs??'—'}</span><span>${st.earnedRuns??'—'}</span>
-        <span>${st.baseOnBalls??'—'}</span><span>${st.strikeOuts??'—'}</span>
-        <span class="gl-avg">${st.era??'—'}</span>
+        <span>${st.inningsPitched??'-'}</span><span>${st.hits??'-'}</span>
+        <span>${st.runs??'-'}</span><span>${st.earnedRuns??'-'}</span>
+        <span>${st.baseOnBalls??'-'}</span><span>${st.strikeOuts??'-'}</span>
+        <span class="gl-avg">${st.era??'-'}</span>
       </div>`;
     }
   });
@@ -3308,7 +3410,7 @@ function renderMatchupData(div, stat, batterName, pitcherName) {
   div.innerHTML = `<div class="matchup-vs">${esc(batterName)} vs ${esc(pitcherName)}</div>
     <div class="matchup-stats-row">
       ${[['AB',stat.atBats],['H',stat.hits],['HR',stat.homeRuns],['RBI',stat.rbi],['BB',stat.baseOnBalls],['K',stat.strikeOuts],['AVG',stat.avg],['OPS',stat.ops]]
-        .map(([l,v]) => `<div class="matchup-stat"><div class="matchup-val">${v??'—'}</div><div class="matchup-lbl">${l}</div></div>`).join('')}
+        .map(([l,v]) => `<div class="matchup-stat"><div class="matchup-val">${v??'-'}</div><div class="matchup-lbl">${l}</div></div>`).join('')}
     </div>`;
 }
 
@@ -3334,7 +3436,7 @@ async function loadOtherStandings(sport) {
     // Fallback: BDL/API-Sports for any unhandled sport
     throw new Error('No standings source for this sport');
   } catch (err) {
-    showError('other-standings-area', `Could not load standings — ${err.message}`, `loadOtherStandings('${sport}')`);
+    showError('other-standings-area', `Could not load standings - ${err.message}`, `loadOtherStandings('${sport}')`);
   }
 }
 
@@ -3357,11 +3459,11 @@ function renderESPNStandings(data, sport) {
     if (!entries.length) continue;
     html += `<div class="league-group"><div class="league-header">${esc(name)}</div><div class="standings-list">`;
     entries.forEach((entry, i) => {
-      const team = entry.team?.shortDisplayName || entry.team?.name || '—';
+      const team = entry.team?.shortDisplayName || entry.team?.name || '-';
       const stats = {};
       (entry.stats || []).forEach(s => { stats[s.name] = s.displayValue; });
-      const w = stats.wins || stats.W || '—';
-      const l = stats.losses || stats.L || '—';
+      const w = stats.wins || stats.W || '-';
+      const l = stats.losses || stats.L || '-';
       const pct = stats.winPercent || stats.PCT || '';
       html += `<div class="standing-row">
         <span class="standing-rank">${i + 1}</span>
@@ -3378,9 +3480,9 @@ function renderOtherStandings(data, sport, src) {
   const area = document.getElementById('other-standings-area');
   if (!data.length) { area.innerHTML = '<div class="empty-state">No standings data available.</div>'; return; }
   const rows = data.slice(0,40).map((item, i) => {
-    const name = item.team?.name || item.name || item.team || '—';
-    const wins   = item.wins   ?? item.won  ?? item.w   ?? '—';
-    const losses = item.losses ?? item.lost ?? item.l   ?? '—';
+    const name = item.team?.name || item.name || item.team || '-';
+    const wins   = item.wins   ?? item.won  ?? item.w   ?? '-';
+    const losses = item.losses ?? item.lost ?? item.l   ?? '-';
     const pct    = item.win_pct ?? item.percentage ?? '';
     const pctFmt = pct !== '' ? ` (${typeof pct === 'number' ? pct.toFixed(3) : pct})` : '';
     return `<div class="standing-row">
@@ -3399,7 +3501,7 @@ function showLoading(id, msg) {
 }
 
 function showError(id, msg, retryCall) {
-  // retryCall is a plain JS string like "loadFixtures(0)" — avoids closure issues
+  // retryCall is a plain JS string like "loadFixtures(0)" - avoids closure issues
   const btn = retryCall ? `<button class="retry-btn" onclick="${retryCall}">Retry</button>` : '';
   document.getElementById(id).innerHTML =
     `<div class="error-state"><div class="error-icon">⚠</div><p>${esc(msg)}</p>${btn}</div>`;
@@ -3479,6 +3581,8 @@ document.querySelectorAll('.overview-card').forEach(card => {
 
 // ── INIT ─────────────────────────────────────────────────────
 function init() {
+  clearOldPicks();
+  updatePicksDisplay();
   renderDateBar();
   switchSport('tennis');
 }
