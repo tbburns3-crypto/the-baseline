@@ -1600,8 +1600,9 @@ input { font: inherit; }
   display: flex; align-items: center; gap: 12px;
   background: rgba(0,230,118,.08); border: 1px solid rgba(0,230,118,.2);
   border-radius: var(--radius); padding: 10px 16px; margin-bottom: 12px;
-  font-size: .95rem;
+  font-size: .95rem; cursor: pointer; user-select: none;
 }
+#picks-banner:hover { background: rgba(0,230,118,.14); }
 #picks-banner.pb-hot  { background: rgba(0,230,118,.14); border-color: rgba(0,230,118,.4); }
 #picks-banner.pb-cold { background: rgba(244,67,54,.08);  border-color: rgba(244,67,54,.2); }
 .pb-label  { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); font-weight: 700; }
@@ -1613,43 +1614,74 @@ input { font: inherit; }
 .pb-pct    { font-size: .9rem; color: var(--text-2); font-weight: 600; }
 .pb-note   { font-size: .7rem; color: var(--text-muted); margin-left: auto; }
 
-/* ── MLB PICKS PAGE — MATCHUP ENGINE ── */
-.picks-cards   { display: flex; flex-direction: column; gap: 14px; }
-.picks-card    { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
-.pc-header    { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-.pc-matchup   { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; font-size: .9rem; font-weight: 700; }
-.pc-at        { color: var(--text-muted); font-size: .8rem; font-weight: 400; }
-.pc-status    { flex-shrink: 0; }
-.pc-time      { font-size: .78rem; color: var(--text-muted); }
-.pc-win-pick  { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; border-radius: 6px; padding: 7px 11px; margin-bottom: 10px; font-size: .85rem; }
-.pc-conf-high { background: rgba(0,230,118,.13); border: 1px solid rgba(0,230,118,.3); }
-.pc-conf-med  { background: rgba(0,230,118,.07); border: 1px solid rgba(0,230,118,.18); }
-.pc-conf-low  { background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+/* ── MLB PICKS PAGE — CLEAN CARDS ── */
+.picks-cards  { display: flex; flex-direction: column; gap: 12px; }
+.picks-card   { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.pc-hdr       { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.pc-teams     { font-size: .93rem; font-weight: 700; }
+.pc-time      { font-size: .76rem; color: var(--text-muted); }
+.pc-meta      { font-size: .78rem; margin-bottom: 6px; }
+.pc-fav       { color: var(--accent); font-weight: 600; }
+.pc-fav-even  { color: var(--text-muted); }
+.pc-pit-line  { font-size: .78rem; color: var(--text-2); margin-bottom: 4px; }
+.pc-pit-sep   { color: var(--text-muted); margin: 0 4px; }
+.pc-wx        { font-size: .74rem; color: var(--text-muted); margin-bottom: 8px; }
 .pc-no-data   { color: var(--text-muted); font-style: italic; font-size: .78rem; padding: 3px 0; }
-.pc-win-label { font-weight: 700; }
-.pc-conf-high .pc-win-label { color: var(--accent); }
-.pc-conf-low  .pc-win-label { color: var(--text-muted); }
-.pc-pick-basis { font-size: .7rem; color: var(--text-muted); margin-left: auto; }
-.pc-pitchers  { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; padding: 6px 10px; background: rgba(0,0,0,.2); border-radius: 5px; }
-.pc-pitcher-slot { display: flex; align-items: center; gap: 5px; font-size: .78rem; }
-.pc-pit-abbr  { font-weight: 700; color: var(--accent-dim); font-size: .68rem; }
-.pc-pit-hand  { font-size: .66rem; background: rgba(255,255,255,.07); border-radius: 3px; padding: 0 4px; color: var(--text-muted); }
-.pc-pit-name  { font-weight: 600; }
-.pc-pit-stats { color: var(--text-muted); font-size: .7rem; }
-.pc-pit-vs    { color: var(--text-muted); font-size: .7rem; }
-.pc-weather   { display: flex; gap: 10px; flex-wrap: wrap; font-size: .74rem; color: var(--text-muted); margin-bottom: 8px; }
-.pc-wind-out  { color: var(--accent); font-weight: 600; }
-.pc-wind-in   { color: #ef5350; font-weight: 600; }
-.pc-picks-list { display: flex; flex-direction: column; gap: 8px; }
-.pc-pick-row  { display: flex; align-items: flex-start; gap: 8px; }
-.pc-pi        { font-size: 1rem; flex-shrink: 0; padding-top: 1px; }
-.pc-pick-detail { flex: 1; min-width: 0; }
-.pc-pick-name { font-size: .86rem; line-height: 1.3; }
-.pc-pn-abbr   { font-size: .66rem; color: var(--accent-dim); font-weight: 700; background: rgba(0,200,83,.1); border-radius: 3px; padding: 0 4px; margin-right: 3px; }
-.pc-pn-stat   { font-size: .77rem; color: var(--text-muted); margin-left: 4px; }
-.pc-pick-reasons { font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
-.pc-vs-career { color: var(--accent); font-weight: 600; }
 .pc-data-note { font-size: .7rem; color: var(--text-muted); padding: 4px 2px 10px; }
+
+/* Pick rows — one clean line each */
+.pc-picks { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); margin-top: 8px; }
+.pc-row   {
+  display: grid;
+  grid-template-columns: 1.4rem 2.6rem 1fr auto auto;
+  align-items: center;
+  gap: 0 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  font-size: .85rem;
+}
+.pc-ri  { font-size: .9rem; }
+.pc-rl  { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); font-weight: 700; }
+.pc-rn  { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-rt  { font-size: .66rem; color: var(--accent-dim); font-weight: 700; background: rgba(0,200,83,.1); border-radius: 3px; padding: 1px 5px; white-space: nowrap; }
+.pc-rs  { font-size: .78rem; color: var(--text-muted); text-align: right; white-space: nowrap; }
+.pc-vs-note { color: var(--accent); font-size: .72rem; }
+
+/* ── PICKS HISTORY MODAL ── */
+.ph-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.6);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 900; padding: 0;
+}
+@media (min-width: 600px) { .ph-modal { align-items: center; } }
+.ph-panel {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 14px 14px 0 0; width: 100%; max-width: 480px;
+  max-height: 70vh; overflow-y: auto; padding-bottom: 20px;
+}
+@media (min-width: 600px) { .ph-panel { border-radius: 14px; } }
+.ph-hdr {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 16px 10px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--bg-card);
+}
+.ph-title  { font-weight: 800; font-size: .95rem; }
+.ph-sub    { font-size: .72rem; color: var(--text-muted); margin-right: auto; }
+.ph-close  { margin-left: auto; background: none; border: none; color: var(--text-muted); font-size: 1.1rem; cursor: pointer; padding: 2px 6px; }
+.ph-list   { padding: 6px 0; }
+.ph-row    {
+  display: grid; grid-template-columns: 1.4rem 5.5rem 1fr auto;
+  align-items: center; gap: 8px;
+  padding: 9px 16px; border-bottom: 1px solid rgba(255,255,255,.04);
+  font-size: .84rem;
+}
+.ph-win .ph-icon  { color: var(--accent); font-weight: 700; }
+.ph-loss .ph-icon { color: #ef5350; font-weight: 700; }
+.ph-date   { font-size: .72rem; color: var(--text-muted); }
+.ph-matchup { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ph-pick   { font-size: .78rem; color: var(--text-muted); white-space: nowrap; }
+.ph-empty  { padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: .84rem; }
+.ph-pending { padding: 8px 16px; font-size: .72rem; color: var(--text-muted); text-align: center; }
 
 /* ── INLINE GAME PICKS & RECORD TAGS ── */
 .game-pick-inline {
