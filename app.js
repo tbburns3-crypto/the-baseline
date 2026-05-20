@@ -925,30 +925,47 @@ function buildDetailSets(sets) {
     </div>`).join('');
 }
 
+// ── H2H CACHE ────────────────────────────────────────────────
+const _h2hCache = new Map(); // `${p1key}_${p2key}` → { h2h, p1Recent, p2Recent }
+
+async function fetchH2HCached(p1key, p2key) {
+  const ckey = `${p1key}_${p2key}`;
+  if (_h2hCache.has(ckey)) return _h2hCache.get(ckey);
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const url = new URL(CFG.tennis.base);
+    url.searchParams.set('method', 'get_H2H');
+    url.searchParams.set('APIkey', CFG.tennis.key);
+    url.searchParams.set('first_player_key', p1key);
+    url.searchParams.set('second_player_key', p2key);
+    const res  = await fetch(url.toString(), { signal: ctrl.signal });
+    clearTimeout(tid);
+    const json = res.ok ? await res.json() : {};
+    const raw  = json.success === 1 ? (json.result || {}) : {};
+    const data = {
+      h2h:      Array.isArray(raw.H2H)                ? raw.H2H                       : [],
+      p1Recent: Array.isArray(raw.firstPlayerResults)  ? raw.firstPlayerResults.slice(0,5)  : [],
+      p2Recent: Array.isArray(raw.secondPlayerResults) ? raw.secondPlayerResults.slice(0,5) : []
+    };
+    _h2hCache.set(ckey, data);
+    return data;
+  } catch {
+    clearTimeout(tid);
+    return { h2h: [], p1Recent: [], p2Recent: [] };
+  }
+}
+
 async function loadTennisMatchDetail(key, container, m) {
   try {
     const surface = m.tournament_surface || inferSurface(m.tournament_name);
     let h2h = [], p1Recent = [], p2Recent = [];
     if (m.first_player_key && m.second_player_key) {
       try {
-        const ctrl = new AbortController();
-        const tid  = setTimeout(() => ctrl.abort(), 8000);
-        const url  = new URL(CFG.tennis.base);
-        url.searchParams.set('method', 'get_H2H');
-        url.searchParams.set('APIkey', CFG.tennis.key);
-        url.searchParams.set('first_player_key',  m.first_player_key);
-        url.searchParams.set('second_player_key', m.second_player_key);
-        const res  = await fetch(url.toString(), { signal: ctrl.signal });
-        clearTimeout(tid);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success === 1) {
-            const raw = json.result || {};
-            h2h      = Array.isArray(raw.H2H)                ? raw.H2H                : [];
-            p1Recent = Array.isArray(raw.firstPlayerResults)  ? raw.firstPlayerResults.slice(0, 5)  : [];
-            p2Recent = Array.isArray(raw.secondPlayerResults) ? raw.secondPlayerResults.slice(0, 5) : [];
-          }
-        }
+        const data = await fetchH2HCached(m.first_player_key, m.second_player_key);
+        h2h      = data.h2h;
+        p1Recent = data.p1Recent;
+        p2Recent = data.p2Recent;
       } catch {}
     }
     container.innerHTML = buildTennisDetailHTML(m, h2h, surface, p1Recent, p2Recent);
@@ -2595,13 +2612,12 @@ async function loadTennisPicksPage() {
   const area = document.getElementById('mlb-picks-area');
   area.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Loading picks…</p></div>`;
 
-  // Always fetch — records new picks AND resolves finished matches from any prior session
   try {
     const d = dateStr(S.dateOffset);
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
     for (const m of results) {
       S.matches.set(String(m.event_key), m);
-      inlineTennisPick(m); // always — records pick (idempotent) for all matches inc. finished
+      inlineTennisPick(m);
       if (isFinished(m.event_status) && m.event_winner) {
         let wln = '';
         if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player || '');
@@ -2613,13 +2629,6 @@ async function loadTennisPicksPage() {
   } catch {}
 
   let tennisPicks = Object.values(getPicks()).filter(p => (p.sport || 'tennis') === 'tennis');
-
-  if (!tennisPicks.length) {
-    area.innerHTML = '<div class="empty-state">No picks available today.<div class="muted">Picks are generated for upcoming matches with seeded or ranked players.</div></div>';
-    updatePicksDisplay();
-    return;
-  }
-
   const pending  = tennisPicks.filter(p => p.result === null);
   const resolved = tennisPicks.filter(p => p.result !== null);
 
@@ -2635,19 +2644,210 @@ async function loadTennisPicksPage() {
     </div>`;
   };
 
-  let html = '';
-  if (pending.length) {
-    html += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pending.length})</div>`;
-    html += pending.map(makeRow).join('');
-  }
-  if (resolved.length) {
-    const w = resolved.filter(p => p.result === 'win').length;
-    html += `<div class="ph-sport-hdr">Results — ${w}W ${resolved.length - w}L</div>`;
-    html += resolved.map(makeRow).join('');
+  let todayHTML = '';
+  if (!tennisPicks.length) {
+    todayHTML = '<div class="empty-state muted">No picks recorded yet today.<br>Picks generate for seeded/ranked matches.</div>';
+  } else {
+    if (pending.length) {
+      todayHTML += `<div class="ph-sport-hdr ph-pending-hdr">Today — Pending (${pending.length})</div>`;
+      todayHTML += pending.map(makeRow).join('');
+    }
+    if (resolved.length) {
+      const w = resolved.filter(p => p.result === 'win').length;
+      todayHTML += `<div class="ph-sport-hdr">Today — Results ${w}W ${resolved.length - w}L</div>`;
+      todayHTML += resolved.map(makeRow).join('');
+    }
   }
 
-  area.innerHTML = `<div class="pc-data-note">Picks based on seedings &amp; live rankings · last 14 days</div><div class="ph-list">${html}</div>`;
+  area.innerHTML = `
+    <div class="pc-data-note">Picks use seedings · rankings · H2H · surface form · recent results</div>
+    <div class="ph-list">${todayHTML}</div>
+    <div class="tp-tomorrow-section">
+      <div class="tp-tmrw-hdr">
+        <span class="tp-tmrw-title">Tomorrow's Preview</span>
+        <span class="tp-tmrw-sub">H2H analysis · top ATP &amp; WTA matches</span>
+      </div>
+      <div id="tomorrow-preview-area"><div class="loading-spinner" style="padding:16px"><div class="spinner"></div></div></div>
+    </div>`;
   updatePicksDisplay();
+
+  // Load tomorrow's H2H analysis in the background
+  loadTomorrowPreview();
+}
+
+// ── TOMORROW'S TENNIS PREVIEW ─────────────────────────────────
+async function loadTomorrowPreview() {
+  const area = document.getElementById('tomorrow-preview-area');
+  if (!area) return;
+  try {
+    const d = dateStr(1);
+    const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
+
+    // Only ATP/WTA singles with player keys — cap at 10 to limit API calls
+    const eligible = results.filter(m => {
+      const cat = matchCategory(m.event_type_type || '');
+      return ['atp','wta'].includes(cat) && m.first_player_key && m.second_player_key;
+    }).slice(0, 10);
+
+    if (!eligible.length) {
+      area.innerHTML = '<div class="tp-empty">No tomorrow matches found yet — check back later today.</div>';
+      return;
+    }
+
+    // Pre-fetch H2H for all eligible matches in parallel
+    await Promise.allSettled(eligible.map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
+
+    const cards = eligible.map(m => buildTomorrowPickCard(m)).join('');
+    area.innerHTML = cards || '<div class="tp-empty">No analysis available.</div>';
+  } catch (err) {
+    const area2 = document.getElementById('tomorrow-preview-area');
+    if (area2) area2.innerHTML = `<div class="tp-empty">Could not load tomorrow's matches — ${esc(err.message)}</div>`;
+  }
+}
+
+function buildTomorrowPickCard(m) {
+  const p1Name = m.event_first_player  || '-';
+  const p2Name = m.event_second_player || '-';
+  const p1key  = String(m.first_player_key  || '');
+  const p2key  = String(m.second_player_key || '');
+  const s1     = parseInt(m.event_first_player_seed)  || 0;
+  const s2     = parseInt(m.event_second_player_seed) || 0;
+  const surface = m.tournament_surface || inferSurface(m.tournament_name || '');
+  const scLow   = surfaceClass(surface);
+
+  const data     = _h2hCache.get(`${p1key}_${p2key}`) || { h2h: [], p1Recent: [], p2Recent: [] };
+  const { h2h, p1Recent, p2Recent } = data;
+
+  // Surface-specific H2H
+  const surfLow  = surface.toLowerCase();
+  const h2hSurf  = h2h.filter(g => {
+    const gs = inferSurface(g.tournament_name || '').toLowerCase();
+    if (surfLow.includes('clay'))   return gs.includes('clay');
+    if (surfLow.includes('grass'))  return gs.includes('grass');
+    if (surfLow.includes('indoor')) return gs.includes('indoor');
+    return gs === 'hard';
+  });
+
+  function countWins(games) {
+    let w1 = 0, w2 = 0;
+    for (const g of games) {
+      const winner = g.event_winner; if (!winner) continue;
+      const gp1key = String(g.first_player_key || '');
+      if (winner === 'First Player')  { if (gp1key === p1key) w1++; else w2++; }
+      else if (winner === 'Second Player') { if (gp1key === p1key) w2++; else w1++; }
+    }
+    return { w1, w2 };
+  }
+  const { w1: aw1, w2: aw2 } = countWins(h2h);
+  const { w1: sw1, w2: sw2 } = countWins(h2hSurf);
+
+  // Full scoring (same weights as buildTennisPrediction)
+  let p1Score = 0, p2Score = 0;
+  const factors = [];
+  const l1 = lastName(p1Name), l2 = lastName(p2Name);
+
+  // Seeds
+  if (s1 && s2) {
+    if (s1 < s2)      { p1Score += 2; factors.push({ label:'Seeding', detail:`${l1} [${s1}] vs [${s2}]`, side:1 }); }
+    else if (s2 < s1) { p2Score += 2; factors.push({ label:'Seeding', detail:`${l2} [${s2}] vs [${s1}]`, side:2 }); }
+  } else if (s1) { p1Score += 1; factors.push({ label:'Seeding', detail:`${l1} seeded, ${l2} unseeded`, side:1 }); }
+    else if (s2) { p2Score += 1; factors.push({ label:'Seeding', detail:`${l2} seeded, ${l1} unseeded`, side:2 }); }
+
+  // Rankings
+  if (!s1 && !s2) {
+    const r1 = S.rankIndex.get(p1key), r2 = S.rankIndex.get(p2key);
+    if (r1 && r2 && r1.rank !== r2.rank) {
+      if (r1.rank < r2.rank) { p1Score += 2; factors.push({ label:'Ranking', detail:`${l1} #${r1.rank} vs ${l2} #${r2.rank}`, side:1 }); }
+      else                   { p2Score += 2; factors.push({ label:'Ranking', detail:`${l2} #${r2.rank} vs ${l1} #${r1.rank}`, side:2 }); }
+    }
+  }
+
+  // H2H overall (need ≥2 matches)
+  if (h2h.length >= 2) {
+    if (aw1 > aw2)      { p1Score += 2; factors.push({ label:'H2H', detail:`${l1} leads ${aw1}–${aw2}`, side:1 }); }
+    else if (aw2 > aw1) { p2Score += 2; factors.push({ label:'H2H', detail:`${l2} leads ${aw2}–${aw1}`, side:2 }); }
+    else                 {               factors.push({ label:'H2H', detail:`Even ${aw1}–${aw2}`, side:0 }); }
+  }
+
+  // H2H on surface (weight 3 — most predictive)
+  if (h2hSurf.length >= 2) {
+    if (sw1 > sw2)      { p1Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l1} leads ${sw1}–${sw2}`, side:1 }); }
+    else if (sw2 > sw1) { p2Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l2} leads ${sw2}–${sw1}`, side:2 }); }
+    else                 {               factors.push({ label:`${surface} H2H`, detail:`Even ${sw1}–${sw2}`, side:0 }); }
+  }
+
+  // Recent form
+  const formWins = (games, pkey) => games.reduce((w, g) => {
+    const winner = g.event_winner, gp1 = String(g.first_player_key || '');
+    return w + (((winner === 'First Player' && gp1 === pkey) || (winner === 'Second Player' && gp1 !== pkey)) ? 1 : 0);
+  }, 0);
+  const fw1 = p1Recent.length ? formWins(p1Recent, p1key) : -1;
+  const fw2 = p2Recent.length ? formWins(p2Recent, p2key) : -1;
+  if (fw1 >= 0 && fw2 >= 0 && fw1 !== fw2) {
+    if (fw1 > fw2) { p1Score += 2; factors.push({ label:'Form', detail:`${l1} ${fw1}/5 vs ${l2} ${fw2}/5`, side:1 }); }
+    else           { p2Score += 2; factors.push({ label:'Form', detail:`${l2} ${fw2}/5 vs ${l1} ${fw1}/5`, side:2 }); }
+  }
+
+  // Decide pick
+  let pickName = '', pickSide = 0, conf = 0;
+  const total = p1Score + p2Score;
+  if (p1Score > p2Score) { pickName = p1Name; pickSide = 1; conf = total >= 8 ? 3 : total >= 5 ? 2 : 1; }
+  else if (p2Score > p1Score) { pickName = p2Name; pickSide = 2; conf = total >= 8 ? 3 : total >= 5 ? 2 : 1; }
+
+  // Record the pick with full analysis
+  if (pickName && m.event_date && m.event_date > dateStr(0)) {
+    const pickId  = 'tn_' + m.event_key;
+    const surfTag = surface ? ` (${surface})` : '';
+    const matchup = `${l1} vs ${l2}${surfTag}`;
+    recordPick(pickId, lastName(pickName), matchup, 'tennis');
+  }
+
+  // Confidence dots
+  const confDots = conf > 0
+    ? `<span class="tp-conf tp-conf-${conf}">${'●'.repeat(conf)}${'○'.repeat(3-conf)}</span>`
+    : '';
+
+  // Form dots
+  const fmtForm = (games, pkey) => games.length
+    ? games.map(g => {
+        const winner = g.event_winner, gp1 = String(g.first_player_key || '');
+        const won = (winner === 'First Player' && gp1 === pkey) || (winner === 'Second Player' && gp1 !== pkey);
+        return `<span class="td-form-dot ${won?'td-form-w':'td-form-l'}">${won?'W':'L'}</span>`;
+      }).join('')
+    : '<span class="tp-no-form">no data</span>';
+
+  const seedTag = n => n ? ` <span class="td-seed">[${n}]</span>` : '';
+  const r1 = S.rankIndex.get(p1key), r2 = S.rankIndex.get(p2key);
+  const rankTag = (r, s) => (!s && r) ? ` <span class="tp-rank">#${r.rank}</span>` : '';
+
+  const factorsHTML = factors.map(f =>
+    `<span class="tp-factor tp-factor-${f.side === 1 ? 'p1' : f.side === 2 ? 'p2' : 'tie'}">${esc(f.label)}: ${esc(f.detail)}</span>`
+  ).join('');
+
+  const verdictHTML = pickName
+    ? `<div class="tp-pick-line">→ <strong>${esc(lastName(pickName))}</strong> ${confDots}</div>`
+    : `<div class="tp-pick-line tp-pick-even">Too close to call</div>`;
+
+  return `<div class="tp-card ${pickSide === 1 ? 'tp-leans-p1' : pickSide === 2 ? 'tp-leans-p2' : ''}">
+    <div class="tp-card-hdr">
+      <span class="surface-dot ${scLow}" title="${esc(surface)}"></span>
+      <span class="tp-tourney">${esc(m.tournament_name || m.event_type_type || '')}</span>
+      <span class="tp-match-time">${esc(fmtTime12(m.event_time || ''))}</span>
+    </div>
+    <div class="tp-players">
+      <span class="tp-p1 ${pickSide===1?'tp-favored':''}">${esc(p1Name)}${seedTag(s1)}${rankTag(r1, s1)}</span>
+      <span class="tp-vs">vs</span>
+      <span class="tp-p2 ${pickSide===2?'tp-favored':''}">${esc(p2Name)}${seedTag(s2)}${rankTag(r2, s2)}</span>
+    </div>
+    ${h2h.length ? `<div class="tp-h2h">H2H: <strong>${aw1}–${aw2}</strong>${h2hSurf.length ? ` · ${surface}: <strong>${sw1}–${sw2}</strong>` : ''}</div>` : ''}
+    ${(p1Recent.length || p2Recent.length) ? `<div class="tp-form">
+      <span class="tp-form-player">${esc(l1)}</span>${fmtForm(p1Recent, p1key)}
+      <span class="tp-form-sep">·</span>
+      <span class="tp-form-player">${esc(l2)}</span>${fmtForm(p2Recent, p2key)}
+    </div>` : ''}
+    ${verdictHTML}
+    ${factors.length ? `<div class="tp-factors">${factorsHTML}</div>` : ''}
+  </div>`;
 }
 
 // ── PICKS DATE NAV ───────────────────────────────────────────
