@@ -1997,6 +1997,10 @@ function _fmtAvg(v) {
   return '.' + String(n.toFixed(3)).replace('0.', '').replace('.', '');
 }
 
+// Park factors indexed by home team abbreviation (>1 = hitter-friendly)
+const PARK_HR  = { COL:1.25, CIN:1.15, BOS:1.12, PHI:1.10, TEX:1.08, CHC:1.06, MIL:1.05, NYY:1.04, DET:1.03, HOU:1.02, ATL:1.01, TOR:0.99, LAD:0.98, LAA:0.97, MIN:0.96, PIT:0.95, CLE:0.94, BAL:0.93, SEA:0.92, WSH:0.92, CWS:0.91, KC:0.90, OAK:0.89, MIA:0.88, NYM:0.90, SF:0.88, SD:0.85, TB:0.94 };
+const PARK_HIT = { COL:1.15, BOS:1.05, TEX:1.04, CIN:1.03, CHC:1.02, MIL:1.01, NYY:1.01, PHI:1.01, SD:0.88, SF:0.90, MIA:0.92, LAA:0.94, SEA:0.95, OAK:0.96 };
+
 async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const { fin, live } = gameRowState(espnGame);
 
@@ -2054,6 +2058,22 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const awayHand = awayPD?.pitchHand || null;
   const homeHand = homePD?.pitchHand || null;
 
+  // Pitcher rate stats derived from season totals — no extra API calls
+  const _pRates = pd => {
+    const s  = pd?.season;
+    const ip = parseFloat(s?.inningsPitched || 0);
+    return {
+      hr9: ip > 5 ? (parseInt(s?.homeRuns||0)    / ip) * 9 : 1.2,
+      bb9: ip > 5 ? (parseInt(s?.baseOnBalls||0) / ip) * 9 : 3.0,
+      k9:  ip > 5 ? (parseInt(s?.strikeOuts||0)  / ip) * 9 : 8.5,
+    };
+  };
+  const awayRates = _pRates(awayPD);   // home batters face away pitcher
+  const homeRates = _pRates(homePD);   // away batters face home pitcher
+  const parkHR    = PARK_HR[homeAbbr]  || 1.0;
+  const parkHit   = PARK_HIT[homeAbbr] || 1.0;
+  const windMult  = wind.bonus >= 2 ? 1.16 : wind.bonus === 1 ? 1.08 : wind.bonus <= -2 ? 0.85 : wind.bonus === -1 ? 0.93 : 1.0;
+
   // ── Pitcher matchup summary ──
   const pitcherSlot = (name, pd, hand, abbr) => {
     const s = pd?.season;
@@ -2085,8 +2105,8 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const awayLineup = mlbGame.lineups?.awayPlayers || [];
   const homeLineup = mlbGame.lineups?.homePlayers || [];
 
-  const mkBatter = (p, pos, oppHand, teamAbbr, oppPitcherId) => {
-    const st = _batterCache.get(p.id) || {};
+  const mkBatter = (p, pos, oppHand, teamAbbr, oppPitcherId, pitRates) => {
+    const st       = _batterCache.get(p.id) || {};
     const batSide  = st.batSide || null;
     const hand     = _handAdv(batSide, oppHand);
     const avg      = parseFloat(st.avg     || 0);
@@ -2100,23 +2120,32 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const ops      = parseFloat(st.ops     || 0);
     const obp      = parseFloat(st.obp     || 0);
     const sbSucc   = (sb + cs) > 0 ? sb / (sb + cs) : 0;
-    const posW     = [0,1.1,1.0,1.4,1.5,1.2,1.1,1.0,0.9,0.8][pos] || 1.0;
-    // Scoring — higher = better pick in category
-    const hitScore  = (avg * 1000) + hand.adv * 15 + (ab >= 100 ? 5 : 0);
-    const hrScore   = hr * 10 + ops * 200 + hand.adv * 8 + wind.bonus * 5;
-    const rbiScore  = rbi + posW * 10 + hand.adv * 5;
-    const bbScore   = bb + obp * 200;
-    const sbScore   = sb * 10 + sbSucc * 50;
-    const hScore    = h + avg * 200;
+    const posW     = [0,1.1,1.0,1.4,1.5,1.2,1.1,1.0,0.9,0.8][pos] || 0.9;
+    // Platoon-specific AVG from actual split data (fallback to season AVG)
+    const vsL      = st.vsL || null;
+    const vsR      = st.vsR || null;
+    const platAvg  = oppHand === 'L' ? parseFloat(vsL?.avg || avg) : parseFloat(vsR?.avg || avg);
+    // Rate stats (more predictive than raw counting totals)
+    const hrRate   = ab > 20 ? hr / ab : 0;
+    const bbPct    = (ab + bb) > 0 ? bb / (ab + bb) : 0;
+    const rbiRate  = ab > 0 ? rbi / ab : 0;
+    // Rate × matchup factor scoring
+    const hitScore = platAvg * 1000 * parkHit * Math.max(0.72, 1 - pitRates.k9 / 80);
+    const hrScore  = hrRate  * 1000 * pitRates.hr9 * parkHR * windMult;
+    const rbiScore = rbiRate * 1000 * posW;
+    const bbScore  = bbPct   * pitRates.bb9 * 100;
+    const sbScore  = sb * 10 + sbSucc * 50;
+    const hScore   = platAvg * 600 + (ab > 0 ? h / ab : 0) * 400;
     return {
       id: p.id, name: p.fullName, abbr: teamAbbr, pos,
-      batSide, oppPitcherId, hand, avg, hr, rbi, h, bb, sb, cs, sbSucc, ab, ops, obp,
+      batSide, oppPitcherId, oppHand, hand, avg, platAvg, vsL, vsR,
+      hr, rbi, h, bb, sb, cs, sbSucc, ab, ops, obp, pitRates,
       hitScore, hrScore, rbiScore, bbScore, sbScore, hScore,
     };
   };
 
-  const awayBatters = awayLineup.slice(0, 6).map((p, i) => mkBatter(p, i+1, homeHand, awayAbbr, homePitcherId));
-  const homeBatters = homeLineup.slice(0, 6).map((p, i) => mkBatter(p, i+1, awayHand, homeAbbr, awayPitcherId));
+  const awayBatters = awayLineup.slice(0, 9).map((p, i) => mkBatter(p, i+1, homeHand, awayAbbr, homePitcherId, homeRates));
+  const homeBatters = homeLineup.slice(0, 9).map((p, i) => mkBatter(p, i+1, awayHand, homeAbbr, awayPitcherId, awayRates));
   const allBatters  = [...awayBatters, ...homeBatters].filter(b => b.ab >= 5);
 
   const hasLineup = allBatters.length > 0;
@@ -2168,20 +2197,33 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const reasonsFor = b => {
       const parts = [];
       if (b.hand.label) parts.push(b.hand.label);
+      // Show platoon split when it differs meaningfully from season AVG
+      if (b.platAvg && b.avg && Math.abs(b.platAvg - b.avg) >= 0.018)
+        parts.push(`vs${b.oppHand||'?'}HP: ${_fmtAvg(b.platAvg) || '—'}`);
+      if (b.pitRates?.hr9 >= 1.5) parts.push(`opp HR/9: ${b.pitRates.hr9.toFixed(1)}`);
+      if (b.pitRates?.bb9 >= 3.5) parts.push(`opp BB/9: ${b.pitRates.bb9.toFixed(1)}`);
       if (b.ops >= 0.900) parts.push(`${b.ops} OPS`);
       if (b.obp >= 0.360) parts.push(`${b.obp} OBP`);
       if (b.pos <= 4) parts.push(`#${b.pos} in lineup`);
-      if (wind.label && wind.bonus > 0) parts.push(`wind: ${wind.label}`);
-      if (weather?.temp && parseInt(weather.temp) >= 80) parts.push('warm weather (HR+)');
+      if (parkHR !== 1.0) {
+        const pf = parkHR > 1 ? `park HR+${Math.round((parkHR-1)*100)}%` : `park HR${Math.round((parkHR-1)*100)}%`;
+        parts.push(pf);
+      }
+      if (wind.label && wind.bonus !== 0) parts.push(`wind: ${wind.label}`);
+      if (weather?.temp && parseInt(weather.temp) >= 80) parts.push('warm weather');
       return parts.join(' · ') || 'season stats';
     };
 
+    const platLine = b => b.platAvg && b.avg && Math.abs(b.platAvg - b.avg) >= 0.010
+      ? `${_fmtAvg(b.platAvg) || '-'} vs${b.oppHand||'?'}HP`
+      : `${_fmtAvg(b.avg) || '-'} AVG`;
+
     picksHTML = `<div class="pc-picks-list">
-      ${pickRow('🎯', 'Best Hit', topHit,  `${_fmtAvg(topHit?.avg) || '-'} AVG · #${topHit?.pos} lineup`,  reasonsFor(topHit))}
-      ${topHR ? pickRow('💣', 'Best HR',  topHR,  `${topHR.hr} HR · ${topHR.ops || '-'} OPS`,             reasonsFor(topHR)) : ''}
-      ${pickRow('🏏', 'Most Hits', topHits, `${topHits?.h} H · ${_fmtAvg(topHits?.avg) || '-'} AVG`,      reasonsFor(topHits))}
-      ${pickRow('⚡', 'Best RBI', topRBI,  `${topRBI?.rbi} RBI · #${topRBI?.pos} lineup`,                  reasonsFor(topRBI))}
-      ${pickRow('🚶', 'Best Walk', topBB,   `${topBB?.bb} BB · ${topBB?.obp || '-'} OBP`,                  reasonsFor(topBB))}
+      ${pickRow('🎯', 'Best Hit',   topHit,  `${platLine(topHit)} · #${topHit?.pos} lineup`,                reasonsFor(topHit))}
+      ${topHR ? pickRow('💣', 'Best HR', topHR, `${topHR.hr} HR · ${_fmtAvg(topHR.platAvg||topHR.avg)||'-'} vs${topHR.oppHand||'?'}HP · ${topHR.ops||'-'} OPS`, reasonsFor(topHR)) : ''}
+      ${pickRow('🏏', 'Most Hits',  topHits, `${topHits?.h} H · ${platLine(topHits)}`,                      reasonsFor(topHits))}
+      ${pickRow('⚡', 'Best RBI',   topRBI,  `${topRBI?.rbi} RBI · #${topRBI?.pos} lineup`,                 reasonsFor(topRBI))}
+      ${pickRow('🚶', 'Best Walk',  topBB,   `${topBB?.bb} BB · ${topBB?.obp || '-'} OBP`,                  reasonsFor(topBB))}
       ${topSB ? pickRow('🏃', 'Best SB', topSB, `${topSB.sb} SB${topSB.cs ? `/${topSB.sb+topSB.cs} att (${Math.round(topSB.sbSucc*100)}%)` : ''}`, reasonsFor(topSB)) : ''}
     </div>`;
   } else {
@@ -2222,10 +2264,10 @@ async function loadMLBPicksPage() {
     }
     await Promise.allSettled([...pitcherIds].map(id => fetchPitcherPreview(id)));
 
-    // Phase 3: pre-fetch batter stats for all lineups (top 6 per team)
+    // Phase 3: pre-fetch batter stats for all lineups (full 9 per team)
     const batterIds = new Set();
     for (const g of schedule) {
-      const all = [...(g.lineups?.awayPlayers || []).slice(0,6), ...(g.lineups?.homePlayers || []).slice(0,6)];
+      const all = [...(g.lineups?.awayPlayers || []).slice(0,9), ...(g.lineups?.homePlayers || []).slice(0,9)];
       for (const p of all) if (p.id) batterIds.add(p.id);
     }
     await Promise.allSettled([...batterIds].map(id => fetchBatterPreview(id)));
@@ -2243,7 +2285,7 @@ async function loadMLBPicksPage() {
     // Phase 5: build cards (vs-pitcher calls happen here, cached after first load)
     const cardHTMLs = await Promise.all(games.map(g => buildMLBPicksGameCard(g, findSched(g))));
 
-    area.innerHTML = `<div class="pc-data-note">${CURRENT_SEASON} season matchups · career vs-pitcher shown where available · click Scores tab for live updates</div><div class="picks-cards">${cardHTMLs.join('')}</div>`;
+    area.innerHTML = `<div class="pc-data-note">${CURRENT_SEASON} matchups · actual L/R platoon splits · park factors · pitcher HR/9 &amp; BB/9 · career vs-pitcher where available</div><div class="picks-cards">${cardHTMLs.join('')}</div>`;
     updatePicksDisplay();
   } catch (err) {
     area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load picks: ${esc(err.message)}</p></div>`;
@@ -2834,12 +2876,15 @@ async function fetchBatterPreview(batterId) {
   if (_batterCache.has(batterId)) return _batterCache.get(batterId);
   try {
     const [r1, r2] = await Promise.all([
-      fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=season&season=${CURRENT_SEASON}&group=hitting`).then(r => r.json()),
+      fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}/stats?stats=season,statSplits&season=${CURRENT_SEASON}&group=hitting&sitCodes=vl,vr`).then(r => r.json()),
       fetch(`https://statsapi.mlb.com/api/v1/people/${batterId}?fields=people,id,batSide`).then(r => r.json())
     ]);
-    const stat    = r1.stats?.[0]?.splits?.[0]?.stat || null;
+    const stat    = r1.stats?.find(s => s.type?.displayName === 'season')?.splits?.[0]?.stat || null;
+    const splitArr = r1.stats?.find(s => s.type?.displayName === 'statSplits')?.splits || [];
+    const vsL     = splitArr.find(s => s.split?.code === 'vl')?.stat || null;
+    const vsR     = splitArr.find(s => s.split?.code === 'vr')?.stat || null;
     const batSide = r2.people?.[0]?.batSide?.code || null;
-    const result  = stat ? { ...stat, batSide } : { batSide };
+    const result  = stat ? { ...stat, batSide, vsL, vsR } : { batSide, vsL, vsR };
     _batterCache.set(batterId, result);
     return result;
   } catch { _batterCache.set(batterId, null); return null; }
