@@ -1592,6 +1592,43 @@ input { font: inherit; }
 }
 .fav-remove-btn:hover { color: var(--live); }
 
+/* ── TOMORROW'S TENNIS PREVIEW ── */
+.tp-tomorrow-section { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }
+.tp-tmrw-hdr  { padding: 0 2px 10px; display: flex; align-items: baseline; gap: 10px; }
+.tp-tmrw-title { font-size: .88rem; font-weight: 700; }
+.tp-tmrw-sub   { font-size: .72rem; color: var(--text-muted); }
+.tp-empty      { color: var(--text-muted); font-size: .82rem; padding: 10px 2px; }
+.tp-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 11px 13px; margin-bottom: 10px;
+}
+.tp-card-hdr  { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+.tp-tourney   { font-size: .75rem; font-weight: 600; color: var(--text-2); flex: 1; }
+.tp-match-time { font-size: .72rem; color: var(--text-muted); }
+.tp-players   { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: .88rem; }
+.tp-p1, .tp-p2 { flex: 1; font-weight: 600; }
+.tp-p2        { text-align: right; }
+.tp-vs        { font-size: .72rem; color: var(--text-muted); flex-shrink: 0; }
+.tp-favored   { color: var(--accent); }
+.tp-rank      { font-size: .68rem; color: var(--text-muted); font-weight: 400; }
+.tp-h2h       { font-size: .76rem; color: var(--text-muted); margin-bottom: 5px; }
+.tp-h2h strong { color: var(--text); }
+.tp-form      { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; font-size: .76rem; flex-wrap: wrap; }
+.tp-form-player { color: var(--text-muted); font-size: .68rem; }
+.tp-form-sep    { color: var(--border); }
+.tp-no-form     { color: var(--text-muted); font-size: .68rem; }
+.tp-pick-line   { font-size: .84rem; font-weight: 700; margin-bottom: 5px; color: var(--accent); }
+.tp-pick-even   { color: var(--text-muted); font-weight: 400; }
+.tp-conf        { font-size: .65rem; letter-spacing: 1px; margin-left: 4px; font-weight: 700; }
+.tp-conf-1      { color: var(--text-muted); }
+.tp-conf-2      { color: var(--text-2); }
+.tp-conf-3      { color: var(--accent); }
+.tp-factors     { display: flex; flex-wrap: wrap; gap: 4px; }
+.tp-factor      { font-size: .68rem; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
+.tp-factor-p1   { background: rgba(0,230,118,.12); color: var(--accent); }
+.tp-factor-p2   { background: rgba(33,150,243,.12); color: #42a5f5; }
+.tp-factor-tie  { background: rgba(255,255,255,.05); color: var(--text-muted); }
+
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-text {
