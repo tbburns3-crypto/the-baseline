@@ -1449,6 +1449,11 @@ input { font: inherit; }
   font-size: .72rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: .08em; color: var(--accent);
   margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.td-pick-basis {
+  font-size: .65rem; font-weight: 400; text-transform: none;
+  letter-spacing: 0; color: var(--text-muted);
 }
 .td-h2h-summary {
   display: flex; align-items: center; justify-content: center;
