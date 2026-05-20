@@ -127,20 +127,18 @@ async function resolvePlayerPicksForGame(espnGameId, gamePk) {
 
 function showPicksHistory() {
   document.getElementById('picks-history-modal')?.remove();
-  const picks    = getPicks();
-  const allVals  = Object.values(picks);
-  const pending  = allVals.filter(p => p.result === null);
-  const resolved = allVals
-    .filter(p => p.result !== null)
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const sport    = S.sport;
+  const allVals  = Object.values(getPicks());
+
+  // Filter everything to the current sport only
+  const sportPicks   = allVals.filter(p => (p.sport || 'tennis') === sport);
+  const gamePicks    = sportPicks.filter(p => p.type !== 'player');
+  const playerPicks  = sportPicks.filter(p => p.type === 'player');
+  const pending      = sportPicks.filter(p => p.result === null).sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  const resolved     = sportPicks.filter(p => p.result !== null).sort((a,b) => (b.date||'').localeCompare(a.date||''));
 
   const SPORT_LABEL = { tennis:'🎾 Tennis', mlb:'⚾ MLB', nba:'🏀 NBA', wnba:'🏀 WNBA', nfl:'🏈 NFL', nhl:'🏒 NHL', soccer:'⚽ Soccer', golf:'⛳ Golf' };
-
-  // Separate game picks from player picks
-  const allValsTyped = Object.values(picks);
-  const gamePicks    = allValsTyped.filter(p => p.type !== 'player');
-  const playerPicks  = allValsTyped.filter(p => p.type === 'player')
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const sportLabel  = SPORT_LABEL[sport] || sport.toUpperCase();
 
   const makeRow = p => {
     const win = p.result === 'win';
@@ -159,11 +157,11 @@ function showPicksHistory() {
     <span class="ph-pick">→ ${esc(p.team)}</span>
   </div>`;
 
+  const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃', Points:'🏀', Rebounds:'📊', Assists:'🎽' };
   const makePlayerRow = p => {
     const win  = p.result === 'win';
     const icon = p.result === null ? '⏳' : (win ? '✓' : '✗');
     const cls  = p.result === null ? 'ph-pending-row' : (win ? 'ph-win' : 'ph-loss');
-    const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃' };
     return `<div class="ph-row ph-player-row ${cls}">
       <span class="ph-icon">${icon}</span>
       <span class="ph-date">${esc(p.date)}</span>
@@ -172,104 +170,53 @@ function showPicksHistory() {
     </div>`;
   };
 
-  // Group ALL picks by sport (game picks + player picks together)
-  const groups     = new Map();
-  const pendingMap = new Map();
-  for (const p of resolved) {
-    const sp = p.sport || (p.matchup?.includes(' vs ') ? 'tennis' : 'other');
-    if (!groups.has(sp)) groups.set(sp, []);
-    groups.get(sp).push(p);
-  }
-  for (const p of pending) {
-    const sp = p.sport || 'other';
-    if (!pendingMap.has(sp)) pendingMap.set(sp, []);
-    pendingMap.get(sp).push(p);
-  }
-
-  // Use the right renderer based on pick type
   const renderRow  = p => p.type === 'player' ? makePlayerRow(p) : makeRow(p);
   const renderPend = p => p.type === 'player' ? makePlayerRow(p) : makePendingRow(p);
 
-  const renderTabContent = sp => {
-    if (sp === 'players') {
-      if (!playerPicks.length) return '<div class="ph-empty">No player picks yet — visit the MLB Picks tab to generate them.</div>';
-      const pPend = playerPicks.filter(p => p.result === null);
-      const pRes  = playerPicks.filter(p => p.result !== null);
-      const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃' };
-      const cats = {};
-      for (const p of pRes) {
-        if (!cats[p.prop]) cats[p.prop] = { w:0, l:0 };
-        if (p.result === 'win') cats[p.prop].w++; else cats[p.prop].l++;
-      }
-      const catSummary = Object.entries(cats).length
-        ? `<div class="ph-cat-summary">${Object.entries(cats).map(([prop, r]) => {
-            const tot = r.w + r.l;
-            const pct = Math.round(r.w / tot * 100);
-            return `<span class="ph-cat-chip ph-cat-${pct >= 55 ? 'good' : pct <= 40 ? 'bad' : 'avg'}">${PROP_ICON[prop]||''} ${prop} ${r.w}–${r.l}</span>`;
-          }).join('')}</div>` : '';
-      let html = catSummary;
-      if (pPend.length) {
-        html += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pPend.length})</div>`;
-        html += pPend.map(makePlayerRow).join('');
-      }
-      if (pRes.length) {
-        const w = pRes.filter(p => p.result === 'win').length;
-        html += `<div class="ph-sport-hdr">Results — ${w}W ${pRes.length - w}L</div>`;
-        html += pRes.map(makePlayerRow).join('');
-      }
-      return html || '<div class="ph-empty">No player picks yet.</div>';
-    }
-    const items = sp === 'all' ? resolved : (groups.get(sp) || []);
-    const pend  = sp === 'all' ? pending  : (pendingMap.get(sp) || []);
-    if (!items.length && !pend.length) return '<div class="ph-empty">No picks for this sport yet.</div>';
-    let html = items.length
-      ? items.map(renderRow).join('')
-      : '<div class="ph-empty">No resolved picks yet — results come in after games finish.</div>';
-    if (pend.length) {
-      html += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pend.length})</div>`;
-      html += pend.map(renderPend).join('');
-    }
-    return html;
-  };
+  // Build content: pending section then results section
+  let content = '';
 
-  // All sports that have any game picks
-  const allSports = [...new Set([...groups.keys(), ...pendingMap.keys()])];
-  const playerResolved = playerPicks.filter(p => p.result !== null);
-  const playerWins = playerResolved.filter(p => p.result === 'win').length;
-  const playerRec  = playerResolved.length ? `<span class="ph-tab-rec">${playerWins}–${playerResolved.length - playerWins}</span>` : '';
+  // Player picks summary (for sports with player picks)
+  if (playerPicks.length) {
+    const pRes  = playerPicks.filter(p => p.result !== null);
+    const cats  = {};
+    for (const p of pRes) {
+      if (!cats[p.prop]) cats[p.prop] = { w:0, l:0 };
+      if (p.result === 'win') cats[p.prop].w++; else cats[p.prop].l++;
+    }
+    if (Object.keys(cats).length) {
+      content += `<div class="ph-cat-summary">${Object.entries(cats).map(([prop, r]) => {
+        const tot = r.w + r.l;
+        const pct = Math.round(r.w / tot * 100);
+        return `<span class="ph-cat-chip ph-cat-${pct >= 55 ? 'good' : pct <= 40 ? 'bad' : 'avg'}">${PROP_ICON[prop]||''} ${prop} ${r.w}–${r.l}</span>`;
+      }).join('')}</div>`;
+    }
+  }
 
-  const tabsHTML = [
-    `<button class="ph-tab ph-tab-active" data-ph-tab="all">All</button>`,
-    ...allSports.map(sp => {
-      const label = SPORT_LABEL[sp] || sp.toUpperCase();
-      const wins  = (groups.get(sp) || []).filter(p => p.result === 'win').length;
-      const total = (groups.get(sp) || []).length;
-      const rec   = total ? `<span class="ph-tab-rec">${wins}–${total - wins}</span>` : '';
-      return `<button class="ph-tab" data-ph-tab="${esc(sp)}">${esc(label)}${rec}</button>`;
-    }),
-    `<button class="ph-tab" data-ph-tab="players">🎯 Players${playerRec}</button>`
-  ].join('');
+  if (pending.length) {
+    content += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pending.length})</div>`;
+    content += pending.map(renderPend).join('');
+  }
+  if (resolved.length) {
+    const w = resolved.filter(p => p.result === 'win').length;
+    content += `<div class="ph-sport-hdr">Results — ${w}W ${resolved.length - w}L</div>`;
+    content += resolved.map(renderRow).join('');
+  }
+  if (!pending.length && !resolved.length) {
+    content = '<div class="ph-empty">No picks yet for this sport.<br><span class="muted">Picks are generated automatically as you browse games.</span></div>';
+  }
 
   const modal = document.createElement('div');
   modal.id    = 'picks-history-modal';
   modal.className = 'ph-modal';
   modal.innerHTML = `<div class="ph-panel">
     <div class="ph-hdr">
-      <span class="ph-title">Pick History</span>
+      <span class="ph-title">${esc(sportLabel)} Pick History</span>
       <span class="ph-sub">last 14 days</span>
       <button class="ph-close" onclick="document.getElementById('picks-history-modal').remove()">✕</button>
     </div>
-    <div class="ph-tabs">${tabsHTML}</div>
-    <div class="ph-list" id="ph-list-content">${renderTabContent('all')}</div>
+    <div class="ph-list">${content}</div>
   </div>`;
-
-  modal.querySelector('.ph-tabs').addEventListener('click', e => {
-    const btn = e.target.closest('[data-ph-tab]');
-    if (!btn) return;
-    modal.querySelectorAll('.ph-tab').forEach(b => b.classList.remove('ph-tab-active'));
-    btn.classList.add('ph-tab-active');
-    modal.querySelector('#ph-list-content').innerHTML = renderTabContent(btn.dataset.phTab);
-  });
 
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
@@ -308,19 +255,13 @@ function updatePicksDisplay() {
     }
   }
 
-  // Banner — only visible when this sport has picks
+  // Banner — always visible, shows this sport's record only
   const banner  = document.getElementById('picks-banner');
   const pbWins  = document.getElementById('pb-wins');
   const pbLoss  = document.getElementById('pb-losses');
   const pbPct   = document.getElementById('pb-pct');
   const pbBreak = document.getElementById('pb-breakdown');
   if (!banner || !pbWins || !pbLoss || !pbPct) return;
-
-  // Hide entirely when sport has no picks at all
-  if (!sportPicks.length) {
-    banner.style.display = 'none';
-    return;
-  }
 
   banner.style.display = '';
 
@@ -330,11 +271,16 @@ function updatePicksDisplay() {
     pbPct.textContent  = `(${sPct}%)`;
     if (pbBreak) pbBreak.textContent = sportPend.length ? `+${sportPend.length} active` : '';
     banner.className = sPct >= 55 ? 'pb-hot' : sPct <= 40 ? 'pb-cold' : '';
-  } else {
-    // Picks exist but none resolved yet
+  } else if (sportPend.length) {
     pbWins.textContent = '—';
     pbLoss.textContent = '—';
     pbPct.textContent  = `${sportPend.length} active`;
+    if (pbBreak) pbBreak.textContent = '';
+    banner.className = '';
+  } else {
+    pbWins.textContent = '0';
+    pbLoss.textContent = '0';
+    pbPct.textContent  = 'making picks…';
     if (pbBreak) pbBreak.textContent = '';
     banner.className = '';
   }
@@ -1676,9 +1622,6 @@ function switchSport(sport) {
   S.sport = sport;
   S.otherDateOffset = 0;
   document.querySelectorAll('.sport-tab').forEach(t => t.classList.toggle('active', t.dataset.sport === sport));
-  // Hide banner immediately on sport switch; updatePicksDisplay re-shows if this sport has picks
-  const _b = document.getElementById('picks-banner');
-  if (_b) _b.style.display = 'none';
 
   const isTennis = sport === 'tennis';
   document.querySelectorAll('.tennis-only').forEach(el => el.style.display = isTennis ? '' : 'none');
