@@ -1286,7 +1286,8 @@ async function espnGames(sport) {
     nhl:  'hockey/nhl'
   };
   if (!paths[sport]) throw new Error('unknown sport');
-  const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${paths[sport]}/scoreboard`);
+  const d = dateStr(0).replace(/-/g, '');
+  const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${paths[sport]}/scoreboard?dates=${d}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const d = await res.json();
   return (d.events || []).map(ev => {
