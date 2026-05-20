@@ -1653,6 +1653,16 @@ input { font: inherit; }
 .pc-row:has(.pc-ri:empty) { background: rgba(255,255,255,.015); }
 .pc-ri:empty, .pc-rl:empty { display: block; }
 .pc-streak   { font-size: .78rem; margin-left: 3px; }
+/* Confidence dots */
+.pc-conf     { font-size: .65rem; letter-spacing: 1px; margin-right: 4px; }
+.pc-conf-1   { color: var(--text-muted); }
+.pc-conf-2   { color: var(--text-2); }
+.pc-conf-3   { color: var(--accent); font-weight: 700; }
+/* Elite pitcher warning */
+.pc-pit-warn {
+  font-size: .74rem; color: #ffb300;
+  border-left: 2px solid #ffb300; padding: 3px 0 3px 8px; margin-bottom: 4px;
+}
 
 /* ── PICKS HISTORY MODAL ── */
 .ph-modal {
@@ -1691,6 +1701,12 @@ input { font: inherit; }
 .ph-tab-active { background: var(--accent-glow); color: var(--accent); border-color: rgba(0,230,118,.3); }
 .ph-tab-rec  { font-size: .65rem; color: var(--text-muted); margin-left: 4px; font-weight: 600; }
 .ph-prop-badge { font-size: .72rem; background: rgba(0,230,118,.1); color: var(--accent); border-radius: 3px; padding: 1px 5px; margin-right: 3px; font-weight: 700; white-space: nowrap; }
+/* Per-category accuracy chips */
+.ph-cat-summary { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.ph-cat-chip    { font-size: .74rem; font-weight: 700; padding: 3px 9px; border-radius: 12px; white-space: nowrap; }
+.ph-cat-good    { background: rgba(0,230,118,.15); color: var(--accent); }
+.ph-cat-bad     { background: rgba(244,67,54,.1);  color: #ef5350; }
+.ph-cat-avg     { background: rgba(255,255,255,.05); color: var(--text-muted); }
 .ph-player-row .ph-matchup { font-size: .8rem; display: flex; align-items: center; gap: 4px; }
 .ph-list   { padding: 6px 0; }
 .ph-row    {
