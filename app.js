@@ -322,9 +322,16 @@ function updatePicksDisplay() {
   const pbBreak = document.getElementById('pb-breakdown');
   if (!banner || !pbWins || !pbLoss || !pbPct) return;
 
-  if (!allVals.length) { banner.style.display = 'none'; return; }
+  banner.style.display = ''; // always visible
 
-  banner.style.display = '';
+  if (!allVals.length) {
+    pbWins.textContent = '0';
+    pbLoss.textContent = '0';
+    pbPct.textContent  = 'making picks…';
+    if (pbBreak) pbBreak.textContent = '';
+    banner.className = '';
+    return;
+  }
 
   if (sportRes.length) {
     // Sport has resolved picks — show sport record
@@ -1917,36 +1924,46 @@ function gameRowState(g) {
   return { live, fin, periodLabel };
 }
 
-function inlineGamePick(g) {
+// Records pick + immediately resolves if game is finished. Safe to call multiple times.
+function autoRecordAndResolvePick(g) {
+  if (!g.awayRec && !g.homeRec) return;
   const { fin } = gameRowState(g);
-  if (fin) return '';
-  const awayWP = parseWinPct(g.awayRec);
-  const homeWP = parseWinPct(g.homeRec);
+  const awayWP  = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
+  const rawHome = homeWP * 1.03, total = awayWP + rawHome;
+  const homePct = Math.round((rawHome / total) * 100);
+  const short   = (homePct >= 50 ? g.homeTeam : g.awayTeam).split(' ').pop();
+  recordPick(String(g.id), short, `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '');
+  if (fin && g.awayScore !== '' && g.homeScore !== '') {
+    const aS = parseFloat(g.awayScore) || 0, hS = parseFloat(g.homeScore) || 0;
+    if (aS !== hS) resolvePick(String(g.id), aS > hS ? g.awayTeam.split(' ').pop() : g.homeTeam.split(' ').pop());
+  }
+}
+
+function inlineGamePick(g) {
   if (!g.awayRec && !g.homeRec) return '';
-  const rawAway = awayWP, rawHome = homeWP * 1.03;
-  const total   = rawAway + rawHome;
+  const { fin } = gameRowState(g);
+  const awayWP  = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
+  const rawHome = homeWP * 1.03, total = awayWP + rawHome;
   const homePct = Math.round((rawHome / total) * 100);
   const awayPct = 100 - homePct;
   const margin  = Math.abs(homePct - 50);
-  if (margin < 3) return '';
   const favTeam = homePct > awayPct ? g.homeTeam : g.awayTeam;
   const pct     = Math.max(homePct, awayPct);
   const short   = favTeam.split(' ').pop();
-  recordPick(String(g.id), short, `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '');
+  const stored  = getPicks()[String(g.id)];
+  if (fin) {
+    if (!stored || stored.result === null) return '';
+    return stored.result === 'win'
+      ? `<span class="game-pick-inline pick-win" title="Pick correct">✓ ${esc(short)}</span>`
+      : `<span class="game-pick-inline pick-loss" title="Pick wrong">✗ ${esc(short)}</span>`;
+  }
+  if (margin < 3) return '';
   return `<span class="game-pick-inline" title="${esc(g.awayRec || '?')} vs ${esc(g.homeRec || '?')}">→ ${esc(short)} ${pct}%</span>`;
 }
 
 function buildOtherRow(g) {
   const { live, fin, periodLabel } = gameRowState(g);
-  // Resolve any stored pick when game ends
-  if (fin && (g.awayScore !== '' && g.homeScore !== '')) {
-    const aScore = parseFloat(g.awayScore) || 0;
-    const hScore = parseFloat(g.homeScore) || 0;
-    if (aScore !== hScore) {
-      const winner = aScore > hScore ? g.awayTeam.split(' ').pop() : g.homeTeam.split(' ').pop();
-      resolvePick(String(g.id), winner);
-    }
-  }
+  autoRecordAndResolvePick(g); // record pick for all games and resolve if finished
   const pick = inlineGamePick(g);
   return `
     <div class="other-match-row ${live?'live':''}" id="og-${esc(g.id)}" onclick="toggleGamePreview('${esc(g.id)}')">
@@ -1989,6 +2006,7 @@ function renderOtherScores(games, sport, src) {
   const allExist = games.every(g => !!document.getElementById(`og-${g.id}`));
   if (allExist) {
     for (const g of games) {
+      autoRecordAndResolvePick(g);
       const { live, fin, periodLabel } = gameRowState(g);
       const rowEl = document.getElementById(`og-${g.id}`);
       const stEl  = document.getElementById(`og-st-${g.id}`);
@@ -2000,7 +2018,7 @@ function renderOtherScores(games, sport, src) {
                      : fin  ? '<span class="fin-badge">FIN</span>'
                      : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`;
       scEl.innerHTML = `<div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '-'}</div><div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '-'}</div>`;
-      pdEl.textContent = live && (periodLabel || g.time) ? `${periodLabel} ${g.time}`.trim() : '';
+      pdEl.innerHTML = (live && (periodLabel || g.time) ? `<span>${esc(periodLabel)} ${esc(g.time)}</span>` : '') + inlineGamePick(g);
     }
     return;
   }
