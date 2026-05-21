@@ -865,24 +865,26 @@ const CLAY_COUNTRIES  = new Set(['ESP','ARG','ITA','FRA','CHL','COL','PER','URU'
 const GRASS_COUNTRIES = new Set(['AUS','GBR','USA','GER','CAN','RSA','NZL','SWE']);
 
 // Tournament-specific affinity — last name (lowercase) → partial tournament name → strength (1-4)
+// Active players only — remove when a player retires
 const TOURNAMENT_AFFINITY = {
-  nadal:     { 'roland garros':4, 'french open':4, 'monte carlo':3, 'barcelona':3, 'madrid':2, 'rome':2 },
+  // ATP
   djokovic:  { 'australian open':4, 'wimbledon':3, 'us open':2, 'paris masters':3 },
-  federer:   { 'wimbledon':4, 'halle':3, 'basel':3, 'dubai':2, 'australian open':2 },
   alcaraz:   { 'roland garros':3, 'wimbledon':3, 'us open':2, 'madrid':2, 'barcelona':2 },
-  sinner:    { 'australian open':3, 'miami':2, 'us open':2 },
-  zverev:    { 'roland garros':2, 'paris masters':3, 'hamburg':2 },
+  sinner:    { 'australian open':4, 'miami':2, 'us open':3 },
+  zverev:    { 'roland garros':3, 'paris masters':3, 'hamburg':2 },
   tsitsipas: { 'monte carlo':3, 'barcelona':2, 'lyon':2 },
   medvedev:  { 'us open':3, 'paris masters':2, 'shanghai':2 },
+  ruud:      { 'roland garros':3, 'french open':3, 'rome':2, 'monte carlo':2, 'barcelona':2 },
+  rublev:    { 'monte carlo':3, 'hamburg':2, 'madrid':2 },
+  fritz:     { 'indian wells':3, 'us open':2 },
+  // WTA
   swiatek:   { 'roland garros':4, 'french open':4, 'madrid':3, 'rome':3, 'miami':2 },
-  sabalenka: { 'australian open':3, 'us open':3, 'madrid':2 },
+  sabalenka: { 'australian open':4, 'us open':3, 'madrid':2 },
   gauff:     { 'us open':3, 'roland garros':2, 'miami':2 },
   rybakina:  { 'wimbledon':3, 'australian open':2, 'dubai':2 },
-  kvitova:   { 'wimbledon':3, 'prague':2 },
-  halep:     { 'roland garros':3, 'wimbledon':2 },
-  murray:    { 'wimbledon':3, 'us open':2, 'madrid':2 },
-  wawrinka:  { 'roland garros':2, 'australian open':2, 'us open':2 },
-  thiem:     { 'roland garros':3, 'us open':2 },
+  paolini:   { 'roland garros':3, 'wimbledon':2, 'dubai':2 },
+  pegula:    { 'us open':2, 'miami':2 },
+  jabeur:    { 'wimbledon':3, 'roland garros':2, 'rome':2 },
 };
 
 function isGrandSlam(m) {
