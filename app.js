@@ -679,13 +679,56 @@ async function preloadRankIndex() {
     const atp = atpR.status === 'fulfilled' ? atpR.value : [];
     const wta = wtaR.status === 'fulfilled' ? wtaR.value : [];
     S.rankIndex.clear();
+    // Store player name in each entry so ESPN supplement can match by name
     for (const p of [...atp, ...wta]) {
       if (p.player_key) S.rankIndex.set(String(p.player_key), {
         rank:   p.place ?? p.standing_place ?? p.ranking ?? 999,
         points: p.points ?? p.standing_points ?? 0,
-        league: atp.includes(p) ? 'ATP' : 'WTA'
+        league: atp.includes(p) ? 'ATP' : 'WTA',
+        name:   (p.player_name || p.name || '').toLowerCase()
       });
     }
+
+    // Supplement with ESPN tennis rankings — updated much more frequently than api-tennis.com.
+    // api-tennis.com standings can lag weeks behind real rankings for fast-rising players.
+    // We use last-name + first-initial matching to cross-reference, then update any entry
+    // where ESPN shows a significantly better (lower number) rank.
+    const lnorm = s => (s || '').toLowerCase().replace(/[^a-z]/g, '');
+    const espnSupplement = async (url, league) => {
+      try {
+        const j = await fetch(url).then(r => r.json());
+        const rows = j?.rankings?.[0]?.ranks || [];
+        for (const row of rows) {
+          const espnRank = row.current;
+          const fullName = row.athlete?.displayName || row.athlete?.fullName || '';
+          if (!fullName || !espnRank) continue;
+          const parts    = fullName.trim().split(/\s+/);
+          const espnLast = lnorm(parts[parts.length - 1]);
+          const espnInit = parts[0] ? lnorm(parts[0])[0] : '';
+          // Find matching entry in rank index: same league, last name matches, first initial matches
+          for (const [, entry] of S.rankIndex) {
+            if (entry.league !== league) continue;
+            const entryParts = (entry.name || '').trim().split(/\s+/);
+            const entryLast  = lnorm(entryParts[entryParts.length - 1]);
+            const entryInit  = entryParts[0] ? lnorm(entryParts[0])[0] : '';
+            if (espnLast && entryLast && espnLast === entryLast &&
+                (!espnInit || !entryInit || espnInit === entryInit)) {
+              if (espnRank < entry.rank) {
+                // ESPN has this player ranked higher — use it (with synthetic points so ratio logic works)
+                entry.rank   = espnRank;
+                entry.points = Math.max(entry.points, Math.round(15000 - espnRank * 130));
+              }
+              break;
+            }
+          }
+        }
+      } catch {}
+    };
+    await Promise.allSettled([
+      espnSupplement('https://site.api.espn.com/apis/site/v2/sports/tennis/wta/rankings?limit=200', 'WTA'),
+      espnSupplement('https://site.api.espn.com/apis/site/v2/sports/tennis/atp/rankings?limit=200', 'ATP'),
+    ]);
+
     // Re-run pick generation for all already-cached matches now that rankings are available
     for (const m of S.matches.values()) inlineTennisPick(m);
     updatePicksDisplay();
