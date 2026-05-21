@@ -1633,6 +1633,20 @@ input { font: inherit; }
 .pit-trend-hot  { color: var(--accent); font-weight: 700; }
 .pit-trend-cold { color: #ffb300; font-weight: 700; }
 
+/* ── MLB L10 MOMENTUM ── */
+.pc-momentum { display: flex; gap: 10px; flex-wrap: wrap; margin: 2px 0 4px; }
+.pc-l10 { font-size: .72rem; font-weight: 600; border-radius: 3px; padding: 1px 6px; }
+.pc-l10.l10-hot  { background: rgba(0,230,118,.15); color: var(--accent); }
+.pc-l10.l10-cold { background: rgba(239,83,80,.12);  color: #ef5350; }
+.pc-l10.l10-avg  { background: rgba(255,255,255,.05); color: var(--text-muted); }
+.l10-streak { opacity: .8; font-style: italic; }
+
+/* ── TENNIS ROUND / FATIGUE TAGS ── */
+.tp-round-tag    { font-size: .65rem; font-weight: 700; letter-spacing: .06em; background: rgba(255,255,255,.07); color: var(--text-2); border-radius: 3px; padding: 1px 5px; }
+.tp-fatigue-tag  { font-size: .7rem; color: #ffb300; }
+.tp-tired-dot    { font-size: .7rem; margin-left: 2px; opacity: .85; }
+.gp-round-note   { font-size: .68rem; font-weight: 400; color: var(--text-muted); }
+
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-text {
