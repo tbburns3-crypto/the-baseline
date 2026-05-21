@@ -77,10 +77,10 @@ const _PICKS_KEY = 'baselinePicks';
 function getPicks()     { try { return JSON.parse(localStorage.getItem(_PICKS_KEY) || '{}'); } catch { return {}; } }
 function savePicks(obj) { try { localStorage.setItem(_PICKS_KEY, JSON.stringify(obj)); } catch {} }
 
-function recordPick(gameId, pickedTeam, matchup = '', sport = '') {
+function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0) {
   const picks = getPicks();
   if (picks[gameId]) return;
-  picks[gameId] = { team: pickedTeam, date: new Date().toISOString().slice(0,10), result: null, matchup, sport };
+  picks[gameId] = { team: pickedTeam, date: new Date().toISOString().slice(0,10), result: null, matchup, sport, conf };
   savePicks(picks);
 }
 
@@ -204,6 +204,20 @@ function showPicksHistory() {
   }
   if (!pending.length && !resolved.length) {
     content = '<div class="ph-empty">No picks yet for this sport.<br><span class="muted">Picks are generated automatically as you browse games.</span></div>';
+  }
+
+  // Confidence calibration (how accurate are high-conf vs low-conf picks?)
+  const calPicks = resolved.filter(p => p.conf > 0 && p.type !== 'player');
+  if (calPicks.length >= 3) {
+    const tiers = { 1:{w:0,t:0}, 2:{w:0,t:0}, 3:{w:0,t:0} };
+    for (const p of calPicks) { const c = parseInt(p.conf); if (tiers[c]) { tiers[c].t++; if (p.result==='win') tiers[c].w++; } }
+    const calRows = [3,2,1].filter(c => tiers[c].t > 0).map(c => {
+      const pct = Math.round(tiers[c].w / tiers[c].t * 100);
+      const dots = '●'.repeat(c) + '○'.repeat(3-c);
+      const cls  = pct >= 60 ? 'good' : pct <= 40 ? 'bad' : 'avg';
+      return `<div class="ph-cal-row"><span class="ph-cal-dots">${dots}</span><span class="ph-cal-stat ph-cat-${cls}">${tiers[c].w}-${tiers[c].t-tiers[c].w} (${pct}%)</span></div>`;
+    }).join('');
+    content += `<div class="ph-cal-section"><div class="ph-sport-hdr">Accuracy by Confidence</div>${calRows}</div>`;
   }
 
   const modal = document.createElement('div');
@@ -569,7 +583,8 @@ async function loadRankings() {
       if (p.player_key) S.rankIndex.set(String(p.player_key), {
         rank:    p.place ?? p.standing_place ?? p.ranking ?? 999,
         points:  p.points ?? p.standing_points ?? 0,
-        league:  p.league || (atp.includes(p) ? 'ATP' : 'WTA')
+        league:  p.league || (atp.includes(p) ? 'ATP' : 'WTA'),
+        country: (p.country || p.player_country || p.nationality || '').toUpperCase().slice(0,3)
       });
     }
 
@@ -830,6 +845,27 @@ function tennisRound(m) {
   if (/2nd|r2|round.?2/.test(r))                   return 'r2';
   if (/1st|r1|round.?1/.test(r))                   return 'r1';
   return 'mid';
+}
+
+// Countries known to produce clay / fast-court specialists
+const CLAY_COUNTRIES  = new Set(['ESP','ARG','ITA','FRA','CHL','COL','PER','URU','BRA','AUT','SUI','MON','SVK']);
+const GRASS_COUNTRIES = new Set(['AUS','GBR','USA','GER','CAN','RSA','NZL','SWE']);
+
+function isGrandSlam(m) {
+  const n = (m.tournament_name || m.event_type_type || '').toLowerCase();
+  return /wimbledon|us open|french open|roland.?garros|australian open/.test(n);
+}
+
+function isBestOf5(m) {
+  return isGrandSlam(m) && matchCategory(m.event_type_type || '') === 'atp';
+}
+
+function tournamentTier(m) {
+  const n = (m.tournament_name || '').toLowerCase();
+  if (isGrandSlam(m)) return 'slam';
+  if (/masters 1000|rolex|indian wells|miami open|madrid|rome|montreal|toronto|cincinnati|shanghai|paris masters|monte.?carlo/.test(n)) return 'masters';
+  if (/500|dubai|acapulco|barcelona|halle|queen.?s|eastbourne|washington|osaka|beijing|vienna|basel|rotterdam/.test(n)) return '500';
+  return '250';
 }
 
 function inlineTennisPick(m) {
@@ -1122,12 +1158,26 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   }
 
   // Rankings (if loaded and no seeds)
+  const rd1 = S.rankIndex.get(p1key), rd2 = S.rankIndex.get(p2key);
   if (!s1 && !s2) {
-    const r1 = S.rankIndex.get(p1key);
-    const r2 = S.rankIndex.get(p2key);
-    if (r1 && r2 && r1.rank !== r2.rank) {
-      if (r1.rank < r2.rank) { p1Score += 2; factors.push({ win: true, label: 'Ranking', detail: `${l1} #${r1.rank} vs ${l2} #${r2.rank}`, side: 1 }); }
-      else                   { p2Score += 2; factors.push({ win: true, label: 'Ranking', detail: `${l2} #${r2.rank} vs ${l1} #${r1.rank}`, side: 2 }); }
+    if (rd1 && rd2 && rd1.rank !== rd2.rank) {
+      if (rd1.rank < rd2.rank) { p1Score += 2; factors.push({ win: true, label: 'Ranking', detail: `${l1} #${rd1.rank} vs ${l2} #${rd2.rank}`, side: 1 }); }
+      else                     { p2Score += 2; factors.push({ win: true, label: 'Ranking', detail: `${l2} #${rd2.rank} vs ${l1} #${rd1.rank}`, side: 2 }); }
+    }
+  }
+
+  // Nationality-surface affinity (only when rankings/seeds don't clearly separate)
+  const c1 = rd1?.country || '', c2 = rd2?.country || '';
+  const surfLow2 = surfLabel.toLowerCase();
+  if (!s1 && !s2 && (c1 || c2)) {
+    if (surfLow2.includes('clay')) {
+      const c1c = CLAY_COUNTRIES.has(c1), c2c = CLAY_COUNTRIES.has(c2);
+      if (c1c && !c2c) { p1Score += 1; factors.push({ win: true, label: 'Surface fit', detail: `${l1} clay nation`, side: 1 }); }
+      else if (c2c && !c1c) { p2Score += 1; factors.push({ win: true, label: 'Surface fit', detail: `${l2} clay nation`, side: 2 }); }
+    } else if (surfLow2.includes('grass') || surfLow2.includes('indoor')) {
+      const c1g = GRASS_COUNTRIES.has(c1), c2g = GRASS_COUNTRIES.has(c2);
+      if (c1g && !c2g) { p1Score += 1; factors.push({ win: true, label: 'Surface fit', detail: `${l1} fast-court nation`, side: 1 }); }
+      else if (c2g && !c1g) { p2Score += 1; factors.push({ win: true, label: 'Surface fit', detail: `${l2} fast-court nation`, side: 2 }); }
     }
   }
 
@@ -1178,24 +1228,35 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
 
   if (!factors.length) return '';
 
-  // Round weighting: early rounds are more volatile; late rounds validate form
+  // Round + tier + BO5 weighting
   const round = tennisRound(m);
+  const tier  = tournamentTier(m);
+  const bo5   = isBestOf5(m);
   const earlyRound = ['r1','r2'].includes(round);
   const lateRound  = ['quarter','semi','final'].includes(round);
+
+  // BO5 Grand Slam bonus for the leading player
+  if (bo5 && p1Score !== p2Score) {
+    const winner = p1Score > p2Score ? 1 : 2;
+    if (winner === 1) { p1Score += 1; factors.push({ win: true, label: 'Best of 5', detail: `BO5 amplifies ${l1}'s edge`, side: 1 }); }
+    else              { p2Score += 1; factors.push({ win: true, label: 'Best of 5', detail: `BO5 amplifies ${l2}'s edge`, side: 2 }); }
+  }
 
   let verdictHTML = '';
   if (p1Score > p2Score) {
     let pct = Math.round((p1Score / (p1Score + p2Score)) * 100);
-    if (earlyRound) pct = Math.min(pct, 68); // cap confidence in early rounds
-    if (lateRound)  pct = Math.min(100, pct + 4);
+    if (earlyRound || tier === '250') pct = Math.min(pct, 70);
+    if (lateRound)  pct = Math.min(100, pct + (tier === 'slam' ? 6 : 3));
+    const badge = bo5 ? ' <span class="gp-bo5-badge">BO5</span>' : '';
     const roundNote = earlyRound ? ' <span class="gp-round-note">(early rd)</span>' : lateRound ? ' <span class="gp-round-note">(late rd)</span>' : '';
-    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p1Name)}</span> likely to win <span class="gp-pick-count">(${pct}% of factors${round !== 'unknown' ? ` · ${round.toUpperCase()}` : ''})</span>${roundNote}</div>`;
+    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p1Name)}</span> likely to win <span class="gp-pick-count">(${pct}%${round !== 'unknown' ? ` · ${round.toUpperCase()}` : ''})</span>${badge}${roundNote}</div>`;
   } else if (p2Score > p1Score) {
     let pct = Math.round((p2Score / (p1Score + p2Score)) * 100);
-    if (earlyRound) pct = Math.min(pct, 68);
-    if (lateRound)  pct = Math.min(100, pct + 4);
+    if (earlyRound || tier === '250') pct = Math.min(pct, 70);
+    if (lateRound)  pct = Math.min(100, pct + (tier === 'slam' ? 6 : 3));
+    const badge = bo5 ? ' <span class="gp-bo5-badge">BO5</span>' : '';
     const roundNote = earlyRound ? ' <span class="gp-round-note">(early rd)</span>' : lateRound ? ' <span class="gp-round-note">(late rd)</span>' : '';
-    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p2Name)}</span> likely to win <span class="gp-pick-count">(${pct}% of factors${round !== 'unknown' ? ` · ${round.toUpperCase()}` : ''})</span>${roundNote}</div>`;
+    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p2Name)}</span> likely to win <span class="gp-pick-count">(${pct}%${round !== 'unknown' ? ` · ${round.toUpperCase()}` : ''})</span>${badge}${roundNote}</div>`;
   } else {
     verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup - too close to call</div>`;
   }
@@ -1697,7 +1758,8 @@ function switchSport(sport) {
     secTab.style.display   = 'none';
     playersTab.style.display  = 'none';
     lineupsTab.style.display  = 'none';
-    picksTab.style.display    = 'none';
+    picksTab.style.display    = '';
+    picksTab.textContent = '⛳ Picks';
   } else if (sport === 'soccer') {
     secTab.textContent = 'Tables'; secTab.dataset.view = 'secondary';
     secTab.style.display   = '';
@@ -1764,6 +1826,7 @@ function switchView(view) {
       stopScoresTimer();
       document.getElementById('view-mlb-picks').classList.add('active');
       if (S.sport === 'mlb') loadMLBPicksPage();
+      else if (S.sport === 'golf') loadGolfPicksPage();
       else loadOtherPicksPage(S.sport);
     } else if (view === 'players') {
       stopScoresTimer();
@@ -2503,6 +2566,12 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const momentumLine = (awayStand || homeStand)
     ? `<div class="pc-momentum">${l10Chip(awayStand, espnGame.awayAbbr)} ${l10Chip(homeStand, espnGame.homeAbbr)}</div>` : '';
 
+  // ── ESPN odds line ──
+  const oddsInfo = espnGame.odds;
+  const oddsLine = (oddsInfo?.spread || oddsInfo?.overUnder)
+    ? `<div class="pc-odds-line">${[oddsInfo.spread ? `Line: ${esc(oddsInfo.spread)}` : '', oddsInfo.overUnder ? `O/U: ${oddsInfo.overUnder}` : ''].filter(Boolean).join(' · ')}</div>`
+    : '';
+
   // ── Compact weather ──
   const wxParts = weather ? [
     weather.condition,
@@ -2602,6 +2671,25 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     }
   }
 
+  // ── Projected run totals ──
+  let projLine = '';
+  if (hasLineup && awayValid.length && homeValid.length) {
+    const LEAGUE_OPS = 0.728, LEAGUE_RPG = 4.50;
+    const avgOPS = arr => arr.reduce((s,b) => s + parseFloat(b.ops||0), 0) / arr.length;
+    const projR  = (batters, pitERA) => {
+      const opsR = avgOPS(batters) / LEAGUE_OPS;
+      const eraR = LEAGUE_ERA / Math.max(parseFloat(pitERA) || LEAGUE_ERA, 1.5);
+      return Math.max(0.5, Math.min(13, LEAGUE_RPG * opsR * eraR)).toFixed(1);
+    };
+    const awayProj = projR(awayValid, homePD?.season?.era);
+    const homeProj = projR(homeValid, awayPD?.season?.era);
+    const projTotal = (parseFloat(awayProj) + parseFloat(homeProj)).toFixed(1);
+    const ouNote = oddsInfo?.overUnder
+      ? ` · O/U ${oddsInfo.overUnder} <span class="pc-ou-${parseFloat(projTotal) >= oddsInfo.overUnder ? 'over' : 'under'}">(model ${parseFloat(projTotal) >= oddsInfo.overUnder ? 'leans OVER' : 'leans UNDER'})</span>`
+      : ` · total ${projTotal}`;
+    projLine = `<div class="pc-proj-line">${esc(espnGame.awayAbbr)}: <b>${awayProj}</b> · ${esc(espnGame.homeAbbr)}: <b>${homeProj}</b>${ouNote}</div>`;
+  }
+
   // ── Simplified pick row (one line each) ──
   const pickRow = (icon, label, batter, keyStat) => {
     if (!batter) return '';
@@ -2684,8 +2772,10 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     </div>
     ${favLine ? `<div class="pc-meta">${favLine}</div>` : ''}
     ${momentumLine}
+    ${oddsLine}
     ${pitcherLine}
     ${wxLine}
+    ${projLine}
     ${pitWarnLine}
     ${picksHTML}
   </div>`;
@@ -2838,11 +2928,25 @@ function buildTomorrowPickCard(m) {
     else if (s2) { p2Score += 1; factors.push({ label:'Seeding', detail:`${l2} seeded, ${l1} unseeded`, side:2 }); }
 
   // Rankings
+  const tr1 = S.rankIndex.get(p1key), tr2 = S.rankIndex.get(p2key);
   if (!s1 && !s2) {
-    const r1 = S.rankIndex.get(p1key), r2 = S.rankIndex.get(p2key);
-    if (r1 && r2 && r1.rank !== r2.rank) {
-      if (r1.rank < r2.rank) { p1Score += 2; factors.push({ label:'Ranking', detail:`${l1} #${r1.rank} vs ${l2} #${r2.rank}`, side:1 }); }
-      else                   { p2Score += 2; factors.push({ label:'Ranking', detail:`${l2} #${r2.rank} vs ${l1} #${r1.rank}`, side:2 }); }
+    if (tr1 && tr2 && tr1.rank !== tr2.rank) {
+      if (tr1.rank < tr2.rank) { p1Score += 2; factors.push({ label:'Ranking', detail:`${l1} #${tr1.rank} vs ${l2} #${tr2.rank}`, side:1 }); }
+      else                     { p2Score += 2; factors.push({ label:'Ranking', detail:`${l2} #${tr2.rank} vs ${l1} #${tr1.rank}`, side:2 }); }
+    }
+  }
+
+  // Nationality-surface affinity (when no clear seeding/ranking separation)
+  if (!s1 && !s2) {
+    const c1 = tr1?.country || '', c2 = tr2?.country || '';
+    if (surfLow.includes('clay')) {
+      const c1c = CLAY_COUNTRIES.has(c1), c2c = CLAY_COUNTRIES.has(c2);
+      if (c1c && !c2c) { p1Score += 1; factors.push({ label:'Surface fit', detail:`${l1} clay nation`, side:1 }); }
+      else if (c2c && !c1c) { p2Score += 1; factors.push({ label:'Surface fit', detail:`${l2} clay nation`, side:2 }); }
+    } else if (surfLow.includes('grass') || surfLow.includes('indoor')) {
+      const c1g = GRASS_COUNTRIES.has(c1), c2g = GRASS_COUNTRIES.has(c2);
+      if (c1g && !c2g) { p1Score += 1; factors.push({ label:'Surface fit', detail:`${l1} fast-court nation`, side:1 }); }
+      else if (c2g && !c1g) { p2Score += 1; factors.push({ label:'Surface fit', detail:`${l2} fast-court nation`, side:2 }); }
     }
   }
 
@@ -2882,24 +2986,32 @@ function buildTomorrowPickCard(m) {
     p1Score += 1; factors.push({ label:'Fatigue', detail:`${l2} plays today`, side:1 });
   }
 
-  // Round weighting
-  const round = tennisRound(m);
+  // Round + tier + BO5 weighting
+  const round     = tennisRound(m);
+  const tier      = tournamentTier(m);
+  const bo5       = isBestOf5(m);
   const earlyRound = ['r1','r2'].includes(round);
   const lateRound  = ['quarter','semi','final'].includes(round);
+
+  // BO5 Grand Slam bonus for the leader
+  if (bo5 && p1Score !== p2Score) {
+    if (p1Score > p2Score) { p1Score += 1; factors.push({ label:'Best of 5', detail:`BO5 amplifies ${l1}'s edge`, side:1 }); }
+    else                   { p2Score += 1; factors.push({ label:'Best of 5', detail:`BO5 amplifies ${l2}'s edge`, side:2 }); }
+  }
 
   // Decide pick
   let pickName = '', pickSide = 0, conf = 0;
   const total = p1Score + p2Score;
   if (p1Score > p2Score) {
     pickName = p1Name; pickSide = 1;
-    conf = total >= 8 ? 3 : total >= 5 ? 2 : 1;
-    if (earlyRound) conf = Math.min(conf, 2);
-    if (lateRound && conf < 3 && total >= 5) conf = Math.min(3, conf + 1);
+    conf = total >= 10 ? 3 : total >= 6 ? 2 : 1;
+    if (earlyRound || tier === '250') conf = Math.min(conf, 2);
+    if (lateRound && tier === 'slam' && total >= 6) conf = Math.min(3, conf + 1);
   } else if (p2Score > p1Score) {
     pickName = p2Name; pickSide = 2;
-    conf = total >= 8 ? 3 : total >= 5 ? 2 : 1;
-    if (earlyRound) conf = Math.min(conf, 2);
-    if (lateRound && conf < 3 && total >= 5) conf = Math.min(3, conf + 1);
+    conf = total >= 10 ? 3 : total >= 6 ? 2 : 1;
+    if (earlyRound || tier === '250') conf = Math.min(conf, 2);
+    if (lateRound && tier === 'slam' && total >= 6) conf = Math.min(3, conf + 1);
   }
 
   // Record the pick with full analysis
@@ -2907,7 +3019,7 @@ function buildTomorrowPickCard(m) {
     const pickId  = 'tn_' + m.event_key;
     const surfTag = surface ? ` (${surface})` : '';
     const matchup = `${l1} vs ${l2}${surfTag}`;
-    recordPick(pickId, lastName(pickName), matchup, 'tennis');
+    recordPick(pickId, lastName(pickName), matchup, 'tennis', conf);
   }
 
   // Confidence dots
@@ -2932,9 +3044,11 @@ function buildTomorrowPickCard(m) {
     `<span class="tp-factor tp-factor-${f.side === 1 ? 'p1' : f.side === 2 ? 'p2' : 'tie'}">${esc(f.label)}: ${esc(f.detail)}</span>`
   ).join('');
 
+  const tierBadge = tier === 'slam' ? '<span class="tp-tier-slam">GS</span>' : tier === 'masters' ? '<span class="tp-tier-masters">M1000</span>' : '';
+  const bo5Badge  = bo5 ? '<span class="tp-bo5-badge">BO5</span>' : '';
   const verdictHTML = pickName
-    ? `<div class="tp-pick-line">→ <strong>${esc(lastName(pickName))}</strong> ${confDots}</div>`
-    : `<div class="tp-pick-line tp-pick-even">Too close to call</div>`;
+    ? `<div class="tp-pick-line">→ <strong>${esc(lastName(pickName))}</strong> ${confDots}${bo5Badge}${tierBadge}</div>`
+    : `<div class="tp-pick-line tp-pick-even">Too close to call${tierBadge}</div>`;
 
   const roundLabel = round !== 'unknown' && round !== 'mid' ? `<span class="tp-round-tag">${round.toUpperCase()}</span>` : '';
   const fatigueTag = (p1Tired || p2Tired)
@@ -4368,6 +4482,141 @@ function renderGolfRow(p, round) {
     <span class="gc-today">${esc(today)}</span>
     <span class="gc-thru ${thru === 'F' ? 'golf-thru-done' : ''}">${esc(thru)}</span>
   </div>`;
+}
+
+// ── GOLF 3-BALL PICKS ─────────────────────────────────────────
+function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
+  const players = group.players.slice(0, 3);
+  if (players.length < 2) return '';
+
+  const getWR  = p => { const s = p.statistics?.find(x => x.name === 'worldRanking' || x.abbreviation === 'WR'); return s ? parseInt(s.displayValue) || 9999 : 9999; };
+  const getSA  = p => { const s = p.statistics?.find(x => ['SA','AVG','scoringAverage'].includes(x.abbreviation||x.name)); return s ? parseFloat(s.displayValue) || 0 : 0; };
+  const getTodayNum = p => { const t = p.linescores?.[round-1]?.displayValue; return t ? (t === 'E' ? 0 : parseInt(t) || 0) : null; };
+
+  const avgSA = players.reduce((s,p) => s + (getSA(p)||70), 0) / players.length;
+
+  const scored = players.map(p => {
+    const wr  = getWR(p);
+    const sa  = getSA(p);
+    const pos = parseInt(p.sortOrder) || 999;
+    const todayNum = getTodayNum(p);
+    let score = 0;
+    const factors = [];
+
+    // World ranking (primary pre-round factor)
+    const wrPts = wr <= 10 ? 5 : wr <= 25 ? 4 : wr <= 50 ? 3 : wr <= 100 ? 2 : wr <= 150 ? 1 : 0;
+    if (wrPts > 0) { score += wrPts; factors.push(`WR${wr}`); }
+
+    // Tournament position (rounds 2+)
+    if (round > 1 || isLive) {
+      const posPts = pos <= 5 ? 4 : pos <= 15 ? 3 : pos <= 30 ? 2 : pos <= 60 ? 1 : 0;
+      if (posPts > 0 && pos < 999) { score += posPts; factors.push(`#${pos} tourn`); }
+    }
+
+    // Scoring average vs group
+    if (sa > 0 && avgSA > 0) {
+      const diff = sa - avgSA;
+      if (diff < -0.4) { score += 2; factors.push(`${sa.toFixed(1)} avg`); }
+      else if (diff < 0) { score += 1; factors.push(`${sa.toFixed(1)} avg`); }
+    }
+
+    // Today's round (if in-progress or complete)
+    if (todayNum !== null && isLive) {
+      if (todayNum <= -2) { score += 3; factors.push(`${todayNum > 0 ? '+' : ''}${todayNum} today`); }
+      else if (todayNum === -1) { score += 2; factors.push(`-1 today`); }
+    }
+
+    const total = p.score || 'E';
+    const totalNum = total === 'E' ? 0 : parseInt(total) || 0;
+    return { p, score, factors, wr, sa, pos, total, totalNum, todayNum };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const winner = scored[0];
+  const pickName = winner.p.athlete?.shortName || winner.p.athlete?.displayName || '?';
+
+  const gap  = winner.score - (scored[1]?.score || 0);
+  const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
+  const confDots = `<span class="tp-conf tp-conf-${conf}">${'●'.repeat(conf)}${'○'.repeat(3-conf)}</span>`;
+
+  // Record pick
+  const pickId  = `golf_${eventId}_${group.time.replace(/\D/g,'')}`;
+  const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
+  recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+
+  // Auto-resolve if round is complete
+  const allDone = players.every(p => (p.status?.displayValue||'') === 'F');
+  if (allDone) {
+    const best = scored.reduce((b, c) => {
+      const bt = c.p.linescores?.[round-1]?.displayValue;
+      const bv = bt === 'E' ? 0 : parseInt(bt) || 0;
+      const prev = b.p.linescores?.[round-1]?.displayValue;
+      const pv = prev === 'E' ? 0 : parseInt(prev) || 0;
+      return bv < pv ? c : b;
+    });
+    const winnerName = best.p.athlete?.shortName || best.p.athlete?.displayName || '';
+    resolvePick(pickId, winnerName.split(' ').pop());
+  }
+
+  const rows = scored.map(({ p, score, factors, wr, sa, total, totalNum, todayNum }, idx) => {
+    const name = p.athlete?.shortName || p.athlete?.displayName || '-';
+    const thru = p.status?.displayValue || '-';
+    const scoreCls = totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
+    const todayStr = todayNum !== null ? (todayNum > 0 ? `+${todayNum}` : String(todayNum)) : '';
+    const isPick = idx === 0;
+    const chips  = factors.map(f => `<span class="golf-pick-chip">${esc(f)}</span>`).join('');
+    return `<div class="golf-pick-row ${isPick ? 'golf-pick-winner' : ''}">
+      ${isPick ? '<span class="golf-pick-arrow">→</span>' : '<span class="golf-pick-arrow"></span>'}
+      <span class="golf-pick-name">${esc(name)}</span>
+      <span class="golf-pick-score ${scoreCls}">${esc(total)}</span>
+      <span class="golf-pick-today">${esc(todayStr)}</span>
+      <span class="golf-pick-thru">${esc(thru)}</span>
+      <span class="golf-pick-factors">${chips}</span>
+    </div>`;
+  });
+
+  return `<div class="golf-pick-card">
+    <div class="golf-pick-time">⏰ ${esc(formatTeeTime(group.time))}</div>
+    <div class="golf-pick-hdr"><span>PLAYER</span><span>TOT</span><span>TODAY</span><span>THRU</span><span>FACTORS</span></div>
+    ${rows.join('')}
+    <div class="golf-pick-verdict">Pick: <strong>${esc(pickName)}</strong> ${confDots}</div>
+  </div>`;
+}
+
+async function loadGolfPicksPage() {
+  const area = document.getElementById('mlb-picks-area');
+  area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf groups…</p></div>';
+  try {
+    const results = await Promise.allSettled(
+      GOLF_TOURS.map(t =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard`).then(r => r.json())
+      )
+    );
+    let html = '';
+    for (let i = 0; i < GOLF_TOURS.length; i++) {
+      if (results[i].status !== 'fulfilled') continue;
+      const data = results[i].value;
+      const tour = GOLF_TOURS[i];
+      for (const ev of (data.events || [])) {
+        const comp  = ev.competitions?.[0]; if (!comp) continue;
+        const state = comp.status?.type?.state || '';
+        const round = comp.status?.period || 1;
+        const isLive = state === 'in';
+        const allComp = comp.competitors || [];
+        const groups  = groupByTeeTime(allComp);
+        if (!groups.length) continue;
+        html += `<div class="golf-picks-section">
+          <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
+          ${groups.slice(0,30).map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+        </div>`;
+      }
+    }
+    const note = '<div class="pc-data-note">3-ball picks · world ranking · scoring avg · tournament position · round score</div>';
+    area.innerHTML = note + (html || '<div class="empty-state"><p>No active golf groups available.</p><p class="muted">Picks appear when a tournament is in progress or tee times are posted.</p></div>');
+    updatePicksDisplay();
+  } catch (err) {
+    area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load golf picks: ${esc(err.message)}</p></div>`;
+  }
 }
 
 // ── MLB FULL STANDINGS + STAT LEADERS ───────────────────────
