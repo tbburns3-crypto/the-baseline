@@ -7,9 +7,25 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>The Baseline — Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=61">
+  <link rel="stylesheet" href="style.css?v=62">
 </head>
 <body>
+
+  <!-- ── SIMPLE VIEW OVERLAY ── -->
+  <div id="simple-view">
+    <header class="sv-header">
+      <div class="sv-brand">
+        <span class="sv-logo">◉</span>
+        <div>
+          <div class="sv-title">THE BASELINE</div>
+          <div id="sv-date" class="sv-subtitle"></div>
+        </div>
+      </div>
+      <button class="sv-full-btn" onclick="hideSimpleView()">Full App →</button>
+    </header>
+    <div class="sv-headline">Today's Picks</div>
+    <div id="sv-content" class="sv-content"></div>
+  </div>
 
   <!-- ── TOP NAV ── -->
   <header id="topbar">
@@ -29,6 +45,7 @@
       <button class="sport-tab" data-sport="lottery">🎰 Lottery</button>
     </nav>
     <div class="topbar-controls">
+      <button id="simple-view-btn" onclick="showSimpleView()" title="Today's Picks">⚡ Picks</button>
       <span id="picks-accuracy" title="Prediction accuracy"></span>
       <div id="conn-indicator">
         <span id="conn-dot" class="conn-dot conn-connecting"></span>
@@ -203,6 +220,6 @@
     </div><!-- /main-content -->
   </div><!-- /app-layout -->
 
-  <script src="app.js?v=61"></script>
+  <script src="app.js?v=62"></script>
 </body>
 </html>

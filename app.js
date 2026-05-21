@@ -4978,31 +4978,33 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
 
   const avgSA = players.reduce((s,p) => s + (getSA(p)||70), 0) / players.length;
 
+  // Determine group state BEFORE scoring so we know if pick should be locked
+  const statuses     = players.map(p => playerRoundStatus(p, round));
+  const groupStarted = statuses.some(s => s === 'live' || s === 'finished');
+  const pickId       = `golf_${eventId}_${group.time.replace(/\D/g,'')}`;
+  const existingPick = getPicks()[pickId];
+
   const scored = players.map(p => {
     const sa  = getSA(p);
-    const pos = parseInt(p.order) || 999;   // p.order is the leaderboard/sort position
+    const pos = parseInt(p.order) || 999;
     const todayNum = getTodayNum(p);
     let score = 0;
     const factors = [];
 
-    // Leaderboard position — meaningful in all rounds
+    // Leaderboard position (pre-round tournament standing — stable)
     const posPts = pos <= 3 ? 5 : pos <= 10 ? 4 : pos <= 25 ? 3 : pos <= 50 ? 2 : pos <= 80 ? 1 : 0;
     if (posPts > 0 && pos < 999) { score += posPts; factors.push(`#${pos}`); }
 
-    // Scoring average vs group (when available)
+    // Scoring average vs group (season stat — stable)
     if (sa > 0 && avgSA > 0) {
       const diff = sa - avgSA;
       if (diff < -0.4) { score += 2; factors.push(`${sa.toFixed(1)} avg`); }
       else if (diff < 0) { score += 1; factors.push(`${sa.toFixed(1)} avg`); }
     }
 
-    // Today's round score (live or finished)
-    if (todayNum !== null) {
-      if (todayNum <= -3) { score += 4; factors.push(`${todayNum} today`); }
-      else if (todayNum === -2) { score += 3; factors.push(`-2 today`); }
-      else if (todayNum === -1) { score += 2; factors.push(`-1 today`); }
-      else if (todayNum >= 2)  { score -= 1; factors.push(`+${todayNum} today`); }
-    }
+    // Live round score intentionally excluded — using it shifts the pick to whoever
+    // is hot at that moment and causes the displayed pick to change mid-round.
+    // Picks are based on pre-round data only. todayNum still captured for display.
 
     const total = p.score || 'E';
     const totalNum = total === 'E' ? 0 : parseInt(total) || 0;
@@ -5015,12 +5017,26 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
 
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
-  const confDots = `<span class="tp-conf tp-conf-${conf}">${'●'.repeat(conf)}${'○'.repeat(3-conf)}</span>`;
 
-  // Record pick (idempotent)
-  const pickId  = `golf_${eventId}_${group.time.replace(/\D/g,'')}`;
+  // Only record pick for upcoming groups — once a group starts, the pre-round pick is locked.
+  // recordPick is idempotent anyway, but the guard makes intent clear.
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
-  recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+  if (!groupStarted) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+
+  // Display: if group has started, show the stored pre-round pick at the top
+  const storedLastName = (existingPick?.team || '').toLowerCase();
+  const displayScored  = groupStarted && storedLastName
+    ? [...scored].sort((a, b) => {
+        const aL = (a.p.athlete?.shortName || '').split(' ').pop().toLowerCase();
+        const bL = (b.p.athlete?.shortName || '').split(' ').pop().toLowerCase();
+        return (aL === storedLastName ? -1 : bL === storedLastName ? 1 : 0);
+      })
+    : scored;
+
+  const displayPick = displayScored[0];
+  const displayName = existingPick ? existingPick.team : pickName.split(' ').pop();
+  const displayConf  = existingPick ? (existingPick.conf || conf) : conf;
+  const confDots = `<span class="tp-conf tp-conf-${displayConf}">${'●'.repeat(displayConf)}${'○'.repeat(3-displayConf)}</span>`;
 
   // Auto-resolve when all players in the group have finished the round (18 holes)
   const allDone = players.every(p => playerRoundStatus(p, round) === 'finished');
@@ -5036,8 +5052,9 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
     resolvePick(pickId, winnerName.split(' ').pop());
   }
 
-  const rows = scored.map(({ p, score, factors, total, totalNum, todayNum }, idx) => {
+  const rows = displayScored.map(({ p, score, factors, total, totalNum, todayNum }, idx) => {
     const name = p.athlete?.shortName || p.athlete?.displayName || '-';
+    const lastName = name.split(' ').pop().toLowerCase();
     const holes = p.linescores?.[round-1]?.linescores?.length || 0;
     const thru  = holes === 18 ? 'F' : holes > 0 ? String(holes) : '-';
     const scoreCls = totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
@@ -5054,11 +5071,12 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
     </div>`;
   });
 
+  const preLabel = groupStarted && existingPick ? '<span class="golf-pick-pre-label">Pre-round pick</span> ' : '';
   return `<div class="golf-pick-card">
     <div class="golf-pick-time">⏰ ${esc(formatTeeTime(group.time))}</div>
     <div class="golf-pick-hdr"><span>PLAYER</span><span>TOT</span><span>TODAY</span><span>THRU</span><span>FACTORS</span></div>
     ${rows.join('')}
-    <div class="golf-pick-verdict">Pick: <strong>${esc(pickName)}</strong> ${confDots}</div>
+    <div class="golf-pick-verdict">${preLabel}Pick: <strong>${esc(displayName)}</strong> ${confDots}</div>
   </div>`;
 }
 
@@ -5695,11 +5713,18 @@ async function refresh() {
 }
 
 // ── OHIO LOTTERY ─────────────────────────────────────────────
-// Ohio-specific games: fetched from Ohio Lottery's winning numbers API (via CORS proxy)
-// Multi-state games (Mega Millions, Powerball): New York Open Data — free, no key, CORS-friendly
-const LOTTERY_OHIO_URL = 'https://corsproxy.io/?https://www.ohiolottery.com/Winning-Numbers/WinningNumbersJSON';
-const LOTTERY_MM_URL   = 'https://data.ny.gov/resource/5xaw-6ayf.json?$limit=1&$order=draw_date+DESC';
-const LOTTERY_PB_URL   = 'https://data.ny.gov/resource/d6yy-54nr.json?$limit=1&$order=draw_date+DESC';
+// Multi-state games: official APIs (via CORS proxy since they don't set CORS headers)
+const LOTTERY_MM_URL = 'https://corsproxy.io/?https://www.megamillions.com/cmspages/getwinningnumbers.aspx';
+const LOTTERY_PB_URL = 'https://corsproxy.io/?https://www.powerball.com/api/v1/numbers/powerball/recent/limit/1';
+// NY Open Data fallbacks (free, CORS-friendly, no key required)
+const LOTTERY_MM_FALLBACK = 'https://data.ny.gov/resource/5xaw-6ayf.json?$limit=1&$order=draw_date+DESC';
+const LOTTERY_PB_FALLBACK = 'https://data.ny.gov/resource/d6yy-54nr.json?$limit=1&$order=draw_date+DESC';
+// Ohio Lottery: try multiple candidate endpoints, fall back to HTML parse of their page
+const LOTTERY_OHIO_CANDIDATES = [
+  'https://corsproxy.io/?https://www.ohiolottery.com/Winning-Numbers/WinningNumbersJson',
+  'https://corsproxy.io/?https://www.ohiolottery.com/GamesPagesAjax/WinningNumbers',
+  'https://corsproxy.io/?https://www.ohiolottery.com/api/winningnumbers/getall',
+];
 
 // Display order — Ohio games first, multi-state at bottom
 const LOTTERY_ORDER = [
@@ -5742,6 +5767,39 @@ function lotteryGameOrder(name) {
   return i < 0 ? 99 : i;
 }
 
+// Try Ohio Lottery JSON endpoints in sequence, then fall back to HTML parse
+async function fetchOhioLotteryGames() {
+  // Strategy 1: try known JSON endpoints
+  for (const url of LOTTERY_OHIO_CANDIDATES) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) continue;
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.includes('json') && !ct.includes('javascript')) continue;
+      const data = await r.json();
+      const list = Array.isArray(data) ? data : (data?.games || data?.results || data?.data || []);
+      if (list.length > 0 && (list[0].GameName || list[0].gameName || list[0].name)) return list;
+    } catch {}
+  }
+  // Strategy 2: parse the winning-numbers page for embedded JSON
+  try {
+    const html = await fetch('https://corsproxy.io/?https://www.ohiolottery.com/Winning-Numbers/All-Games').then(r => r.text());
+    const doc  = new DOMParser().parseFromString(html, 'text/html');
+    for (const s of doc.querySelectorAll('script:not([src])')) {
+      const c = s.textContent || '';
+      // Look for JSON arrays that look like game result records
+      const m = c.match(/(\[\s*\{[^<]{50,}?\}[\s,]*\{[^<]{10,}?\}\s*\])/s);
+      if (m) {
+        try {
+          const arr = JSON.parse(m[1]);
+          if (Array.isArray(arr) && arr.length > 0 && (arr[0].GameName || arr[0].WinningNumbers)) return arr;
+        } catch {}
+      }
+    }
+  } catch {}
+  return null; // all strategies failed
+}
+
 async function loadLottery() {
   const seq  = _loadSeq;
   const area = document.getElementById('lottery-area');
@@ -5750,10 +5808,13 @@ async function loadLottery() {
     area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading lottery numbers…</p></div>';
   }
 
-  const [ohioR, mmR, pbR] = await Promise.allSettled([
-    fetch(LOTTERY_OHIO_URL).then(r => r.json()),
+  // Fetch all sources in parallel; Ohio uses sequential multi-strategy fetch
+  const [ohioData, mmR, pbR, mmFbR, pbFbR] = await Promise.allSettled([
+    fetchOhioLotteryGames(),
     fetch(LOTTERY_MM_URL).then(r => r.json()),
     fetch(LOTTERY_PB_URL).then(r => r.json()),
+    fetch(LOTTERY_MM_FALLBACK).then(r => r.json()),
+    fetch(LOTTERY_PB_FALLBACK).then(r => r.json()),
   ]);
 
   if (_loadSeq !== seq) return;
@@ -5761,71 +5822,153 @@ async function loadLottery() {
   const games = [];
 
   // Ohio Lottery games
-  if (ohioR.status === 'fulfilled') {
-    const list = Array.isArray(ohioR.value) ? ohioR.value : (ohioR.value?.results || ohioR.value?.games || []);
-    for (const g of list) {
-      const name = g.GameName || g.gameName || g.name || '';
-      if (!name) continue;
-      const low  = name.toLowerCase();
-      // skip KENO (draws every 4 min — not useful here) and multi-state (handled separately)
-      if (low.includes('keno') || low.includes('mega') || low.includes('powerball')) continue;
-      const numStr = g.WinningNumbers || g.winningNumbers || g.numbers || '';
-      const nums   = String(numStr).split(/[-,\s]+/).map(s => s.trim()).filter(Boolean);
-      const fireStr= g.Fireball || g.fireball || '';
-      const icon   = low.includes('pick 3') ? '3️⃣'
-                   : low.includes('pick 4') ? '4️⃣'
-                   : low.includes('pick 5') ? '5️⃣'
-                   : low.includes('rolling')? '🎱'
-                   : low.includes('classic')? '🎰'
-                   : low.includes('lucky')  ? '🍀'
-                   : '🎲';
-      const dateRaw = g.DrawDate || g.drawDate || '';
-      games.push({
-        name, icon,
-        numbers:  nums,
-        special:  fireStr || null,
-        specialCls: 'lotto-ball-fire',
-        multiplier: null,
-        date:     dateRaw,
-      });
-    }
+  const ohioList = ohioData.status === 'fulfilled' ? (ohioData.value || []) : [];
+  for (const g of ohioList) {
+    const name = g.GameName || g.gameName || g.name || '';
+    if (!name) continue;
+    const low = name.toLowerCase();
+    if (low.includes('keno') || low.includes('mega') || low.includes('powerball')) continue;
+    const numStr = g.WinningNumbers || g.winningNumbers || g.numbers || '';
+    const nums   = String(numStr).split(/[-,\s]+/).map(s => s.trim()).filter(n => /^\d+$/.test(n));
+    if (!nums.length) continue;
+    const fireStr = g.Fireball || g.fireball || '';
+    const icon = low.includes('pick 3') ? '3️⃣' : low.includes('pick 4') ? '4️⃣'
+               : low.includes('pick 5') ? '5️⃣' : low.includes('rolling') ? '🎱'
+               : low.includes('classic') ? '🎰' : low.includes('lucky') ? '🍀' : '🎲';
+    games.push({ name, icon, numbers: nums, special: fireStr || null, specialCls: 'lotto-ball-fire', multiplier: null, date: g.DrawDate || g.drawDate || '' });
   }
 
-  // Mega Millions (NY Open Data)
-  if (mmR.status === 'fulfilled') {
-    const row = Array.isArray(mmR.value) ? mmR.value[0] : mmR.value;
-    if (row) {
-      const nums = String(row.winning_numbers || '').split(/\s+/).filter(Boolean);
-      const date = row.draw_date ? new Date(row.draw_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '';
-      const mult = row.multiplier ? `${row.multiplier}x Megaplier` : null;
-      games.push({ name:'Mega Millions', icon:'💰', numbers:nums, special:row.mega_ball||null, specialCls:'lotto-ball-mega', multiplier:mult, date });
+  // Mega Millions — try official site first, then NY Open Data fallback
+  const mmRow = (() => {
+    if (mmR.status === 'fulfilled') {
+      const v = mmR.value;
+      if (v?.WinningNumber1) return { type: 'official', v };
     }
+    if (mmFbR.status === 'fulfilled') {
+      const arr = mmFbR.value;
+      return Array.isArray(arr) && arr[0] ? { type: 'ny', v: arr[0] } : null;
+    }
+    return null;
+  })();
+  if (mmRow) {
+    const { type, v } = mmRow;
+    const nums  = type === 'official'
+      ? [v.WinningNumber1, v.WinningNumber2, v.WinningNumber3, v.WinningNumber4, v.WinningNumber5].filter(Boolean)
+      : String(v.winning_numbers || '').split(/\s+/).filter(Boolean);
+    const mb    = type === 'official' ? v.MegaBall   : v.mega_ball;
+    const mult  = type === 'official' ? (v.MegaPlier ? `${v.MegaPlier}x Megaplier` : null)
+                                      : (v.multiplier ? `${v.multiplier}x Megaplier` : null);
+    const date  = type === 'official' ? (v.DrawDate || '')
+                                      : (v.draw_date ? new Date(v.draw_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '');
+    games.push({ name:'Mega Millions', icon:'💰', numbers:nums, special:mb||null, specialCls:'lotto-ball-mega', multiplier:mult, date });
   }
 
-  // Powerball (NY Open Data)
-  if (pbR.status === 'fulfilled') {
-    const row = Array.isArray(pbR.value) ? pbR.value[0] : pbR.value;
-    if (row) {
-      const nums = String(row.winning_numbers || '').split(/\s+/).filter(Boolean);
-      const date = row.draw_date ? new Date(row.draw_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '';
-      const mult = row.multiplier ? `${row.multiplier}x Power Play` : null;
-      games.push({ name:'Powerball', icon:'⚡', numbers:nums, special:row.powerball||null, specialCls:'lotto-ball-special', multiplier:mult, date });
+  // Powerball — try official site first, then NY Open Data fallback
+  const pbRow = (() => {
+    if (pbR.status === 'fulfilled') {
+      const v = pbR.value;
+      const row = Array.isArray(v) ? v[0] : v;
+      if (row?.field1 || row?.winning_numbers) return { type: 'official', v: row };
     }
+    if (pbFbR.status === 'fulfilled') {
+      const arr = pbFbR.value;
+      return Array.isArray(arr) && arr[0] ? { type: 'ny', v: arr[0] } : null;
+    }
+    return null;
+  })();
+  if (pbRow) {
+    const { type, v } = pbRow;
+    const nums  = type === 'official' && v.field1
+      ? [v.field1, v.field2, v.field3, v.field4, v.field5].filter(Boolean)
+      : String(v.winning_numbers || '').split(/\s+/).filter(Boolean);
+    const pb    = type === 'official' ? (v.field6 || v.powerball) : v.powerball;
+    const mult  = type === 'official' ? (v.multiplier || null)
+                                      : (v.multiplier ? `${v.multiplier}x Power Play` : null);
+    const date  = type === 'official' ? (v.date || v.drawDate || '')
+                                      : (v.draw_date ? new Date(v.draw_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '');
+    games.push({ name:'Powerball', icon:'⚡', numbers:nums, special:pb||null, specialCls:'lotto-ball-special', multiplier:mult, date });
   }
 
   games.sort((a, b) => lotteryGameOrder(a.name) - lotteryGameOrder(b.name));
 
-  const ohioFailed = ohioR.status !== 'fulfilled';
-  const errNote = ohioFailed
-    ? `<div class="lottery-api-note">⚠️ Ohio games unavailable — <a href="https://www.ohiolottery.com/Winning-Numbers" target="_blank" rel="noopener">check OhioLottery.com</a></div>`
-    : '';
+  // Ohio game link cards shown when API data unavailable
+  const OHIO_GAMES = [
+    { name:'Pick 3', icon:'3️⃣', slug:'Pick-3' }, { name:'Pick 4', icon:'4️⃣', slug:'Pick-4' },
+    { name:'Pick 5', icon:'5️⃣', slug:'Pick-5' }, { name:'Rolling Cash 5', icon:'🎱', slug:'Rolling-Cash-5' },
+    { name:'Classic Lotto', icon:'🎰', slug:'Classic-Lotto' }, { name:'Lucky for Life', icon:'🍀', slug:'Lucky-for-Life' },
+  ];
+  const ohioHasData = ohioList.length > 0;
+  const ohioSection = ohioHasData ? '' : `<div class="lottery-ohio-links">
+    <div class="lottery-ohio-hdr">🏛 Ohio Games — tap to view on OhioLottery.com</div>
+    ${OHIO_GAMES.map(g => `<a class="lottery-ohio-link" href="https://www.ohiolottery.com/Games/${g.slug}/Winning-Numbers" target="_blank" rel="noopener">${g.icon} ${g.name}</a>`).join('')}
+  </div>`;
 
-  area.innerHTML = games.length
-    ? `<div class="lottery-section">${errNote}${games.map(renderLotteryCard).join('')}</div>`
-    : `<div class="empty-state"><p>No lottery data available.</p><p class="muted"><a href="https://www.ohiolottery.com" target="_blank" rel="noopener">Visit OhioLottery.com</a></p></div>`;
+  area.innerHTML = `<div class="lottery-section">${ohioSection}${games.map(renderLotteryCard).join('')}</div>`;
 
   const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
   setConn('connected', `Lottery updated ${t}`);
+}
+
+// ── SIMPLE VIEW (Picks of the Day) ───────────────────────────
+const SPORT_ICONS  = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'🏈', nhl:'🏒', soccer:'⚽', golf:'⛳' };
+const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', nfl:'Football', nhl:'Hockey', soccer:'Soccer', golf:'Golf' };
+
+function showSimpleView() {
+  document.getElementById('simple-view').classList.add('sv-active');
+  renderSimpleView();
+}
+
+function hideSimpleView() {
+  document.getElementById('simple-view').classList.remove('sv-active');
+  localStorage.setItem('sv_dismissed', new Date().toISOString().slice(0, 10));
+}
+
+function renderSimpleView() {
+  const today = new Date().toISOString().slice(0, 10);
+  const allPicks = Object.values(getPicks()).filter(p => p.date === today && !p.type);
+
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+  document.getElementById('sv-date').textContent = dateStr;
+
+  if (allPicks.length === 0) {
+    document.getElementById('sv-content').innerHTML =
+      `<div class="sv-empty">No picks yet for today.<br><span class="sv-hint">Open a sport tab to generate today's picks, then come back here.</span></div>`;
+    return;
+  }
+
+  // Group by sport, sort by confidence desc
+  const bySport = {};
+  for (const p of allPicks) {
+    const s = p.sport || 'tennis';
+    if (!bySport[s]) bySport[s] = [];
+    bySport[s].push(p);
+  }
+  const sportOrder = ['tennis','mlb','nba','golf','nfl','nhl','soccer','wnba'];
+  const sorted = sportOrder.filter(s => bySport[s]).concat(Object.keys(bySport).filter(s => !sportOrder.includes(s)));
+
+  let html = '';
+  for (const sport of sorted) {
+    const picks = [...bySport[sport]].sort((a, b) => (b.conf || 0) - (a.conf || 0));
+    html += `<div class="sv-sport-section">
+      <div class="sv-sport-hdr">${SPORT_ICONS[sport]||'🏅'} ${SPORT_LABELS[sport]||sport.toUpperCase()}</div>
+      ${picks.map(p => {
+        const conf = Math.min(3, Math.max(1, p.conf || 1));
+        const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
+        const resultBadge = p.result === 'win' ? '<span class="sv-badge sv-badge-w">W</span>'
+                          : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+        return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''}">
+          <div class="sv-matchup">${esc(p.matchup || '')}</div>
+          <div class="sv-pick-line">
+            <span class="sv-arrow">→</span>
+            <span class="sv-pick-name">${esc(p.team)}</span>
+            <span class="sv-conf">${dots}</span>
+            ${resultBadge}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+  document.getElementById('sv-content').innerHTML = html;
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────
@@ -5856,7 +5999,11 @@ function init() {
   clearOldPicks();
   updatePicksDisplay();
   renderDateBar();
-  switchSport('tennis');
+  switchSport('tennis'); // always boot tennis — loads data behind the overlay
+  const svDismissed = localStorage.getItem('sv_dismissed');
+  if (svDismissed !== new Date().toISOString().slice(0, 10)) {
+    showSimpleView();
+  }
 }
 
 init();
