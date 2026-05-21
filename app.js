@@ -2902,43 +2902,43 @@ function buildNBAPicksCard(g, summary) {
       : `<span class="pc-fav pc-fav-even">Even matchup</span>`;
   }
 
-  // Season leaders from game summary (same source as game expand view)
-  // summary.leaders = [ { team:{abbreviation}, leaders:[ {name, displayName, leaders:[{displayValue, athlete}]} ] } ]
-  const STAT_LABEL = { points:'PPG', rebounds:'RPG', assists:'APG', steals:'SPG', blocks:'BPG' };
-  const WANT_STATS = ['points','rebounds','assists'];
-  let playerSection = '';
+  // Season leaders from game summary
+  // Match on displayName (ESPN uses 'Points', 'Rebounds', 'Assists' — not the name field)
+  const catKey  = cat => (cat.displayName || cat.shortDisplayName || cat.name || '').toLowerCase();
+  const isPoint = cat => catKey(cat).includes('point');
+  const isReb   = cat => catKey(cat).includes('rebound');
+  const isAst   = cat => catKey(cat).includes('assist');
+  const isWanted = cat => isPoint(cat) || isReb(cat) || isAst(cat);
+  const statLabel = cat => isPoint(cat) ? 'PPG' : isReb(cat) ? 'RPG' : isAst(cat) ? 'APG' : catKey(cat).slice(0,3).toUpperCase();
 
+  let playerSection = '';
   const teamLeadersList = summary?.leaders || [];
   if (teamLeadersList.length) {
     let blocksHTML = '';
     for (const tl of teamLeadersList) {
       const tAbbr = tl.team?.abbreviation || tl.team?.shortDisplayName || '';
-      const rows  = [];
-      // Collect top player across all stat categories for this team
       const playerMap = new Map();
       for (const cat of (tl.leaders || [])) {
-        if (!WANT_STATS.includes(cat.name)) continue;
+        if (!isWanted(cat)) continue;
         const top = (cat.leaders || [])[0];
         if (!top?.athlete?.displayName) continue;
-        const pid = top.athlete.id || top.athlete.displayName;
+        const pid  = top.athlete.id || top.athlete.displayName;
+        const skey = catKey(cat);
         if (!playerMap.has(pid)) playerMap.set(pid, { name: top.athlete.shortName || top.athlete.displayName, id: pid, pos: top.athlete.position?.abbreviation || '', stats: {} });
-        playerMap.get(pid).stats[cat.name] = top.displayValue || '';
-      }
-      // Record picks: top points scorer per team
-      for (const cat of (tl.leaders || [])) {
-        if (cat.name !== 'points') continue;
-        const top = (cat.leaders || [])[0];
-        if (!top?.athlete?.displayName || fin) continue;
-        const pid     = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
-        const pickKey = `plr_${g.id}_${pid}_pts`;
-        recordPlayerPick(pickKey, g.sport || 'nba', top.athlete.displayName, 'Points', `${top.displayValue} PPG`, matchup, null);
+        playerMap.get(pid).stats[skey] = { val: top.displayValue || '', label: statLabel(cat) };
+        // Record player pick for top scorer
+        if (isPoint(cat) && !fin) {
+          const pid2    = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
+          const pickKey = `plr_${g.id}_${pid2}_pts`;
+          recordPlayerPick(pickKey, g.sport || 'nba', top.athlete.displayName, 'Points', `${top.displayValue} PPG`, matchup, null);
+        }
       }
       if (!playerMap.size) continue;
       const playerRows = [...playerMap.values()].slice(0, 3).map(p => {
-        const stored  = Object.entries(getPicks()).find(([k]) => k === `plr_${g.id}_${p.id}_pts`)?.[1];
+        const stored  = getPicks()[`plr_${g.id}_${p.id}_pts`];
         const icon    = stored?.result === 'win' ? '✓' : stored?.result === 'loss' ? '✗' : '';
         const cls     = stored?.result === 'win' ? 'nba-pick-win' : stored?.result === 'loss' ? 'nba-pick-loss' : '';
-        const statStr = WANT_STATS.filter(s => p.stats[s]).map(s => `${p.stats[s]} ${STAT_LABEL[s]||s}`).join(' · ');
+        const statStr = Object.values(p.stats).map(s => `${s.val} ${s.label}`).join(' · ');
         return `<div class="nba-player-row ${cls}">
           <span class="nba-pick-icon">${icon}</span>
           <span class="nba-player-pos">${esc(p.pos)}</span>
@@ -2953,10 +2953,6 @@ function buildNBAPicksCard(g, summary) {
       </div>`;
     }
     if (blocksHTML) playerSection = `<div class="nba-players-section">${blocksHTML}</div>`;
-  }
-
-  if (!playerSection) {
-    playerSection = `<div class="pc-no-data">Player stats loading… open the game to see details</div>`;
   }
 
   const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
