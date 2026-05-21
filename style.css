@@ -1857,6 +1857,20 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-row-match { font-size: .7rem; color: var(--text-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sv-row-arrow { color: var(--text-muted); font-size: .75rem; flex-shrink: 0; }
 .sv-row-team { font-weight: 700; font-size: .82rem; color: var(--text); flex-shrink: 0; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ── TODAY'S TICKET ── */
+.sv-ticket { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 12px; }
+.sv-ticket-hdr { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); padding: 7px 12px; border-bottom: 1px solid var(--border); background: rgba(0,230,118,.04); }
+.sv-ticket-list { display: flex; flex-direction: column; }
+.sv-tk-row { display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,.04); font-size: .78rem; }
+.sv-tk-row:last-child { border-bottom: none; }
+.sv-tk-row.sv-tk-win { border-left: 3px solid var(--accent); }
+.sv-tk-row.sv-tk-loss { border-left: 3px solid #555; opacity: .72; }
+.sv-tk-num { font-size: .65rem; font-weight: 700; color: var(--text-muted); min-width: 14px; flex-shrink: 0; }
+.sv-tk-icon { font-size: .85rem; flex-shrink: 0; }
+.sv-tk-match { flex: 1; font-size: .7rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sv-tk-arrow { color: var(--text-muted); flex-shrink: 0; }
+.sv-tk-pick { font-weight: 700; flex-shrink: 0; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-tk-conf { font-size: .6rem; color: var(--text-muted); letter-spacing: 1px; flex-shrink: 0; }
 
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }

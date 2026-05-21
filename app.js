@@ -1031,7 +1031,9 @@ function inlineTennisPick(m) {
     const injNote = injuryForcePick && pick.toLowerCase() !== seedPick.toLowerCase()
       ? ` · opp. has injury news` : '';
     if (pick && pick !== '-') {
-      recordPick(pickId, pick, matchup, 'tennis');
+      // Seed gap confidence: top seed (1-4) vs unseeded or big gap = 2, smaller gap = 1
+      const seedConf = injuryForcePick ? 2 : (s1 && s2 && Math.abs(s1 - s2) >= 4) ? 2 : 1;
+      recordPick(pickId, pick, matchup, 'tennis', seedConf);
       return `<span class="match-pick-inline" title="Pick based on seeding${injNote} (click for full H2H analysis)">→ ${esc(pick)}</span>`;
     }
   }
@@ -1040,7 +1042,7 @@ function inlineTennisPick(m) {
   if (injuryForcePick) {
     const pick = injuryForcePick === p1Ln ? lastName(m.event_first_player||'') : lastName(m.event_second_player||'');
     if (pick && pick !== '-') {
-      recordPick(pickId, pick, matchup, 'tennis');
+      recordPick(pickId, pick, matchup, 'tennis', 2);
       return `<span class="match-pick-inline match-pick-injury" title="Pick: opponent has recent injury news — ${(p1Hurt ? p1Inj : p2Inj).note}">→ ${esc(pick)} ⚕</span>`;
     }
   }
@@ -1064,8 +1066,10 @@ function inlineTennisPick(m) {
         if (injuryForcePick && pick.toLowerCase() !== injuryForcePick)
           pick = injuryForcePick === p1Ln ? lastName(m.event_first_player||'') : lastName(m.event_second_player||'');
         const injNote2 = (p1Hurt || p2Hurt) ? ' · opp. has injury news' : '';
+        // Ratio confidence: 3x+ gap = 2, injury bonus adds 1
+        const ratioConf = (injuryForcePick ? 1 : 0) + (ratio >= 3 ? 2 : 1);
         if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis');
+          recordPick(pickId, pick, matchup, 'tennis', Math.min(3, ratioConf));
           return `<span class="match-pick-inline" title="Pick: ${pts1} vs ${pts2} ranking pts${injNote2} (click for H2H)">→ ${esc(pick)}</span>`;
         }
       }
@@ -1076,7 +1080,7 @@ function inlineTennisPick(m) {
       if (topRank <= 50 && botRank >= 100) {
         const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
         if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis');
+          recordPick(pickId, pick, matchup, 'tennis', 1);
           return `<span class="match-pick-inline" title="Pick: #${r1.rank} vs #${r2.rank} (click for H2H + form analysis)">→ ${esc(pick)} #${topRank}</span>`;
         }
       }
@@ -2835,6 +2839,9 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   // ── Compact pitcher line with recent-form trend ──
   const pitStr = (name, pd, hand) => {
     const era    = pd?.season?.era ? `${pd.season.era} ERA` : '';
+    const ip     = parseFloat(pd?.season?.inningsPitched || 0);
+    const ks     = parseInt(pd?.season?.strikeOuts || 0);
+    const k9str  = ip > 20 ? ` · ${((ks / ip) * 9).toFixed(1)}K/9` : ks > 0 ? ` · ${ks}K` : '';
     const rEra   = pd?.recentEra != null ? pd.recentEra.toFixed(2) : null;
     const trend  = pd?.eraTrend;
     const tArrow = trend === 'hot' ? '<span class="pit-trend-hot">↑</span>' : trend === 'cold' ? '<span class="pit-trend-cold">↓</span>' : '';
@@ -2844,7 +2851,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       ? ` · LS: ${pd.lastStartERA.toFixed(2)}` : '';
     const restStr = pd?.restDays != null && pd.restDays >= 6
       ? ` <span class="pit-rest-bonus" title="${pd.restDays} days rest">+rest</span>` : '';
-    return `${esc(lastName(name))} (${hand||'?'}HP · ${era}${recentStr}${lsStr}${restStr})`;
+    return `${esc(lastName(name))} (${hand||'?'}HP · ${era}${k9str}${recentStr}${lsStr}${restStr})`;
   };
   const pitcherLine = `<div class="pc-pit-line">${pitStr(awayPName, awayPD, awayHand)} <span class="pc-pit-sep">vs</span> ${pitStr(homePName, homePD, homeHand)}</div>`;
 
@@ -3358,7 +3365,7 @@ function buildTomorrowPickCard(m) {
     const pickId  = 'tn_' + m.event_key;
     const surfTag = surface ? ` (${surface})` : '';
     const matchup = `${l1} vs ${l2}${surfTag}`;
-    recordPick(pickId, lastName(pickName), matchup, 'tennis', conf);
+    recordPick(pickId, lastName(pickName), matchup, 'tennis', conf, true); // force=true: H2H analysis overrides inline seed pick
   }
 
   // Confidence dots
@@ -6218,7 +6225,33 @@ function renderSimpleView() {
     gridHTML = `<div class="sv-sections-grid sv-single-col">${tennisHTML || otherHTML}</div>`;
   }
 
-  document.getElementById('sv-content').innerHTML = statusNote + gridHTML + lotteryBlock;
+  // Top 10 ticket — all locked picks across all sports, sorted by conf desc
+  const allLockedFlat = lockedBySport
+    ? Object.values(lockedBySport).flat().map(id => allPicksMap[id]).filter(p => p && p.date === today && !p.type)
+    : [...allGamePicks];
+  const top10 = [...allLockedFlat].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 10);
+  const ticketRow = (p, i) => {
+    const conf = Math.min(3, Math.max(1, p.conf || 1));
+    const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
+    const badge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
+                : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+    const icon  = SPORT_ICONS[p.sport || 'tennis'] || '🏅';
+    const match = (p.matchup || '').replace(/ @ /g, ' v ');
+    return `<div class="sv-tk-row${p.result==='win'?' sv-tk-win':p.result==='loss'?' sv-tk-loss':''}">
+      <span class="sv-tk-num">${i+1}</span>
+      <span class="sv-tk-icon">${icon}</span>
+      <span class="sv-tk-match">${esc(match)}</span>
+      <span class="sv-tk-arrow">→</span>
+      <span class="sv-tk-pick">${esc(p.team)}</span>
+      <span class="sv-tk-conf">${dots}</span>
+      ${badge}
+    </div>`;
+  };
+  const ticketHTML = top10.length >= 2
+    ? `<div class="sv-ticket"><div class="sv-ticket-hdr">🎫 Today's Ticket — Top ${top10.length}</div><div class="sv-ticket-list">${top10.map(ticketRow).join('')}</div></div>`
+    : '';
+
+  document.getElementById('sv-content').innerHTML = statusNote + gridHTML + ticketHTML + lotteryBlock;
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────
