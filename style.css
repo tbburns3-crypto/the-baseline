@@ -1428,6 +1428,14 @@ input { font: inherit; }
 .golf-tourn-header { padding: 10px 14px 6px; border-bottom: 1px solid var(--border); }
 .golf-tourn-name { font-size: .95rem; font-weight: 700; color: var(--text); }
 .golf-tourn-meta { font-size: .75rem; color: var(--text-muted); margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.golf-lb-toggle {
+  display: block; width: 100%; text-align: left;
+  background: rgba(255,255,255,.03); border: none; border-top: 1px solid var(--border);
+  color: var(--text-muted); font-size: .73rem; padding: 8px 14px;
+  cursor: pointer; letter-spacing: .02em;
+}
+.golf-lb-toggle:hover { background: rgba(255,255,255,.06); color: var(--text); }
+.golf-lb-collapsed { display: none; }
 .golf-leaderboard { }
 .golf-lb-hdr {
   display: grid; grid-template-columns: 40px 1fr 60px 60px 50px;
