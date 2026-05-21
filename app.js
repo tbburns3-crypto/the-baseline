@@ -4912,12 +4912,13 @@ async function loadGolfLeaderboard() {
         // Groups: players with hole data (split-tee correct); upcoming: grouped by tee time (approx.)
         const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
 
-        // Sort active groups by best player leaderboard position (leader's group first)
-        const activeG = [...groups].sort((a, b) => {
-          const bestA = Math.min(...a.players.map(p => parseInt(p.order) || 9999));
-          const bestB = Math.min(...b.players.map(p => parseInt(p.order) || 9999));
-          return bestA - bestB;
-        });
+        // Live groups first (by best leaderboard position), finished groups at the bottom (by tee time)
+        const bestPos = g => Math.min(...g.players.map(p => parseInt(p.order) || 9999));
+        const liveG   = groups.filter(g =>  g.players.some(p => playerRoundStatus(p, round) === 'live'))
+                              .sort((a, b) => bestPos(a) - bestPos(b));
+        const doneG   = groups.filter(g =>  g.players.every(p => playerRoundStatus(p, round) === 'finished'))
+                              .sort((a, b) => new Date(a.time) - new Date(b.time));
+        const activeG = [...liveG, ...doneG];
 
         html += `<div class="golf-tournament">
           <div class="golf-tourn-header">
@@ -5927,50 +5928,86 @@ function hideSimpleView() {
 
 function renderSimpleView() {
   const today = new Date().toISOString().slice(0, 10);
-  const allPicks = Object.values(getPicks()).filter(p => p.date === today && !p.type);
+  const allPicks    = Object.values(getPicks()).filter(p => p.date === today);
+  const gamePicks   = allPicks.filter(p => !p.type);
+  const playerPicks = allPicks.filter(p => p.type === 'player');
 
   document.getElementById('sv-date').textContent =
     new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
 
-  if (allPicks.length === 0) {
+  if (gamePicks.length === 0) {
     document.getElementById('sv-content').innerHTML =
       `<div class="sv-empty">No picks recorded yet today.<br><span class="sv-hint">Tap "Full App" → open a sport → come back here to see picks.</span></div>`;
     return;
   }
 
-  // Group by sport, keep top 4 per sport by confidence
+  // Index player picks by normalised matchup string
+  const plrByMatchup = {};
+  for (const p of playerPicks) {
+    const key = (p.gameMatchup || '').toLowerCase().trim();
+    if (!plrByMatchup[key]) plrByMatchup[key] = [];
+    plrByMatchup[key].push(p);
+  }
+
+  // Group game picks by sport
   const bySport = {};
-  for (const p of allPicks) {
+  for (const p of gamePicks) {
     const s = p.sport || 'tennis';
     if (!bySport[s]) bySport[s] = [];
     bySport[s].push(p);
   }
   const sportOrder = ['tennis','mlb','nba','golf','nfl','nhl','soccer','wnba'];
-  const sorted = sportOrder.filter(s => bySport[s]).concat(Object.keys(bySport).filter(s => !sportOrder.includes(s)));
+  const sports = sportOrder.filter(s => bySport[s]).concat(Object.keys(bySport).filter(s => !sportOrder.includes(s)));
 
   let html = '';
-  for (const sport of sorted) {
-    // Top 4 by confidence, then trim low-conf overflow if total > 12
-    const picks = [...bySport[sport]]
-      .sort((a, b) => (b.conf || 0) - (a.conf || 0))
-      .slice(0, 4);
+  for (const sport of sports) {
+    const picks = [...bySport[sport]].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 6);
+
+    const cards = picks.map(p => {
+      const conf = Math.min(3, Math.max(1, p.conf || 1));
+      const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
+      const resultBadge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
+                        : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+
+      // Player picks for this game
+      const key  = (p.matchup || '').toLowerCase().trim();
+      const plrs = (plrByMatchup[key] || []).sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 6);
+
+      const plrSection = plrs.length
+        ? `<div class="sv-plr-section">
+            <div class="sv-plr-hdr">Player Picks</div>
+            <div class="sv-plr-grid">
+              ${plrs.map(pp => {
+                const pc = Math.min(3, Math.max(1, pp.conf || 1));
+                const pr = pp.result === 'win' ? '<span class="sv-plr-r sv-plr-w">W</span>' : pp.result === 'loss' ? '<span class="sv-plr-r sv-plr-l">L</span>' : '';
+                return `<div class="sv-plr-item">
+                  <span class="sv-plr-name">${esc(pp.player)}</span>
+                  <span class="sv-plr-prop">${esc(pp.prop)}</span>
+                  <span class="sv-plr-conf">${'●'.repeat(pc)}${'○'.repeat(3-pc)}</span>${pr}
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`
+        : '';
+
+      const tapHint = plrs.length ? `<div class="sv-tap-hint">▾ ${plrs.length} player pick${plrs.length > 1 ? 's' : ''}</div>` : '';
+
+      return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrs.length ? 'sv-has-plrs' : ''}" onclick="this.classList.toggle('sv-expanded')">
+        <div class="sv-matchup">${esc(p.matchup || '')}</div>
+        <div class="sv-pick-line">
+          <span class="sv-arrow">→</span>
+          <span class="sv-pick-name">${esc(p.team)}</span>
+          <span class="sv-conf">${dots}</span>
+          ${resultBadge}
+        </div>
+        ${tapHint}
+        ${plrSection}
+      </div>`;
+    }).join('');
+
     html += `<div class="sv-sport-section">
       <div class="sv-sport-hdr">${SPORT_ICONS[sport]||'🏅'} ${SPORT_LABELS[sport]||sport.toUpperCase()}</div>
-      ${picks.map(p => {
-        const conf = Math.min(3, Math.max(1, p.conf || 1));
-        const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
-        const resultBadge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
-                          : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
-        return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''}">
-          <div class="sv-matchup">${esc(p.matchup || '')}</div>
-          <div class="sv-pick-line">
-            <span class="sv-arrow">→</span>
-            <span class="sv-pick-name">${esc(p.team)}</span>
-            <span class="sv-conf">${dots}</span>
-            ${resultBadge}
-          </div>
-        </div>`;
-      }).join('')}
+      <div class="sv-picks-grid">${cards}</div>
     </div>`;
   }
   document.getElementById('sv-content').innerHTML = html;
