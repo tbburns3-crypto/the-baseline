@@ -1436,6 +1436,21 @@ input { font: inherit; }
 }
 .golf-lb-toggle:hover { background: rgba(255,255,255,.06); color: var(--text); }
 .golf-lb-collapsed { display: none; }
+/* Live player row highlight */
+.golf-lb-row-live { background: rgba(0,230,118,.04); border-left: 2px solid var(--accent); }
+.golf-lb-row-pre  { opacity: .55; }
+.golf-thru-live   { color: var(--accent); font-weight: 700; }
+.golf-thru-pre    { color: var(--text-muted); }
+/* Groups toggle button */
+.golf-groups-toggle {
+  display: block; width: 100%; text-align: left;
+  background: rgba(255,255,255,.03); border: none; border-top: 1px solid var(--border);
+  color: var(--text-muted); font-size: .73rem; padding: 8px 14px;
+  cursor: pointer; letter-spacing: .02em;
+}
+.golf-groups-toggle:hover { background: rgba(255,255,255,.06); color: var(--text); }
+.golf-groups-body { }
+.golf-groups-collapsed { display: none; }
 .golf-leaderboard { }
 .golf-lb-hdr {
   display: grid; grid-template-columns: 40px 1fr 60px 60px 50px;

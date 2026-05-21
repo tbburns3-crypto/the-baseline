@@ -4795,11 +4795,67 @@ function renderGolfGroup(group, round, tournIsLive) {
   </div>`;
 }
 
-function toggleGolfLB(btn) {
-  const lb = btn.nextElementSibling;
-  const collapsed = lb.classList.toggle('golf-lb-collapsed');
-  const n = lb.querySelectorAll('.golf-player-row').length;
-  btn.textContent = collapsed ? `Full Leaderboard (${n} players) ▼` : 'Hide Leaderboard ▲';
+function toggleGolfGroups(btn) {
+  const body = btn.nextElementSibling;
+  const collapsed = body.classList.toggle('golf-groups-collapsed');
+  const n = body.querySelectorAll('.golf-group-card').length;
+  btn.textContent = collapsed ? `🎯 3-Ball Groups (${n}) ▼` : `🎯 3-Ball Groups (${n}) ▲`;
+}
+
+// Full ranked leaderboard — proper golf format with tied positions and live indicators
+function renderGolfLeaderboard(players, round) {
+  if (!players.length) return '';
+
+  // Count how many players share each position (for T prefix)
+  const posCount = new Map();
+  for (const p of players) {
+    const k = p.order ? String(p.order) : '';
+    if (k) posCount.set(k, (posCount.get(k) || 0) + 1);
+  }
+
+  const rows = players.map(p => {
+    const name     = p.athlete?.shortName || p.athlete?.displayName || '-';
+    const rawPos   = p.order ? String(p.order) : '-';
+    const isTied   = rawPos !== '-' && (posCount.get(rawPos) || 0) > 1;
+    const posDisp  = rawPos === '-' ? '-' : (isTied ? 'T' + rawPos : rawPos);
+
+    const total    = p.score || 'E';
+    const totalNum = total === 'E' ? 0 : parseInt(total) || 0;
+    const scoreCls = totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
+
+    const today    = p.linescores?.[round - 1]?.displayValue || '-';
+    const todayNum = today === 'E' ? 0 : parseInt(today) || 0;
+    const todayCls = isNaN(todayNum) ? '' : todayNum < 0 ? 'golf-under' : todayNum > 0 ? 'golf-over' : 'golf-even';
+
+    const holes  = p.linescores?.[round - 1]?.linescores?.length || 0;
+    const status = playerRoundStatus(p, round);
+    const thruHTML = status === 'finished'
+      ? `<span class="golf-thru-done">F</span>`
+      : status === 'live'
+      ? `<span class="golf-thru-live">● ${holes}</span>`
+      : `<span class="golf-thru-pre">—</span>`;
+
+    const rowCls = status === 'live' ? ' golf-lb-row-live' : status === 'upcoming' ? ' golf-lb-row-pre' : '';
+
+    return `<div class="golf-player-row${rowCls}">
+      <span class="gc-pos">${esc(posDisp)}</span>
+      <span class="gc-name">${esc(name)}</span>
+      <span class="gc-score ${scoreCls}">${esc(total)}</span>
+      <span class="gc-today ${todayCls}">${esc(today)}</span>
+      <span class="gc-thru">${thruHTML}</span>
+    </div>`;
+  }).join('');
+
+  return `<div class="golf-leaderboard">
+    <div class="golf-lb-hdr">
+      <span class="gc-pos">POS</span>
+      <span class="gc-name">PLAYER</span>
+      <span class="gc-score">TOTAL</span>
+      <span class="gc-today">RD${round}</span>
+      <span class="gc-thru">THRU</span>
+    </div>
+    ${rows}
+  </div>`;
 }
 
 async function loadGolfLeaderboard() {
@@ -4837,7 +4893,6 @@ async function loadGolfLeaderboard() {
 
         // Groups: players with hole data (split-tee correct); upcoming: grouped by tee time (approx.)
         const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
-        const liveG = groups.filter(g => g.players.some(p => playerRoundStatus(p, round) === 'live'));
 
         // Sort active groups by best player leaderboard position (leader's group first)
         const activeG = [...groups].sort((a, b) => {
@@ -4846,23 +4901,24 @@ async function loadGolfLeaderboard() {
           return bestA - bestB;
         });
 
-        let groupsHTML = '';
-        if (activeG.length >= 1 || upcomingGroups.length >= 1) {
-          const liveCount = liveG.length;
-          const lbHdr = liveCount > 0
-            ? `Leaderboard · <span class="golf-live-tag pulse">● ${liveCount} group${liveCount !== 1 ? 's' : ''} live</span>`
-            : `Leaderboard`;
+        // Build groups section (collapsible — starts closed)
+        let groupsSection = '';
+        const totalGroups = activeG.length + upcomingGroups.length;
+        if (totalGroups >= 1) {
           const preSection = upcomingGroups.length > 0
             ? `<div class="golf-group-status-section">
                 <div class="golf-group-status-hdr">⏰ Pre-Round — ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''} · approx. pairings</div>
                 ${upcomingGroups.map(g => renderGolfGroup(g, round, isLive)).join('')}
               </div>`
             : '';
-          groupsHTML = `<div class="golf-groups-section">
-            <div class="golf-groups-hdr">${lbHdr}</div>
-            ${activeG.map(g => renderGolfGroup(g, round, isLive)).join('')}
-            ${preSection}
-          </div>`;
+          groupsSection = `
+            <button class="golf-groups-toggle" onclick="toggleGolfGroups(this)">🎯 3-Ball Groups (${totalGroups}) ▼</button>
+            <div class="golf-groups-body golf-groups-collapsed">
+              <div class="golf-groups-section">
+                ${activeG.map(g => renderGolfGroup(g, round, isLive)).join('')}
+                ${preSection}
+              </div>
+            </div>`;
         }
 
         html += `<div class="golf-tournament">
@@ -4870,7 +4926,8 @@ async function loadGolfLeaderboard() {
             <div class="golf-tourn-name">${tour.icon} ${esc(ev.name || ev.shortName || tour.label)}</div>
             <div class="golf-tourn-meta">${statusTxt}${venue ? ` · ${esc(venue)}` : ''}${city ? `, ${esc(city)}` : ''}</div>
           </div>
-          ${groupsHTML}
+          ${renderGolfLeaderboard(players, round)}
+          ${groupsSection}
         </div>`;
       }
     }
