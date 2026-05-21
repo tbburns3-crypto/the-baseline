@@ -5914,11 +5914,13 @@ const SPORT_ICONS  = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'�
 const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', nfl:'Football', nhl:'Hockey', soccer:'Soccer', golf:'Golf' };
 
 function showSimpleView() {
+  document.body.classList.add('simple-mode');
   document.getElementById('simple-view').classList.add('sv-active');
   renderSimpleView();
 }
 
 function hideSimpleView() {
+  document.body.classList.remove('simple-mode');
   document.getElementById('simple-view').classList.remove('sv-active');
   localStorage.setItem('sv_dismissed', new Date().toISOString().slice(0, 10));
 }
@@ -5927,16 +5929,16 @@ function renderSimpleView() {
   const today = new Date().toISOString().slice(0, 10);
   const allPicks = Object.values(getPicks()).filter(p => p.date === today && !p.type);
 
-  const dateStr = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
-  document.getElementById('sv-date').textContent = dateStr;
+  document.getElementById('sv-date').textContent =
+    new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
 
   if (allPicks.length === 0) {
     document.getElementById('sv-content').innerHTML =
-      `<div class="sv-empty">No picks yet for today.<br><span class="sv-hint">Open a sport tab to generate today's picks, then come back here.</span></div>`;
+      `<div class="sv-empty">No picks recorded yet today.<br><span class="sv-hint">Tap "Full App" → open a sport → come back here to see picks.</span></div>`;
     return;
   }
 
-  // Group by sport, sort by confidence desc
+  // Group by sport, keep top 4 per sport by confidence
   const bySport = {};
   for (const p of allPicks) {
     const s = p.sport || 'tennis';
@@ -5948,13 +5950,16 @@ function renderSimpleView() {
 
   let html = '';
   for (const sport of sorted) {
-    const picks = [...bySport[sport]].sort((a, b) => (b.conf || 0) - (a.conf || 0));
+    // Top 4 by confidence, then trim low-conf overflow if total > 12
+    const picks = [...bySport[sport]]
+      .sort((a, b) => (b.conf || 0) - (a.conf || 0))
+      .slice(0, 4);
     html += `<div class="sv-sport-section">
       <div class="sv-sport-hdr">${SPORT_ICONS[sport]||'🏅'} ${SPORT_LABELS[sport]||sport.toUpperCase()}</div>
       ${picks.map(p => {
         const conf = Math.min(3, Math.max(1, p.conf || 1));
         const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
-        const resultBadge = p.result === 'win' ? '<span class="sv-badge sv-badge-w">W</span>'
+        const resultBadge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
                           : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
         return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''}">
           <div class="sv-matchup">${esc(p.matchup || '')}</div>

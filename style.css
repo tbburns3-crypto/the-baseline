@@ -1765,8 +1765,13 @@ input { font: inherit; }
 #simple-view-btn { background: rgba(0,230,118,.12); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 4px 10px; font-size: .73rem; font-weight: 700; cursor: pointer; letter-spacing: .03em; }
 #simple-view-btn:hover { background: rgba(0,230,118,.22); }
 
-/* ── SIMPLE VIEW OVERLAY ── */
-#simple-view { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 999; overflow-y: auto; flex-direction: column; }
+/* ── SIMPLE VIEW ── hides everything else via body class ── */
+/* When simple-mode is active, hide all full-app chrome */
+body.simple-mode #topbar,
+body.simple-mode #conn-bar,
+body.simple-mode #date-bar,
+body.simple-mode #app-layout { display: none !important; }
+#simple-view { display: none; flex-direction: column; min-height: 100vh; background: var(--bg); }
 #simple-view.sv-active { display: flex; }
 .sv-header { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 14px 18px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 1; }
 .sv-brand { display: flex; align-items: center; gap: 10px; flex: 1; }
