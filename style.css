@@ -1641,11 +1641,46 @@ input { font: inherit; }
 .pc-l10.l10-avg  { background: rgba(255,255,255,.05); color: var(--text-muted); }
 .l10-streak { opacity: .8; font-style: italic; }
 
-/* ── TENNIS ROUND / FATIGUE TAGS ── */
+/* ── TENNIS ROUND / FATIGUE / TIER / BO5 TAGS ── */
 .tp-round-tag    { font-size: .65rem; font-weight: 700; letter-spacing: .06em; background: rgba(255,255,255,.07); color: var(--text-2); border-radius: 3px; padding: 1px 5px; }
 .tp-fatigue-tag  { font-size: .7rem; color: #ffb300; }
 .tp-tired-dot    { font-size: .7rem; margin-left: 2px; opacity: .85; }
 .gp-round-note   { font-size: .68rem; font-weight: 400; color: var(--text-muted); }
+.gp-bo5-badge    { font-size: .63rem; font-weight: 700; background: rgba(255,179,0,.2); color: #ffb300; border-radius: 3px; padding: 1px 4px; margin-left: 4px; }
+.tp-bo5-badge    { font-size: .63rem; font-weight: 700; background: rgba(255,179,0,.2); color: #ffb300; border-radius: 3px; padding: 1px 4px; margin-left: 4px; }
+.tp-tier-slam    { font-size: .63rem; font-weight: 700; background: rgba(0,230,118,.2); color: var(--accent); border-radius: 3px; padding: 1px 4px; margin-left: 4px; }
+.tp-tier-masters { font-size: .63rem; font-weight: 700; background: rgba(33,150,243,.2); color: #42a5f5; border-radius: 3px; padding: 1px 4px; margin-left: 4px; }
+
+/* ── MLB ODDS + PROJECTED RUNS ── */
+.pc-odds-line { font-size: .72rem; color: var(--text-muted); margin: 2px 0; }
+.pc-proj-line { font-size: .73rem; color: var(--text-2); margin: 3px 0; }
+.pc-ou-over   { color: var(--accent); font-weight: 600; }
+.pc-ou-under  { color: #42a5f5; font-weight: 600; }
+
+/* ── CONFIDENCE CALIBRATION ── */
+.ph-cal-section { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+.ph-cal-row     { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: .8rem; }
+.ph-cal-dots    { font-size: .75rem; letter-spacing: 1px; color: var(--accent); min-width: 40px; }
+.ph-cal-stat    { font-weight: 600; }
+
+/* ── GOLF 3-BALL PICKS ── */
+.golf-picks-section    { margin-bottom: 16px; }
+.golf-picks-event-hdr  { font-size: .8rem; font-weight: 700; padding: 8px 14px 6px; color: var(--text-2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.golf-pick-card        { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); margin: 8px 12px; padding: 10px 12px; }
+.golf-pick-time        { font-size: .7rem; color: var(--text-muted); margin-bottom: 5px; }
+.golf-pick-hdr         { display: grid; grid-template-columns: 14px 1fr 40px 40px 35px 1fr; gap: 0 6px; font-size: .62rem; color: var(--text-muted); font-weight: 700; letter-spacing: .05em; margin-bottom: 4px; padding: 0 2px; }
+.golf-pick-row         { display: grid; grid-template-columns: 14px 1fr 40px 40px 35px 1fr; gap: 0 6px; align-items: center; padding: 4px 2px; font-size: .8rem; border-top: 1px solid rgba(255,255,255,.04); }
+.golf-pick-winner      { color: var(--accent); font-weight: 600; }
+.golf-pick-arrow       { font-size: .75rem; }
+.golf-pick-name        { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.golf-pick-score       { text-align: right; font-weight: 700; }
+.golf-pick-today       { text-align: right; font-size: .75rem; color: var(--text-muted); }
+.golf-pick-thru        { text-align: right; font-size: .72rem; color: var(--text-muted); }
+.golf-pick-factors     { display: flex; gap: 3px; flex-wrap: wrap; }
+.golf-pick-chip        { font-size: .62rem; background: rgba(255,255,255,.06); color: var(--text-muted); border-radius: 2px; padding: 1px 4px; }
+.golf-pick-winner .golf-pick-chip { background: rgba(0,230,118,.1); color: var(--accent); }
+.golf-pick-verdict     { margin-top: 7px; font-size: .78rem; color: var(--text-2); border-top: 1px solid var(--border); padding-top: 6px; }
+.golf-pick-verdict strong { color: var(--accent); }
 
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
