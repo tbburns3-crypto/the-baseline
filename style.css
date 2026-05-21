@@ -1783,11 +1783,12 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-headline { font-size: 1.3rem; font-weight: 800; color: var(--accent); text-align: center; padding: 22px 20px 6px; letter-spacing: .04em; }
 .sv-content { flex: 1; padding: 12px 16px 32px; max-width: 720px; margin: 0 auto; width: 100%; }
 .sv-sport-section { margin-bottom: 18px; }
-.sv-sport-hdr { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
-/* 2-column grid — drops to 1 col on very small screens */
-.sv-picks-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-@media (max-width: 420px) { .sv-picks-grid { grid-template-columns: 1fr; } }
-.sv-pick-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; }
+.sv-sport-hdr { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+/* Outer 2-column grid: sport sections side-by-side */
+.sv-sections-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; align-items: start; }
+@media (max-width: 540px) { .sv-sections-grid { grid-template-columns: 1fr; } }
+.sv-sport-section { min-width: 0; }
+.sv-pick-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; margin-bottom: 5px; }
 .sv-has-plrs { cursor: pointer; }
 .sv-has-plrs:hover { border-color: rgba(0,230,118,.4); }
 .sv-card-win  { border-color: var(--accent); background: rgba(0,230,118,.04); }

@@ -5936,13 +5936,46 @@ async function preloadPicksForSimpleView() {
   _svPreloaded = true;
   const isActive = () => document.getElementById('simple-view')?.classList.contains('sv-active');
 
-  // ESPN-backed sports: fetch games then call autoRecordAndResolvePick directly
-  // (pure localStorage write — no DOM side-effects)
+  // ESPN summary paths + which stat category leaders to record as player picks
+  const sportCfg = {
+    nba:  { path: 'basketball/nba',  cats: ['points'] },
+    nfl:  { path: 'football/nfl',    cats: ['passing yards', 'rushing yards'] },
+    nhl:  { path: 'hockey/nhl',      cats: ['points', 'goals'] },
+    wnba: { path: 'basketball/wnba', cats: ['points'] },
+  };
+
   for (const sport of ['mlb', 'nba', 'nfl', 'nhl', 'wnba']) {
     try {
       const games = await espnGames(sport, 0);
+      // Record game-level picks (team win predictions)
       games.forEach(g => autoRecordAndResolvePick(g));
       if (isActive()) renderSimpleView();
+
+      // Record player picks from ESPN pre-game leaders (up to 4 upcoming games)
+      const cfg = sportCfg[sport];
+      if (cfg) {
+        const upcoming = games.filter(g => !gameRowState(g).fin).slice(0, 4);
+        for (const g of upcoming) {
+          try {
+            const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${cfg.path}/summary?event=${g.id}`);
+            const j   = await res.json();
+            const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
+            for (const tl of (j.leaders || [])) {
+              for (const cat of (tl.leaders || [])) {
+                const catName = (cat.displayName || cat.shortDisplayName || '').toLowerCase();
+                if (!cfg.cats.some(c => catName.includes(c))) continue;
+                const top = (cat.leaders || [])[0];
+                if (!top?.athlete?.displayName) continue;
+                const pid  = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
+                const name = top.athlete.shortName || top.athlete.displayName;
+                recordPlayerPick(`plr_${g.id}_${pid}_${catName.replace(/\s+/g,'_')}`,
+                  sport, name, cat.displayName || catName, top.displayValue || '-', matchup, null);
+              }
+            }
+          } catch (e) {}
+        }
+        if (isActive()) renderSimpleView();
+      }
     } catch (e) { /* offseason or network — skip silently */ }
   }
 
@@ -6001,58 +6034,48 @@ function renderSimpleView() {
   const sportOrder = ['tennis','mlb','nba','golf','nfl','nhl','soccer','wnba'];
   const sports = sportOrder.filter(s => bySport[s]).concat(Object.keys(bySport).filter(s => !sportOrder.includes(s)));
 
-  let html = '';
-  for (const sport of sports) {
-    const picks = [...bySport[sport]].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 6);
-
-    const cards = picks.map(p => {
-      const conf = Math.min(3, Math.max(1, p.conf || 1));
-      const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
-      const resultBadge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
-                        : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
-
-      // Player picks for this game
-      const key  = (p.matchup || '').toLowerCase().trim();
-      const plrs = (plrByMatchup[key] || []).sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 6);
-
-      const plrSection = plrs.length
-        ? `<div class="sv-plr-section">
-            <div class="sv-plr-hdr">Player Picks</div>
-            <div class="sv-plr-grid">
-              ${plrs.map(pp => {
-                const pc = Math.min(3, Math.max(1, pp.conf || 1));
-                const pr = pp.result === 'win' ? '<span class="sv-plr-r sv-plr-w">W</span>' : pp.result === 'loss' ? '<span class="sv-plr-r sv-plr-l">L</span>' : '';
-                return `<div class="sv-plr-item">
-                  <span class="sv-plr-name">${esc(pp.player)}</span>
-                  <span class="sv-plr-prop">${esc(pp.prop)}</span>
-                  <span class="sv-plr-conf">${'●'.repeat(pc)}${'○'.repeat(3-pc)}</span>${pr}
-                </div>`;
-              }).join('')}
-            </div>
-          </div>`
-        : '';
-
-      const tapHint = plrs.length ? `<div class="sv-tap-hint">▾ ${plrs.length} player pick${plrs.length > 1 ? 's' : ''}</div>` : '';
-
-      return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrs.length ? 'sv-has-plrs' : ''}" onclick="this.classList.toggle('sv-expanded')">
-        <div class="sv-matchup">${esc(p.matchup || '')}</div>
-        <div class="sv-pick-line">
-          <span class="sv-arrow">→</span>
-          <span class="sv-pick-name">${esc(p.team)}</span>
-          <span class="sv-conf">${dots}</span>
-          ${resultBadge}
-        </div>
-        ${tapHint}
-        ${plrSection}
-      </div>`;
-    }).join('');
-
-    html += `<div class="sv-sport-section">
-      <div class="sv-sport-hdr">${SPORT_ICONS[sport]||'🏅'} ${SPORT_LABELS[sport]||sport.toUpperCase()}</div>
-      <div class="sv-picks-grid">${cards}</div>
+  const makeCard = (p) => {
+    const conf = Math.min(3, Math.max(1, p.conf || 1));
+    const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
+    const resultBadge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
+                      : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+    const key  = (p.matchup || '').toLowerCase().trim();
+    const plrs = (plrByMatchup[key] || []).sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 4);
+    const plrSection = plrs.length
+      ? `<div class="sv-plr-section">
+          ${plrs.map(pp => {
+            const pr = pp.result === 'win' ? '<span class="sv-plr-r sv-plr-w">W</span>'
+                     : pp.result === 'loss' ? '<span class="sv-plr-r sv-plr-l">L</span>' : '';
+            return `<div class="sv-plr-item">
+              <span class="sv-plr-name">${esc(pp.player)}</span>
+              <span class="sv-plr-stat">${esc(pp.stat)}</span>${pr}
+            </div>`;
+          }).join('')}
+        </div>`
+      : '';
+    const tapHint = plrs.length ? `<div class="sv-tap-hint">▾ ${plrs.length} player pick${plrs.length > 1 ? 's' : ''}</div>` : '';
+    return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrs.length ? 'sv-has-plrs' : ''}" onclick="this.classList.toggle('sv-expanded')">
+      <div class="sv-matchup">${esc(p.matchup || '')}</div>
+      <div class="sv-pick-line">
+        <span class="sv-arrow">→</span>
+        <span class="sv-pick-name">${esc(p.team)}</span>
+        <span class="sv-conf">${dots}</span>
+        ${resultBadge}
+      </div>
+      ${tapHint}
+      ${plrSection}
     </div>`;
-  }
-  document.getElementById('sv-content').innerHTML = html;
+  };
+
+  const sections = sports.map(sport => {
+    const picks = [...bySport[sport]].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 5);
+    return `<div class="sv-sport-section">
+      <div class="sv-sport-hdr">${SPORT_ICONS[sport]||'🏅'} ${SPORT_LABELS[sport]||sport.toUpperCase()}</div>
+      ${picks.map(makeCard).join('')}
+    </div>`;
+  }).join('');
+
+  document.getElementById('sv-content').innerHTML = `<div class="sv-sections-grid">${sections}</div>`;
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────
