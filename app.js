@@ -819,9 +819,23 @@ function buildGroup(g) {
     </div>`;
 }
 
+// Returns 'r1'|'r2'|'r3'|'mid'|'quarter'|'semi'|'final'|'unknown'
+function tennisRound(m) {
+  const r = (m.event_round || '').toLowerCase();
+  if (!r) return 'unknown';
+  if (/final/.test(r) && !/semi|quarter/.test(r)) return 'final';
+  if (/semi|1\/2/.test(r))                         return 'semi';
+  if (/quarter|1\/4/.test(r))                      return 'quarter';
+  if (/3rd|r3|round.?3/.test(r))                   return 'r3';
+  if (/2nd|r2|round.?2/.test(r))                   return 'r2';
+  if (/1st|r1|round.?1/.test(r))                   return 'r1';
+  return 'mid';
+}
+
 function inlineTennisPick(m) {
-  // Don't generate picks for future-dated matches — record them when their day arrives
+  // Don't generate picks for future-dated or in-progress matches
   if (m.event_date && m.event_date > dateStr(0)) return '';
+  if (isLive(m.event_status)) return '';
 
   const pickId  = 'tn_' + m.event_key;
   const surface = m.event_surface ? ` (${m.event_surface})` : '';
@@ -944,9 +958,9 @@ async function fetchH2HCached(p1key, p2key) {
     const json = res.ok ? await res.json() : {};
     const raw  = json.success === 1 ? (json.result || {}) : {};
     const data = {
-      h2h:      Array.isArray(raw.H2H)                ? raw.H2H                       : [],
-      p1Recent: Array.isArray(raw.firstPlayerResults)  ? raw.firstPlayerResults.slice(0,5)  : [],
-      p2Recent: Array.isArray(raw.secondPlayerResults) ? raw.secondPlayerResults.slice(0,5) : []
+      h2h:      Array.isArray(raw.H2H)                ? raw.H2H                        : [],
+      p1Recent: Array.isArray(raw.firstPlayerResults)  ? raw.firstPlayerResults.slice(0,10)  : [],
+      p2Recent: Array.isArray(raw.secondPlayerResults) ? raw.secondPlayerResults.slice(0,10) : []
     };
     _h2hCache.set(ckey, data);
     return data;
@@ -1131,7 +1145,7 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     else                 {               factors.push({ win: null, label: `On ${esc(surfLabel)}`, detail: `Even ${sw1}–${sw2}`, side: 0 }); }
   }
 
-  // Recent form (last 5 matches)
+  // Recent form (last 10 matches)
   const formWins = (games, pkey) => {
     let w = 0;
     for (const g of games) {
@@ -1144,20 +1158,44 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   };
   const fw1 = p1Recent.length ? formWins(p1Recent, p1key) : -1;
   const fw2 = p2Recent.length ? formWins(p2Recent, p2key) : -1;
+  const formN = Math.max(p1Recent.length, p2Recent.length);
   if (fw1 >= 0 && fw2 >= 0 && fw1 !== fw2) {
-    if (fw1 > fw2) { p1Score += 2; factors.push({ win: true, label: 'Recent form', detail: `${l1} ${fw1}/5 vs ${l2} ${fw2}/5`, side: 1 }); }
-    else           { p2Score += 2; factors.push({ win: true, label: 'Recent form', detail: `${l2} ${fw2}/5 vs ${l1} ${fw1}/5`, side: 2 }); }
+    if (fw1 > fw2) { p1Score += 2; factors.push({ win: true, label: 'Recent form', detail: `${l1} ${fw1}/${p1Recent.length} vs ${l2} ${fw2}/${p2Recent.length}`, side: 1 }); }
+    else           { p2Score += 2; factors.push({ win: true, label: 'Recent form', detail: `${l2} ${fw2}/${p2Recent.length} vs ${l1} ${fw1}/${p1Recent.length}`, side: 2 }); }
+  }
+
+  // Fatigue: last match was yesterday — possible carry-over fatigue
+  const ystStr = dateStr(-1);
+  const p1Tired = p1Recent.length > 0 && p1Recent[0].event_date === ystStr;
+  const p2Tired = p2Recent.length > 0 && p2Recent[0].event_date === ystStr;
+  if (p1Tired && !p2Tired) {
+    p2Score += 1;
+    factors.push({ win: true, label: 'Fatigue', detail: `${l1} played yesterday`, side: 2 });
+  } else if (p2Tired && !p1Tired) {
+    p1Score += 1;
+    factors.push({ win: true, label: 'Fatigue', detail: `${l2} played yesterday`, side: 1 });
   }
 
   if (!factors.length) return '';
 
+  // Round weighting: early rounds are more volatile; late rounds validate form
+  const round = tennisRound(m);
+  const earlyRound = ['r1','r2'].includes(round);
+  const lateRound  = ['quarter','semi','final'].includes(round);
+
   let verdictHTML = '';
   if (p1Score > p2Score) {
-    const pct = Math.round((p1Score / (p1Score + p2Score)) * 100);
-    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p1Name)}</span> likely to win <span class="gp-pick-count">(${pct}% of factors)</span></div>`;
+    let pct = Math.round((p1Score / (p1Score + p2Score)) * 100);
+    if (earlyRound) pct = Math.min(pct, 68); // cap confidence in early rounds
+    if (lateRound)  pct = Math.min(100, pct + 4);
+    const roundNote = earlyRound ? ' <span class="gp-round-note">(early rd)</span>' : lateRound ? ' <span class="gp-round-note">(late rd)</span>' : '';
+    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p1Name)}</span> likely to win <span class="gp-pick-count">(${pct}% of factors${round !== 'unknown' ? ` · ${round.toUpperCase()}` : ''})</span>${roundNote}</div>`;
   } else if (p2Score > p1Score) {
-    const pct = Math.round((p2Score / (p1Score + p2Score)) * 100);
-    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p2Name)}</span> likely to win <span class="gp-pick-count">(${pct}% of factors)</span></div>`;
+    let pct = Math.round((p2Score / (p1Score + p2Score)) * 100);
+    if (earlyRound) pct = Math.min(pct, 68);
+    if (lateRound)  pct = Math.min(100, pct + 4);
+    const roundNote = earlyRound ? ' <span class="gp-round-note">(early rd)</span>' : lateRound ? ' <span class="gp-round-note">(late rd)</span>' : '';
+    verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p2Name)}</span> likely to win <span class="gp-pick-count">(${pct}% of factors${round !== 'unknown' ? ` · ${round.toUpperCase()}` : ''})</span>${roundNote}</div>`;
   } else {
     verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup - too close to call</div>`;
   }
@@ -2365,7 +2403,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const favTeam = homePct >= 50 ? espnGame.homeTeam : espnGame.awayTeam;
     const pct     = Math.max(homePct, 100 - homePct);
     const margin  = Math.abs(homePct - 50);
-    if (!fin && margin >= 3) recordPick(String(espnGame.id), favTeam.split(' ').pop(), gameMatchup, 'mlb');
+    if (!fin && !live && margin >= 3) recordPick(String(espnGame.id), favTeam.split(' ').pop(), gameMatchup, 'mlb');
     favLine = margin >= 3
       ? `<span class="pc-fav">${esc(favTeam.split(' ').pop())} favored ${pct}%</span>`
       : `<span class="pc-fav pc-fav-even">Even matchup</span>`;
@@ -2387,6 +2425,8 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const away = mlbGame.teams.away, home = mlbGame.teams.home;
   const awayAbbr = away.team?.abbreviation || espnGame.awayAbbr;
   const homeAbbr = home.team?.abbreviation || espnGame.homeAbbr;
+  const awayMLBId = String(away.team?.id || '');
+  const homeMLBId = String(home.team?.id || '');
   const awayPitcherId = away.probablePitcher?.id;
   const homePitcherId = home.probablePitcher?.id;
   const awayPName = away.probablePitcher?.fullName || 'TBD';
@@ -2394,26 +2434,47 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const weather   = mlbGame.weather || null;
   const wind      = _windHRBonus(weather);
 
+  // L10 momentum + streak
+  const standings = _mlbStandingsCache || new Map();
+  const awayStand = standings.get(awayMLBId);
+  const homeStand = standings.get(homeMLBId);
+  const awayMom = awayStand ? awayStand.l10w / 10 : 0.5;
+  const homeMom = homeStand ? homeStand.l10w / 10 : 0.5;
+
+  // Team pitching ERA (proxy for bullpen quality)
+  const awayTeamPitch = _teamPitchingCache.get(awayMLBId);
+  const homeTeamPitch = _teamPitchingCache.get(homeMLBId);
+  const awayTeamERA = parseFloat(awayTeamPitch?.era || 0);
+  const homeTeamERA = parseFloat(homeTeamPitch?.era || 0);
+
   // Pitcher stats (already pre-fetched)
   const awayPD = awayPitcherId ? _pitcherCache.get(awayPitcherId) : null;
   const homePD = homePitcherId ? _pitcherCache.get(homePitcherId) : null;
   const awayHand = awayPD?.pitchHand || null;
   const homeHand = homePD?.pitchHand || null;
 
-  // Pitcher rate stats — adjusted for recent form (last 3 starts trend)
-  const _pRates = pd => {
+  // Pitcher rate stats — adjusted for recent form + bullpen drag
+  const LEAGUE_ERA = 4.20;
+  const _pRates = (pd, teamERA) => {
     const s  = pd?.season;
     const ip = parseFloat(s?.inningsPitched || 0);
     let hr9 = ip > 5 ? (parseInt(s?.homeRuns||0)    / ip) * 9 : 1.2;
     let bb9 = ip > 5 ? (parseInt(s?.baseOnBalls||0) / ip) * 9 : 3.0;
     let k9  = ip > 5 ? (parseInt(s?.strikeOuts||0)  / ip) * 9 : 8.5;
-    // Adjust based on recent form: struggling pitcher → inflate hr9/bb9, deflate k9
+    // Recent form adjustment
     if (pd?.eraTrend === 'cold') { hr9 *= 1.20; bb9 *= 1.12; k9  *= 0.88; }
     if (pd?.eraTrend === 'hot')  { hr9 *= 0.85; bb9 *= 0.92; k9  *= 1.10; }
+    // Bullpen drag: if team ERA >> starter ERA, back-end of the staff inflates run risk
+    if (teamERA > 0) {
+      const pitERA = parseFloat(s?.era || LEAGUE_ERA);
+      const drag = teamERA - pitERA;
+      if (drag > 1.5) { hr9 *= 1.10; bb9 *= 1.07; k9 *= 0.95; }
+      else if (drag > 0.5) { hr9 *= 1.05; bb9 *= 1.03; k9 *= 0.98; }
+    }
     return { hr9, bb9, k9 };
   };
-  const awayRates = _pRates(awayPD);   // home batters face away pitcher
-  const homeRates = _pRates(homePD);   // away batters face home pitcher
+  const awayRates = _pRates(awayPD, awayTeamERA);   // home batters face away pitcher
+  const homeRates = _pRates(homePD, homeTeamERA);   // away batters face home pitcher
   const parkHR    = PARK_HR[homeAbbr]  || 1.0;
   const parkHit   = PARK_HIT[homeAbbr] || 1.0;
   const windMult  = wind.bonus >= 2 ? 1.16 : wind.bonus === 1 ? 1.08 : wind.bonus <= -2 ? 0.85 : wind.bonus === -1 ? 0.93 : 1.0;
@@ -2430,6 +2491,17 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     return `${esc(lastName(name))} (${hand||'?'}HP · ${era}${recentStr})`;
   };
   const pitcherLine = `<div class="pc-pit-line">${pitStr(awayPName, awayPD, awayHand)} <span class="pc-pit-sep">vs</span> ${pitStr(homePName, homePD, homeHand)}</div>`;
+
+  // ── L10 momentum + streak line ──
+  const l10Chip = (stand, abbr) => {
+    if (!stand) return '';
+    const { l10w, l10l, streak } = stand;
+    const cls = l10w >= 7 ? 'l10-hot' : l10w <= 3 ? 'l10-cold' : 'l10-avg';
+    const strk = streak ? ` <span class="l10-streak">${esc(streak)}</span>` : '';
+    return `<span class="pc-l10 ${cls}">${esc(abbr)} L10: ${l10w}-${l10l}${strk}</span>`;
+  };
+  const momentumLine = (awayStand || homeStand)
+    ? `<div class="pc-momentum">${l10Chip(awayStand, espnGame.awayAbbr)} ${l10Chip(homeStand, espnGame.homeAbbr)}</div>` : '';
 
   // ── Compact weather ──
   const wxParts = weather ? [
@@ -2510,14 +2582,17 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
 
   const hasLineup = allBatters.length > 0;
 
-  // ── Fetch career vs-pitcher stats for top hit + HR candidates ──
+  // ── Fetch career vs-pitcher stats for top batters (top 2 hitters + top HR per team) ──
   let vsMap = new Map(); // batterId -> vs stat
   if (hasLineup) {
-    const topHit = [...allBatters].sort((a,b) => b.hitScore - a.hitScore)[0];
-    const topHR  = [...allBatters].sort((a,b) => b.hrScore  - a.hrScore)[0];
-    const toFetch = [...new Set([topHit, topHR].filter(b => b?.id && b?.oppPitcherId).map(b => b.id))];
+    const topBatters = [...new Set([
+      ...[...awayValid].sort((a,b) => b.hitScore - a.hitScore).slice(0,2),
+      ...[...homeValid].sort((a,b) => b.hitScore - a.hitScore).slice(0,2),
+      ...[...awayValid].sort((a,b) => b.hrScore  - a.hrScore ).slice(0,1),
+      ...[...homeValid].sort((a,b) => b.hrScore  - a.hrScore ).slice(0,1),
+    ].filter(b => b?.id && b?.oppPitcherId).map(b => b.id))];
     const vsRes = await Promise.allSettled(
-      toFetch.map(bid => {
+      topBatters.map(bid => {
         const batter = allBatters.find(b => b.id === bid);
         return fetchVsStats(bid, batter.oppPitcherId).then(s => ({ bid, s }));
       })
@@ -2574,7 +2649,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     // Record both teams' picks per category
     const gKey   = String(espnGame.id);
     const gamePk = mlbGame?.gamePk || null;
-    if (!fin) {
+    if (!fin && !live) {
       for (const [b, prop] of [[aHit,'hit'],[hHit,'hit'],[aHR,'hr'],[hHR,'hr'],[aRBI,'rbi'],[hRBI,'rbi'],[aBB,'walk'],[hBB,'walk'],[aSB,'sb'],[hSB,'sb']]) {
         if (b) recordPlayerPick('plr_'+gKey+'_'+b.id+'_'+prop, 'mlb', b.name, prop==='hit'?'Hit':prop==='hr'?'HR':prop==='rbi'?'RBI':prop==='walk'?'Walk':'SB', statStr[prop](b), gameMatchup, gamePk);
       }
@@ -2608,6 +2683,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       ${statusLabel}
     </div>
     ${favLine ? `<div class="pc-meta">${favLine}</div>` : ''}
+    ${momentumLine}
     ${pitcherLine}
     ${wxLine}
     ${pitWarnLine}
@@ -2668,7 +2744,7 @@ async function loadTennisPicksPage() {
   }
 
   area.innerHTML = `
-    <div class="pc-data-note">Picks use seedings · rankings · H2H · surface form · recent results</div>
+    <div class="pc-data-note">Picks use seedings · rankings · H2H · surface form · fatigue · round weighting</div>
     <div class="ph-list">${todayHTML}</div>
     <div class="tp-tomorrow-section">
       <div class="tp-tmrw-hdr">
@@ -2784,7 +2860,7 @@ function buildTomorrowPickCard(m) {
     else                 {               factors.push({ label:`${surface} H2H`, detail:`Even ${sw1}–${sw2}`, side:0 }); }
   }
 
-  // Recent form
+  // Recent form (up to 10 matches)
   const formWins = (games, pkey) => games.reduce((w, g) => {
     const winner = g.event_winner, gp1 = String(g.first_player_key || '');
     return w + (((winner === 'First Player' && gp1 === pkey) || (winner === 'Second Player' && gp1 !== pkey)) ? 1 : 0);
@@ -2792,15 +2868,39 @@ function buildTomorrowPickCard(m) {
   const fw1 = p1Recent.length ? formWins(p1Recent, p1key) : -1;
   const fw2 = p2Recent.length ? formWins(p2Recent, p2key) : -1;
   if (fw1 >= 0 && fw2 >= 0 && fw1 !== fw2) {
-    if (fw1 > fw2) { p1Score += 2; factors.push({ label:'Form', detail:`${l1} ${fw1}/5 vs ${l2} ${fw2}/5`, side:1 }); }
-    else           { p2Score += 2; factors.push({ label:'Form', detail:`${l2} ${fw2}/5 vs ${l1} ${fw1}/5`, side:2 }); }
+    if (fw1 > fw2) { p1Score += 2; factors.push({ label:'Form', detail:`${l1} ${fw1}/${p1Recent.length} vs ${l2} ${fw2}/${p2Recent.length}`, side:1 }); }
+    else           { p2Score += 2; factors.push({ label:'Form', detail:`${l2} ${fw2}/${p2Recent.length} vs ${l1} ${fw1}/${p1Recent.length}`, side:2 }); }
   }
+
+  // Fatigue: player's last match was TODAY (playing tomorrow after today's match)
+  const todayStr = dateStr(0);
+  const p1Tired = p1Recent.length > 0 && p1Recent[0].event_date === todayStr;
+  const p2Tired = p2Recent.length > 0 && p2Recent[0].event_date === todayStr;
+  if (p1Tired && !p2Tired) {
+    p2Score += 1; factors.push({ label:'Fatigue', detail:`${l1} plays today`, side:2 });
+  } else if (p2Tired && !p1Tired) {
+    p1Score += 1; factors.push({ label:'Fatigue', detail:`${l2} plays today`, side:1 });
+  }
+
+  // Round weighting
+  const round = tennisRound(m);
+  const earlyRound = ['r1','r2'].includes(round);
+  const lateRound  = ['quarter','semi','final'].includes(round);
 
   // Decide pick
   let pickName = '', pickSide = 0, conf = 0;
   const total = p1Score + p2Score;
-  if (p1Score > p2Score) { pickName = p1Name; pickSide = 1; conf = total >= 8 ? 3 : total >= 5 ? 2 : 1; }
-  else if (p2Score > p1Score) { pickName = p2Name; pickSide = 2; conf = total >= 8 ? 3 : total >= 5 ? 2 : 1; }
+  if (p1Score > p2Score) {
+    pickName = p1Name; pickSide = 1;
+    conf = total >= 8 ? 3 : total >= 5 ? 2 : 1;
+    if (earlyRound) conf = Math.min(conf, 2);
+    if (lateRound && conf < 3 && total >= 5) conf = Math.min(3, conf + 1);
+  } else if (p2Score > p1Score) {
+    pickName = p2Name; pickSide = 2;
+    conf = total >= 8 ? 3 : total >= 5 ? 2 : 1;
+    if (earlyRound) conf = Math.min(conf, 2);
+    if (lateRound && conf < 3 && total >= 5) conf = Math.min(3, conf + 1);
+  }
 
   // Record the pick with full analysis
   if (pickName && m.event_date && m.event_date > dateStr(0)) {
@@ -2836,16 +2936,21 @@ function buildTomorrowPickCard(m) {
     ? `<div class="tp-pick-line">→ <strong>${esc(lastName(pickName))}</strong> ${confDots}</div>`
     : `<div class="tp-pick-line tp-pick-even">Too close to call</div>`;
 
+  const roundLabel = round !== 'unknown' && round !== 'mid' ? `<span class="tp-round-tag">${round.toUpperCase()}</span>` : '';
+  const fatigueTag = (p1Tired || p2Tired)
+    ? `<span class="tp-fatigue-tag">⚡ ${p1Tired ? esc(l1) : esc(l2)} plays today</span>` : '';
+
   return `<div class="tp-card ${pickSide === 1 ? 'tp-leans-p1' : pickSide === 2 ? 'tp-leans-p2' : ''}">
     <div class="tp-card-hdr">
       <span class="surface-dot ${scLow}" title="${esc(surface)}"></span>
       <span class="tp-tourney">${esc(m.tournament_name || m.event_type_type || '')}</span>
+      ${roundLabel}
       <span class="tp-match-time">${esc(fmtTime12(m.event_time || ''))}</span>
     </div>
     <div class="tp-players">
-      <span class="tp-p1 ${pickSide===1?'tp-favored':''}">${esc(p1Name)}${seedTag(s1)}${rankTag(r1, s1)}</span>
+      <span class="tp-p1 ${pickSide===1?'tp-favored':''}">${esc(p1Name)}${seedTag(s1)}${rankTag(r1, s1)}${p1Tired?'<span class="tp-tired-dot" title="Played today">⚡</span>':''}</span>
       <span class="tp-vs">vs</span>
-      <span class="tp-p2 ${pickSide===2?'tp-favored':''}">${esc(p2Name)}${seedTag(s2)}${rankTag(r2, s2)}</span>
+      <span class="tp-p2 ${pickSide===2?'tp-favored':''}">${esc(p2Name)}${seedTag(s2)}${rankTag(r2, s2)}${p2Tired?'<span class="tp-tired-dot" title="Played today">⚡</span>':''}</span>
     </div>
     ${h2h.length ? `<div class="tp-h2h">H2H: <strong>${aw1}–${aw2}</strong>${h2hSurf.length ? ` · ${surface}: <strong>${sw1}–${sw2}</strong>` : ''}</div>` : ''}
     ${(p1Recent.length || p2Recent.length) ? `<div class="tp-form">
@@ -3071,13 +3176,20 @@ async function loadMLBPicksPage() {
       return;
     }
 
-    // Phase 2: pre-fetch all probable pitcher stats
+    // Phase 2: pre-fetch pitcher stats, team pitching ERA, and L10 standings in parallel
     const pitcherIds = new Set();
+    const mlbTeamIds = new Set();
     for (const g of schedule) {
       if (g.teams.away.probablePitcher?.id) pitcherIds.add(g.teams.away.probablePitcher.id);
       if (g.teams.home.probablePitcher?.id) pitcherIds.add(g.teams.home.probablePitcher.id);
+      if (g.teams.away.team?.id) mlbTeamIds.add(String(g.teams.away.team.id));
+      if (g.teams.home.team?.id) mlbTeamIds.add(String(g.teams.home.team.id));
     }
-    await Promise.allSettled([...pitcherIds].map(id => fetchPitcherPreview(id)));
+    await Promise.allSettled([
+      fetchMLBStandings(),
+      ...[...pitcherIds].map(id => fetchPitcherPreview(id)),
+      ...[...mlbTeamIds].map(id => fetchTeamPitchingStats(id))
+    ]);
 
     // Phase 3: pre-fetch batter stats for all lineups (full 9 per team)
     const batterIds = new Set();
@@ -3099,7 +3211,7 @@ async function loadMLBPicksPage() {
 
     // Phase 5: build cards
     const cardHTMLs = await Promise.all(games.map(g => buildMLBPicksGameCard(g, findSched(g))));
-    const note = `<div class="pc-data-note">Platoon splits · park factors · pitcher HR/9 &amp; BB/9 · career vs-pitcher where available</div>`;
+    const note = `<div class="pc-data-note">Platoon splits · park factors · pitcher ERA + L3 trend · bullpen ERA · L10 momentum · career vs-pitcher</div>`;
     area.innerHTML = nav + note + `<div class="picks-cards">${cardHTMLs.join('')}</div>`;
     updatePicksDisplay();
   } catch (err) {
@@ -3627,13 +3739,56 @@ async function renderESPNGamePreview(game, panel) {
 }
 
 // ── GAME PREVIEW DATA ────────────────────────────────────────
-const _pitcherCache   = new Map();
-const _batterCache    = new Map();
-const _vsCache        = new Map(); // `${batterId}_${pitcherId}` -> career vs-pitcher stat
-const _otherGamesMap  = new Map(); // espn event id → game object
-const _schedCache     = new Map(); // `${sport}_${teamId}` → events[]
-let   _mlbSchedCache  = null;
-let   _mlbSchedDate   = null;
+const _pitcherCache      = new Map();
+const _batterCache       = new Map();
+const _vsCache           = new Map(); // `${batterId}_${pitcherId}` -> career vs-pitcher stat
+const _otherGamesMap     = new Map(); // espn event id → game object
+const _schedCache        = new Map(); // `${sport}_${teamId}` → events[]
+const _teamPitchingCache = new Map(); // mlb teamId → team pitching stat
+let   _mlbSchedCache     = null;
+let   _mlbSchedDate      = null;
+let   _mlbStandingsCache = null; // Map: mlbTeamId → { w, l, l10w, l10l, streak }
+let   _mlbStandingsSeason = null;
+
+async function fetchMLBStandings() {
+  const yr = CURRENT_SEASON;
+  if (_mlbStandingsCache && _mlbStandingsSeason === yr) return _mlbStandingsCache;
+  try {
+    const r = await fetch(`https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${yr}&standingsTypes=regularSeason&hydrate=team,record`);
+    const j = await r.json();
+    const map = new Map();
+    for (const rec of (j.records || [])) {
+      for (const tr of (rec.teamRecords || [])) {
+        const id = String(tr.team?.id || '');
+        if (!id) continue;
+        const last10 = (tr.records?.splitRecords || []).find(s => s.type === 'lastTen');
+        map.set(id, {
+          w: tr.wins || 0, l: tr.losses || 0,
+          l10w: parseInt(last10?.wins  || 0),
+          l10l: parseInt(last10?.losses || 0),
+          streak: tr.streak?.streakCode || '',
+          divRank: tr.divisionRank || 0
+        });
+      }
+    }
+    _mlbStandingsCache  = map;
+    _mlbStandingsSeason = yr;
+    return map;
+  } catch { return new Map(); }
+}
+
+async function fetchTeamPitchingStats(teamId) {
+  if (!teamId) return null;
+  const key = String(teamId);
+  if (_teamPitchingCache.has(key)) return _teamPitchingCache.get(key);
+  try {
+    const r = await fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}/stats?stats=season&group=pitching&gameType=R&season=${CURRENT_SEASON}`);
+    const j = await r.json();
+    const stat = j.stats?.[0]?.splits?.[0]?.stat || null;
+    _teamPitchingCache.set(key, stat);
+    return stat;
+  } catch { _teamPitchingCache.set(String(teamId), null); return null; }
+}
 
 async function fetchTeamSched(sport, teamId) {
   const key = `${sport}_${teamId}`;
