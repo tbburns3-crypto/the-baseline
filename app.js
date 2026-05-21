@@ -2371,15 +2371,19 @@ function getGameBestPickHTML(espnGameId, g) {
   return '';
 }
 
-// Records pick + immediately resolves if game is finished. Safe to call multiple times.
+// Records pick + immediately resolves if game is finished. Pre-game only — never mid-game.
 function autoRecordAndResolvePick(g) {
   if (!g.awayRec && !g.homeRec) return;
-  const { fin } = gameRowState(g);
-  const awayWP  = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
-  const rawHome = homeWP * 1.03, total = awayWP + rawHome;
-  const homePct = Math.round((rawHome / total) * 100);
-  const short   = (homePct >= 50 ? g.homeTeam : g.awayTeam).split(' ').pop();
-  recordPick(String(g.id), short, `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '');
+  const { fin, live } = gameRowState(g);
+  // Only make a new prediction if the game hasn't started yet
+  if (!live && !fin) {
+    const awayWP  = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
+    const rawHome = homeWP * 1.03, total = awayWP + rawHome;
+    const homePct = Math.round((rawHome / total) * 100);
+    const short   = (homePct >= 50 ? g.homeTeam : g.awayTeam).split(' ').pop();
+    recordPick(String(g.id), short, `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '');
+  }
+  // Always resolve finished games that already have a pick
   if (fin && g.awayScore !== '' && g.homeScore !== '') {
     const aS = parseFloat(g.awayScore) || 0, hS = parseFloat(g.homeScore) || 0;
     if (aS !== hS) resolvePick(String(g.id), aS > hS ? g.awayTeam.split(' ').pop() : g.homeTeam.split(' ').pop());
@@ -3810,8 +3814,9 @@ async function renderMLBGamePreview(espnGame, panel) {
       sport: 'mlb', weather: mlbGame.weather || null, weatherFmt: 'mlb'
     });
     const pickHTML = pickResult.html;
-    // Force-update with the nuanced multi-factor pick, overriding any earlier simple W-L seed
-    if (pickResult.team && !gameRowState(espnGame).fin) {
+    // Force-update with the nuanced multi-factor pick — pre-game only, never live or finished
+    const _gs = gameRowState(espnGame);
+    if (pickResult.team && !_gs.fin && !_gs.live) {
       recordPick(String(espnGame.id), pickResult.team, gameMatchup, 'mlb', pickResult.conf, true);
     }
 
@@ -5086,10 +5091,9 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
 
-  // Always record the pre-round pick — recordPick is idempotent so existing picks aren't overwritten.
-  // Removing the !groupStarted guard means mid-round preloads (from simple view) also capture picks.
+  // Pre-game only — only record picks for groups that haven't teed off yet.
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
-  recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+  if (!groupStarted) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
 
   // Display: if group has started, show the stored pre-round pick at the top
   const storedLastName = (existingPick?.team || '').toLowerCase();
