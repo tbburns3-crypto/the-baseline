@@ -363,6 +363,12 @@ function dateStr(offset = 0) {
   const dy = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dy}`;
 }
+// Tennis API uses UTC dates — use this for all tennis fetches and event_date comparisons
+function dateStrUTC(offset = 0) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offset);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+}
 
 const CURRENT_SEASON = new Date().getFullYear();
 
@@ -555,7 +561,7 @@ async function tennisFetch(method, params = {}) {
 async function loadFixtures(offset = 0) {
   showLoading('matches-area', 'Loading matches…');
   try {
-    const d = dateStr(offset);
+    const d = dateStrUTC(offset);
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
     for (const m of results) S.matches.set(String(m.event_key), m);
     renderMatches(results);
@@ -906,7 +912,7 @@ function tournamentTier(m) {
 
 function inlineTennisPick(m) {
   // Don't generate picks for future-dated or in-progress matches
-  if (m.event_date && m.event_date > dateStr(0)) return '';
+  if (m.event_date && m.event_date > dateStrUTC(0)) return '';
   if (isLive(m.event_status)) return '';
 
   const pickId  = 'tn_' + m.event_key;
@@ -1285,7 +1291,7 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   else if (taff2 > taff1) { p2Score += Math.min(3, Math.ceil((taff2-taff1)/2)); factors.push({ win: true, label: 'Tournament history', detail: `${l2} specialist here`, side: 2 }); }
 
   // Fatigue: last match was yesterday — possible carry-over fatigue
-  const ystStr = dateStr(-1);
+  const ystStr = dateStrUTC(-1);
   const p1Tired = p1Recent.length > 0 && p1Recent[0].event_date === ystStr;
   const p2Tired = p2Recent.length > 0 && p2Recent[0].event_date === ystStr;
   if (p1Tired && !p2Tired) {
@@ -1780,7 +1786,7 @@ function renderDateBar() {
   document.getElementById('date-tabs-container').innerHTML = offsets.map((off, i) =>
     `<button class="date-tab ${off===S.dateOffset?'active':''}" onclick="pickDate(${off})">
        <span class="date-label">${labels[i]}</span>
-       <span class="date-value">${fmtDateShort(dateStr(off))}</span>
+       <span class="date-value">${fmtDateShort(dateStrUTC(off))}</span>
      </button>`).join('');
 }
 
@@ -2908,7 +2914,7 @@ async function loadTennisPicksPage() {
   area.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Loading picks…</p></div>`;
 
   try {
-    const d = dateStr(S.dateOffset);
+    const d = dateStrUTC(S.dateOffset);
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
     for (const m of results) {
       S.matches.set(String(m.event_key), m);
@@ -2975,7 +2981,7 @@ async function loadTomorrowPreview() {
   const area = document.getElementById('tomorrow-preview-area');
   if (!area) return;
   try {
-    const d = dateStr(1);
+    const d = dateStrUTC(1);
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
 
     // Only ATP/WTA singles with player keys — cap at 10 to limit API calls
@@ -3132,7 +3138,7 @@ function buildTomorrowPickCard(m) {
   else if (taff2t > taff1t) { p2Score += Math.min(3, Math.ceil((taff2t-taff1t)/2)); factors.push({ label:'Tournament history', detail:`${l2} specialist here`, side:2 }); }
 
   // Fatigue: player's last match was TODAY (playing tomorrow after today's match)
-  const todayStr = dateStr(0);
+  const todayStr = dateStrUTC(0);
   const p1Tired = p1Recent.length > 0 && p1Recent[0].event_date === todayStr;
   const p2Tired = p2Recent.length > 0 && p2Recent[0].event_date === todayStr;
   if (p1Tired && !p2Tired) {
@@ -3173,7 +3179,7 @@ function buildTomorrowPickCard(m) {
   }
 
   // Record the pick with full analysis
-  if (pickName && m.event_date && m.event_date > dateStr(0)) {
+  if (pickName && m.event_date && m.event_date > dateStrUTC(0)) {
     const pickId  = 'tn_' + m.event_key;
     const surfTag = surface ? ` (${surface})` : '';
     const matchup = `${l1} vs ${l2}${surfTag}`;
