@@ -6014,7 +6014,7 @@ function lockTopPicks() {
   const gamePicks = Object.entries(allPicksMap)
     .filter(([, p]) => p.date === today && !p.type && p.team)
     .sort((a, b) => (b[1].conf || 0) - (a[1].conf || 0));
-  const SPORT_LIMITS = { tennis: 6, mlb: 3, nba: 3, wnba: 2, nfl: 3, nhl: 3, soccer: 3, golf: 2 };
+  const SPORT_LIMITS = { tennis: 6, mlb: 3, nba: 3, wnba: 2, nfl: 3, nhl: 3, soccer: 3, golf: 6 };
   const bySport = {};
   for (const [id, p] of gamePicks) {
     const s = p.sport || 'tennis';
@@ -6191,7 +6191,7 @@ function renderSimpleView() {
     return;
   }
 
-  const SPORT_LIMITS = { tennis: 6, mlb: 3, nba: 3, wnba: 2, nfl: 3, nhl: 3, soccer: 3, golf: 2 };
+  const SPORT_LIMITS = { tennis: 6, mlb: 3, nba: 3, wnba: 2, nfl: 3, nhl: 3, soccer: 3, golf: 6 };
   const lockedBySport = getLockedTopPicks(); // null or { tennis:[id,...], mlb:[id,...], ... }
 
   // Build per-sport pick arrays from locked list or best-available
@@ -6256,18 +6256,21 @@ function renderSimpleView() {
     ? `<div class="sv-lottery-block"><div class="sv-sport-hdr" style="margin-bottom:6px">🎰 Lottery</div><div class="sv-lottery-cards">${_svLotteryHTML}</div></div>`
     : '';
 
+  // Left col: individual sports (Tennis + Golf). Right col: team sports.
   const tennisHTML = makeSportSection('tennis');
-  const OTHER_SPORTS = ['mlb', 'nba', 'wnba', 'nfl', 'nhl', 'soccer', 'golf'];
-  const otherHTML   = OTHER_SPORTS.map(makeSportSection).filter(Boolean).join('');
+  const golfHTML   = makeSportSection('golf');
+  const leftHTML   = [tennisHTML, golfHTML].filter(Boolean).join('');
+  const TEAM_SPORTS = ['mlb', 'nba', 'wnba', 'nfl', 'nhl', 'soccer'];
+  const otherHTML  = TEAM_SPORTS.map(makeSportSection).filter(Boolean).join('');
 
   let gridHTML;
-  if (tennisHTML && otherHTML) {
+  if (leftHTML && otherHTML) {
     gridHTML = `<div class="sv-sections-grid">
-      <div class="sv-left-col">${tennisHTML}</div>
+      <div class="sv-left-col">${leftHTML}</div>
       <div class="sv-right-col">${otherHTML}</div>
     </div>`;
   } else {
-    gridHTML = `<div class="sv-sections-grid sv-single-col">${tennisHTML || otherHTML}</div>`;
+    gridHTML = `<div class="sv-sections-grid sv-single-col">${leftHTML || otherHTML}</div>`;
   }
 
   // Top 10 ticket — diverse across all sports (max 2 per sport), sorted by conf desc
