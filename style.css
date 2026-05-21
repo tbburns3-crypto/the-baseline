@@ -1493,6 +1493,7 @@ input { font: inherit; }
 .golf-group-thru  { color: var(--text-muted); font-size: .72rem; }
 .golf-row-upcoming { opacity: .55; }
 .golf-thru-upcoming { color: var(--text-muted); font-size: .7rem; }
+.golf-upcoming-note { padding: 8px 14px; font-size: .73rem; color: var(--text-muted); font-style: italic; border-top: 1px solid rgba(255,255,255,.05); }
 
 /* ── STAR / INLINE PICK ── */
 .star-btn {
