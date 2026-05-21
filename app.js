@@ -4684,20 +4684,42 @@ function playerRoundStatus(p, round) {
   return 'upcoming';
 }
 
-function groupByTeeTime(players) {
-  const map = new Map();
+function groupByTeeTime(players, round = 1) {
+  // Group players who have started by (teeTime + startingNine) — definitive
+  // because split-tee tournaments have 2 groups at the same tee time (hole 1 vs hole 10).
+  const definite = new Map();
+  const upcoming = new Map(); // players with no hole data yet
+
   for (const p of players) {
     const t = extractTeeTime(p);
-    if (!map.has(t)) map.set(t, []);
-    map.get(t).push(p);
+    if (!t) continue;
+    const holeScores = p.linescores?.[round - 1]?.linescores || [];
+    if (holeScores.length > 0) {
+      // Determine starting nine from the first hole period
+      const nine = holeScores[0].period >= 10 ? 'back' : 'front';
+      const key  = `${t}||${nine}`;
+      if (!definite.has(key)) definite.set(key, { time: t, nine, players: [] });
+      definite.get(key).players.push(p);
+    } else {
+      if (!upcoming.has(t)) upcoming.set(t, []);
+      upcoming.get(t).push(p);
+    }
   }
-  return [...map.entries()]
-    .sort(([a], [b]) => {
-      if (!a && !b) return 0; if (!a) return 1; if (!b) return -1;
-      return new Date(a) - new Date(b) || a.localeCompare(b);
-    })
-    .map(([time, ps]) => ({ time, players: ps }))
-    .filter(g => g.players.length >= 2 && g.time);
+
+  const result = [...definite.values()];
+
+  // Upcoming players: can't distinguish front/back nine — split into groups of 3
+  // using their position in the competitors array (ESPN tends to list group-mates nearby)
+  for (const [time, ps] of upcoming) {
+    for (let i = 0; i < ps.length; i += 3) {
+      const chunk = ps.slice(i, i + 3);
+      if (chunk.length >= 2) result.push({ time, nine: null, players: chunk });
+    }
+  }
+
+  return result
+    .filter(g => g.players.length >= 2)
+    .sort((a, b) => new Date(a.time) - new Date(b.time) || (a.nine || '').localeCompare(b.nine || ''));
 }
 
 function renderGolfGroup(group, round, tournIsLive) {
@@ -4715,9 +4737,10 @@ function renderGolfGroup(group, round, tournIsLive) {
   const pickName  = pick?.athlete?.shortName || pick?.athlete?.displayName || '?';
   const pickScore = pick?.score || 'E';
 
-  const statusTag = groupLive ? `<span class="golf-live-tag pulse">● LIVE</span>`
-                  : groupDone ? `<span class="golf-done-tag">✓ Finished</span>`
-                  :             `<span class="golf-time-tag">⏰ ${esc(formatTeeTime(group.time))}</span>`;
+  const nineLabel = group.nine === 'back' ? ' · Hole 10' : group.nine === 'front' ? ' · Hole 1' : '';
+  const statusTag = groupLive ? `<span class="golf-live-tag pulse">● LIVE${esc(nineLabel)}</span>`
+                  : groupDone ? `<span class="golf-done-tag">✓ F${esc(nineLabel)}</span>`
+                  :             `<span class="golf-time-tag">⏰ ${esc(formatTeeTime(group.time))}${esc(nineLabel)}</span>`;
 
   const rows = players.map(p => {
     const name     = p.athlete?.shortName || p.athlete?.displayName || '-';
@@ -4780,7 +4803,7 @@ async function loadGolfLeaderboard() {
         if (!players.length) continue;
 
         // Build groups and sort: Live first → Upcoming → Finished
-        const groups = groupByTeeTime(allComp);
+        const groups = groupByTeeTime(allComp, round);
         const liveG     = groups.filter(g => g.players.some(p => playerRoundStatus(p, round) === 'live'));
         const upcomingG = groups.filter(g => g.players.every(p => playerRoundStatus(p, round) === 'upcoming'));
         const doneG     = groups.filter(g => g.players.every(p => playerRoundStatus(p, round) === 'finished'));
@@ -4974,7 +4997,7 @@ async function loadGolfPicksPage() {
         const round = comp.status?.period || 1;
         const isLive = state === 'in';
         const allComp = comp.competitors || [];
-        const groups  = groupByTeeTime(allComp);
+        const groups  = groupByTeeTime(allComp, round);
         if (!groups.length) continue;
         html += `<div class="golf-picks-section">
           <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
