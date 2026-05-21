@@ -5960,7 +5960,10 @@ async function preloadPicksForSimpleView() {
     wnba: { path: 'basketball/wnba', cats: ['points', 'rebounds', 'assists'] },
   };
 
-  for (const sport of ['mlb', 'nba', 'nfl', 'nhl', 'wnba']) {
+  // MLB handled separately below — loadMLBPicksPage records the nuanced team+player picks.
+  // Avoid running autoRecordAndResolvePick for MLB here to prevent a stale simple-seed
+  // (based on win% alone) from conflicting with the pitcher/form analysis pick.
+  for (const sport of ['nba', 'nfl', 'nhl', 'wnba']) {
     try {
       const games = await espnGames(sport, 0);
       // Record game-level picks (team win predictions)
@@ -5998,11 +6001,22 @@ async function preloadPicksForSimpleView() {
     } catch (e) { /* offseason or network — skip silently */ }
   }
 
-  // MLB: run the full picks page (hidden) so lineup-based player picks get recorded
+  // MLB: run the full picks page (pitcher ERA + lineup analysis records team + player picks)
+  // Falls back to simple win% picks only if the full analysis fails entirely.
+  let mlbFallbackGames = [];
+  try {
+    mlbFallbackGames = await espnGames('mlb', 0);
+  } catch (e) {}
   try {
     await loadMLBPicksPage();
+    // Any game the analysis couldn't pick (no lineup/schedule data) gets the simple seed
+    mlbFallbackGames.forEach(g => autoRecordAndResolvePick(g));
     if (isActive()) renderSimpleView();
-  } catch (e) {}
+  } catch (e) {
+    // Full analysis failed entirely — use simple picks so MLB at least appears
+    mlbFallbackGames.forEach(g => autoRecordAndResolvePick(g));
+    if (isActive()) renderSimpleView();
+  }
 
   // Golf: picks are recorded inside buildGolfGroupPickCard, which runs via loadGolfPicksPage(),
   // NOT loadGolfLeaderboard(). loadGolfPicksPage renders to the hidden #mlb-picks-area — harmless.
