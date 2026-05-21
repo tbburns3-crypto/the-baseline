@@ -99,10 +99,12 @@ function getConfCalibration(sport) {
   return 0;
 }
 
-function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0) {
+function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, force = false) {
   const picks = getPicks();
-  if (picks[gameId]) return;
-  picks[gameId] = { team: pickedTeam, date: new Date().toISOString().slice(0,10), result: null, matchup, sport, conf };
+  const existing = picks[gameId];
+  // force = true lets a nuanced pick overwrite a simple W-L seed, but never overwrite a resolved result
+  if (existing && (!force || existing.result !== null)) return;
+  picks[gameId] = { team: pickedTeam, date: new Date().toISOString().slice(0,10), result: existing?.result ?? null, matchup, sport, conf };
   savePicks(picks);
 }
 
@@ -2644,7 +2646,12 @@ function buildPickSection(awayName, homeName, opts) {
     return `<div class="gp-pfactor ${cls}"><span class="gp-pf-icon">${icon}</span><span class="gp-pf-label">${esc(f.label)}</span><span class="gp-pf-detail">${f.detail}</span></div>`;
   }).join('');
 
-  return `${seriesHTML}<div class="gp-pick-box">${verdictHTML}<div class="gp-pick-factors">${factorsHTML}</div></div>`;
+  const pickedConf = gap < 0.025 ? 1 : gap > 0.14 ? 3 : gap > 0.08 ? 2 : 1;
+  return {
+    html: `${seriesHTML}<div class="gp-pick-box">${verdictHTML}<div class="gp-pick-factors">${factorsHTML}</div></div>`,
+    team: pickTeam,
+    conf: pickedConf,
+  };
 }
 
 function buildMLBPreStats(leaders) {
@@ -2740,7 +2747,6 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const favTeam = homePct >= 50 ? espnGame.homeTeam : espnGame.awayTeam;
     const pct     = Math.max(homePct, 100 - homePct);
     const margin  = Math.abs(homePct - 50);
-    if (!fin && !live && margin >= 3) recordPick(String(espnGame.id), favTeam.split(' ').pop(), gameMatchup, 'mlb');
     favLine = margin >= 3
       ? `<span class="pc-fav">${esc(favTeam.split(' ').pop())} favored ${pct}%</span>`
       : `<span class="pc-fav pc-fav-even">Even matchup</span>`;
@@ -3745,7 +3751,7 @@ async function renderMLBGamePreview(espnGame, panel) {
     const homeBatters = makeBatters(homeLineup, awayHand, homeAbbr);
     const allBatters  = [...awayBatters, ...homeBatters];
 
-    const pickHTML = buildPickSection(awayAbbr, homeAbbr, {
+    const pickResult = buildPickSection(awayAbbr, homeAbbr, {
       awayRec: espnGame.awayRec || '', homeRec: espnGame.homeRec || '',
       awayERA: awayPD?.season?.era ?? null, homeERA: homePD?.season?.era ?? null,
       awayLastStartERA: awayPD?.lastStartERA ?? null, homeLastStartERA: homePD?.lastStartERA ?? null,
@@ -3753,6 +3759,11 @@ async function renderMLBGamePreview(espnGame, panel) {
       awayAbbr, homeAbbr,
       sport: 'mlb', weather: mlbGame.weather || null, weatherFmt: 'mlb'
     });
+    const pickHTML = pickResult.html;
+    // Force-update with the nuanced multi-factor pick, overriding any earlier simple W-L seed
+    if (pickResult.team && !gameRowState(espnGame).fin) {
+      recordPick(String(espnGame.id), pickResult.team, gameMatchup, 'mlb', pickResult.conf, true);
+    }
 
     const hrThreats   = [...allBatters].filter(b => b.hr > 0).sort((a, b) => b.hr - a.hr).slice(0, 5);
     const topProd     = [...allBatters].sort((a, b) => b.prodScore - a.prodScore).slice(0, 5);
@@ -4066,14 +4077,18 @@ async function renderESPNGamePreview(game, panel) {
       }
     }
 
-    const pickHTML = buildPickSection(game.awayTeam, game.homeTeam, {
+    const pickResult = buildPickSection(game.awayTeam, game.homeTeam, {
       awayRec, homeRec, seriesSummary, seriesTitle,
       awayAbbr: awayAbbr2, homeAbbr: homeAbbr2,
       awayForm, homeForm, awayH2H, homeH2H, h2hTotal,
       sport: game.sport, weather: j.gameInfo?.weather || null, weatherFmt: 'espn'
     });
+    // Force-update with nuanced pick (form + H2H + series) so simple W-L seed is replaced
+    if (pickResult.team && !gameRowState(game).fin) {
+      recordPick(String(game.id), pickResult.team, `${game.awayTeam} @ ${game.homeTeam}`, game.sport || '', pickResult.conf, true);
+    }
 
-    let html = pickHTML;
+    let html = pickResult.html;
 
     // Records header
     if (awayRec || homeRec) {
@@ -5936,12 +5951,12 @@ async function preloadPicksForSimpleView() {
   _svPreloaded = true;
   const isActive = () => document.getElementById('simple-view')?.classList.contains('sv-active');
 
-  // ESPN summary paths + which stat category leaders to record as player picks
+  // ESPN summary paths + which stat categories to record as player picks (per team)
   const sportCfg = {
-    nba:  { path: 'basketball/nba',  cats: ['points'] },
-    nfl:  { path: 'football/nfl',    cats: ['passing yards', 'rushing yards'] },
-    nhl:  { path: 'hockey/nhl',      cats: ['points', 'goals'] },
-    wnba: { path: 'basketball/wnba', cats: ['points'] },
+    nba:  { path: 'basketball/nba',  cats: ['points', 'rebounds', 'assists'] },
+    nfl:  { path: 'football/nfl',    cats: ['passing yards', 'rushing yards', 'receiving yards'] },
+    nhl:  { path: 'hockey/nhl',      cats: ['points', 'goals', 'assists'] },
+    wnba: { path: 'basketball/wnba', cats: ['points', 'rebounds', 'assists'] },
   };
 
   for (const sport of ['mlb', 'nba', 'nfl', 'nhl', 'wnba']) {
@@ -5951,7 +5966,7 @@ async function preloadPicksForSimpleView() {
       games.forEach(g => autoRecordAndResolvePick(g));
       if (isActive()) renderSimpleView();
 
-      // Record player picks from ESPN pre-game leaders (up to 4 upcoming games)
+      // Fetch ESPN game summaries for upcoming games to record player picks (1 per team per category)
       const cfg = sportCfg[sport];
       if (cfg) {
         const upcoming = games.filter(g => !gameRowState(g).fin).slice(0, 4);
@@ -5960,16 +5975,19 @@ async function preloadPicksForSimpleView() {
             const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${cfg.path}/summary?event=${g.id}`);
             const j   = await res.json();
             const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
+            // j.leaders is an array per-team; loop each team then each category
             for (const tl of (j.leaders || [])) {
               for (const cat of (tl.leaders || [])) {
                 const catName = (cat.displayName || cat.shortDisplayName || '').toLowerCase();
                 if (!cfg.cats.some(c => catName.includes(c))) continue;
+                // Record the #1 leader per category per team
                 const top = (cat.leaders || [])[0];
                 if (!top?.athlete?.displayName) continue;
                 const pid  = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
                 const name = top.athlete.shortName || top.athlete.displayName;
+                const label = cat.displayName || cat.shortDisplayName || catName;
                 recordPlayerPick(`plr_${g.id}_${pid}_${catName.replace(/\s+/g,'_')}`,
-                  sport, name, cat.displayName || catName, top.displayValue || '-', matchup, null);
+                  sport, name, label, top.displayValue || '-', matchup, null);
               }
             }
           } catch (e) {}
@@ -6034,27 +6052,37 @@ function renderSimpleView() {
   const sportOrder = ['tennis','mlb','nba','golf','nfl','nhl','soccer','wnba'];
   const sports = sportOrder.filter(s => bySport[s]).concat(Object.keys(bySport).filter(s => !sportOrder.includes(s)));
 
+  // Build player picks section — grouped by category so each stat is clearly labelled
+  const makePlrSection = (matchupKey) => {
+    const plrs = plrByMatchup[matchupKey] || [];
+    if (!plrs.length) return '';
+    // Group by prop (Points, Rebounds, Passing Yards…)
+    const byCat = {};
+    for (const pp of plrs) {
+      const cat = pp.prop || pp.stat || '?';
+      if (!byCat[cat]) byCat[cat] = [];
+      byCat[cat].push(pp);
+    }
+    const rows = Object.entries(byCat).map(([cat, plist]) => {
+      const items = plist.slice(0, 2).map(pp => {
+        const pr = pp.result === 'win'  ? '<span class="sv-plr-r sv-plr-w">W</span>'
+                 : pp.result === 'loss' ? '<span class="sv-plr-r sv-plr-l">L</span>' : '';
+        return `<span class="sv-plr-chip">${esc(pp.player)} <em>${esc(pp.stat)}</em>${pr}</span>`;
+      }).join('');
+      return `<div class="sv-plr-cat"><span class="sv-plr-cat-lbl">${esc(cat)}</span>${items}</div>`;
+    }).join('');
+    return `<div class="sv-plr-section"><div class="sv-plr-hdr">Players to Watch</div>${rows}</div>`;
+  };
+
   const makeCard = (p) => {
     const conf = Math.min(3, Math.max(1, p.conf || 1));
     const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
     const resultBadge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
                       : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
-    const key  = (p.matchup || '').toLowerCase().trim();
-    const plrs = (plrByMatchup[key] || []).sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 4);
-    const plrSection = plrs.length
-      ? `<div class="sv-plr-section">
-          ${plrs.map(pp => {
-            const pr = pp.result === 'win' ? '<span class="sv-plr-r sv-plr-w">W</span>'
-                     : pp.result === 'loss' ? '<span class="sv-plr-r sv-plr-l">L</span>' : '';
-            return `<div class="sv-plr-item">
-              <span class="sv-plr-name">${esc(pp.player)}</span>
-              <span class="sv-plr-stat">${esc(pp.stat)}</span>${pr}
-            </div>`;
-          }).join('')}
-        </div>`
-      : '';
-    const tapHint = plrs.length ? `<div class="sv-tap-hint">▾ ${plrs.length} player pick${plrs.length > 1 ? 's' : ''}</div>` : '';
-    return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrs.length ? 'sv-has-plrs' : ''}" onclick="this.classList.toggle('sv-expanded')">
+    const key = (p.matchup || '').toLowerCase().trim();
+    const plrSection = makePlrSection(key);
+    const tapHint = plrSection ? `<div class="sv-tap-hint">▾ players</div>` : '';
+    return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrSection ? 'sv-has-plrs' : ''}" onclick="this.classList.toggle('sv-expanded')">
       <div class="sv-matchup">${esc(p.matchup || '')}</div>
       <div class="sv-pick-line">
         <span class="sv-arrow">→</span>
@@ -6068,7 +6096,9 @@ function renderSimpleView() {
   };
 
   const sections = sports.map(sport => {
-    const picks = [...bySport[sport]].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 5);
+    // Golf shows top 10 (3-ball group picks), all others top 6
+    const limit = sport === 'golf' ? 10 : 6;
+    const picks = [...bySport[sport]].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, limit);
     return `<div class="sv-sport-section">
       <div class="sv-sport-hdr">${SPORT_ICONS[sport]||'🏅'} ${SPORT_LABELS[sport]||sport.toUpperCase()}</div>
       ${picks.map(makeCard).join('')}

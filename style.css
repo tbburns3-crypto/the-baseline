@@ -1807,12 +1807,12 @@ body.simple-mode #app-layout { display: none !important; }
 /* Player picks — hidden until expanded */
 .sv-plr-section { display: none; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); }
 .sv-pick-card.sv-expanded .sv-plr-section { display: block; }
-.sv-plr-hdr { font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
-.sv-plr-grid { display: flex; flex-direction: column; gap: 4px; }
-.sv-plr-item { display: flex; align-items: center; gap: 6px; font-size: .77rem; }
-.sv-plr-name { flex: 1; font-weight: 600; }
-.sv-plr-prop { background: rgba(255,255,255,.07); border-radius: 3px; padding: 1px 5px; font-size: .68rem; color: var(--text-muted); }
-.sv-plr-conf { font-size: .63rem; color: var(--accent); letter-spacing: .1em; }
+.sv-plr-hdr { font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px; }
+/* Category rows: e.g. "Points  LeBron 27.4   AD 24.1" */
+.sv-plr-cat { display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap; margin-bottom: 4px; font-size: .75rem; }
+.sv-plr-cat-lbl { font-size: .62rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); min-width: 60px; flex-shrink: 0; }
+.sv-plr-chip { background: rgba(255,255,255,.06); border-radius: 4px; padding: 1px 6px; display: inline-flex; align-items: center; gap: 4px; }
+.sv-plr-chip em { font-style: normal; color: var(--accent); font-size: .68rem; }
 .sv-plr-r { font-size: .72rem; font-weight: 700; }
 .sv-plr-w { color: var(--accent); }
 .sv-plr-l { color: var(--text-muted); }
