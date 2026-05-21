@@ -1840,6 +1840,23 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-lock-pending { color: var(--accent); opacity: .85; }
 .sv-unlock-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); font-size: .65rem; padding: 1px 7px; border-radius: 3px; cursor: pointer; line-height: 1.6; }
 .sv-unlock-btn:hover { color: var(--accent); border-color: var(--accent); }
+/* ── SIMPLE VIEW SECTIONS REDESIGN ── */
+.sv-sport-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 0; }
+.sv-sport-hdr { margin-bottom: 0; padding: 6px 10px; background: rgba(255,255,255,.03); }
+.sv-sections-grid.sv-single-col { grid-template-columns: 1fr; }
+.sv-left-col, .sv-right-col { display: flex; flex-direction: column; gap: 10px; }
+.sv-picks-list { display: flex; flex-direction: column; }
+.sv-pick-row { display: flex; flex-direction: column; padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,.05); }
+.sv-pick-row:last-child { border-bottom: none; }
+.sv-pick-row.sv-row-win { border-left: 3px solid var(--accent); }
+.sv-pick-row.sv-row-loss { border-left: 3px solid #555; opacity: .72; }
+.sv-pick-row.sv-has-plrs { cursor: pointer; }
+.sv-pick-row.sv-expanded .sv-tap-hint { display: none; }
+.sv-pick-row.sv-expanded .sv-plr-section { display: block; }
+.sv-row-main { display: flex; align-items: center; gap: 5px; }
+.sv-row-match { font-size: .7rem; color: var(--text-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-row-arrow { color: var(--text-muted); font-size: .75rem; flex-shrink: 0; }
+.sv-row-team { font-weight: 700; font-size: .82rem; color: var(--text); flex-shrink: 0; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }

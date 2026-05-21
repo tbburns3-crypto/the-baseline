@@ -5951,29 +5951,29 @@ function getLockedTopPicks() {
     if (!s) return null;
     const obj = JSON.parse(s);
     if (obj.date !== new Date().toISOString().slice(0, 10)) return null;
-    return obj.ids || null;
+    return obj.bySport || null;
   } catch { return null; }
 }
 
 function lockTopPicks() {
-  if (getLockedTopPicks()) return; // already locked today
+  if (getLockedTopPicks()) return;
   const today = new Date().toISOString().slice(0, 10);
   const allPicksMap = getPicks();
   const gamePicks = Object.entries(allPicksMap)
     .filter(([, p]) => p.date === today && !p.type && p.team)
     .sort((a, b) => (b[1].conf || 0) - (a[1].conf || 0));
-  if (gamePicks.length < 4) return; // not enough picks to lock yet
-  // Up to 3 per sport for variety, 10 total max
-  const selected = [], sportCounts = {};
+  const SPORT_LIMITS = { tennis: 6, mlb: 3, nba: 3, wnba: 2, nfl: 3, nhl: 3, soccer: 3, golf: 2 };
+  const bySport = {};
   for (const [id, p] of gamePicks) {
     const s = p.sport || 'tennis';
-    if ((sportCounts[s] || 0) >= 3) continue;
-    selected.push(id);
-    sportCounts[s] = (sportCounts[s] || 0) + 1;
-    if (selected.length >= 10) break;
+    const limit = SPORT_LIMITS[s] || 2;
+    if (!bySport[s]) bySport[s] = [];
+    if (bySport[s].length >= limit) continue;
+    bySport[s].push(id);
   }
-  if (selected.length < 4) return;
-  localStorage.setItem(_DAILY_TOP_KEY, JSON.stringify({ date: today, ids: selected }));
+  const totalPicks = Object.values(bySport).reduce((n, a) => n + a.length, 0);
+  if (totalPicks < 2) return;
+  localStorage.setItem(_DAILY_TOP_KEY, JSON.stringify({ date: today, bySport }));
 }
 
 function resetDailyPicks() {
@@ -6020,11 +6020,7 @@ async function preloadPicksForSimpleView() {
   for (const sport of ['nba', 'nfl', 'nhl', 'wnba']) {
     try {
       const games = await espnGames(sport, 0);
-      // Record game-level picks (team win predictions)
       games.forEach(g => autoRecordAndResolvePick(g));
-      if (isActive()) renderSimpleView();
-
-      // Fetch ESPN game summaries for upcoming games to record player picks (1 per team per category)
       const cfg = sportCfg[sport];
       if (cfg) {
         const upcoming = games.filter(g => !gameRowState(g).fin).slice(0, 4);
@@ -6033,12 +6029,10 @@ async function preloadPicksForSimpleView() {
             const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${cfg.path}/summary?event=${g.id}`);
             const j   = await res.json();
             const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
-            // j.leaders is an array per-team; loop each team then each category
             for (const tl of (j.leaders || [])) {
               for (const cat of (tl.leaders || [])) {
                 const catName = (cat.displayName || cat.shortDisplayName || '').toLowerCase();
                 if (!cfg.cats.some(c => catName.includes(c))) continue;
-                // Record the #1 leader per category per team
                 const top = (cat.leaders || [])[0];
                 if (!top?.athlete?.displayName) continue;
                 const pid  = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
@@ -6050,22 +6044,16 @@ async function preloadPicksForSimpleView() {
             }
           } catch (e) {}
         }
-        if (isActive()) renderSimpleView();
       }
-    } catch (e) { /* offseason or network — skip silently */ }
+    } catch (e) {}
   }
 
-  // MLB: run the full picks page (pitcher ERA + lineup analysis records team + player picks)
-  // Falls back to simple win% picks only for UNFINISHED games with no prior pick.
-  // Never creates a new prediction for a finished game — that would record the wrong team.
   const mlbFallback = (games) => {
     games.forEach(g => {
       const { fin } = gameRowState(g);
       if (!fin) {
-        // Unfinished game with no lineup pick yet — seed with win% math
         autoRecordAndResolvePick(g);
       } else {
-        // Finished game: only resolve an existing pick, never create a fresh wrong prediction
         const existing = getPicks()[String(g.id)];
         if (existing && existing.result === null && g.awayScore !== '' && g.homeScore !== '') {
           const aS = parseFloat(g.awayScore) || 0, hS = parseFloat(g.homeScore) || 0;
@@ -6075,41 +6063,21 @@ async function preloadPicksForSimpleView() {
     });
   };
   let mlbFallbackGames = [];
-  try {
-    mlbFallbackGames = await espnGames('mlb', 0);
-  } catch (e) {}
+  try { mlbFallbackGames = await espnGames('mlb', 0); } catch (e) {}
   try {
     await loadMLBPicksPage();
     mlbFallback(mlbFallbackGames);
-    if (isActive()) renderSimpleView();
-  } catch (e) {
-    mlbFallback(mlbFallbackGames);
-    if (isActive()) renderSimpleView();
-  }
+  } catch (e) { mlbFallback(mlbFallbackGames); }
 
-  // Soccer: loadSoccerScores renders game rows via buildOtherRow → autoRecordAndResolvePick
-  try {
-    await loadSoccerScores();
-    if (isActive()) renderSimpleView();
-  } catch (e) {}
+  try { await loadSoccerScores(); } catch (e) {}
+  try { await loadGolfPicksPage(); } catch (e) {}
 
-  // Golf: picks are recorded inside buildGolfGroupPickCard, which runs via loadGolfPicksPage(),
-  // NOT loadGolfLeaderboard(). loadGolfPicksPage renders to the hidden #mlb-picks-area — harmless.
-  try {
-    await loadGolfPicksPage();
-    if (isActive()) renderSimpleView();
-  } catch (e) {}
-
-  // Lottery: fetch numbers and cache for simple view display
   try {
     const { games } = await fetchLotteryGames();
-    if (games.length) {
-      _svLotteryHTML = games.map(renderLotteryCard).join('');
-    }
+    if (games.length) _svLotteryHTML = games.map(renderLotteryCard).join('');
   } catch (e) {}
 
-  // Final render — all sports done. Tennis picks recorded during init's loadTennisScores()
-  // run in parallel and should be in localStorage by now. Lock the top picks for the day.
+  // All sports done — lock picks once and render once. Tennis loaded in parallel from init.
   lockTopPicks();
   if (isActive()) renderSimpleView();
 }
@@ -6163,57 +6131,94 @@ function renderSimpleView() {
     return `<div class="sv-plr-section"><div class="sv-plr-hdr">Players to Watch</div>${rows}</div>`;
   };
 
-  const allGamePicks = Object.values(allPicksMap).filter(p => p.date === today && !p.type);
+  const allGamePicks = Object.values(allPicksMap).filter(p => p.date === today && !p.type && p.team);
+
   if (!allGamePicks.length) {
     document.getElementById('sv-content').innerHTML =
       `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Loading today's picks…</div>`;
     return;
   }
 
-  // Use locked list if available; otherwise show best available sorted by conf
-  const lockedIds = getLockedTopPicks();
-  const displayPicks = lockedIds
-    ? lockedIds.map(id => allPicksMap[id]).filter(p => p && p.date === today && !p.type)
-    : [...allGamePicks].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 10);
+  const SPORT_LIMITS = { tennis: 6, mlb: 3, nba: 3, wnba: 2, nfl: 3, nhl: 3, soccer: 3, golf: 2 };
+  const lockedBySport = getLockedTopPicks(); // null or { tennis:[id,...], mlb:[id,...], ... }
 
-  const makeTopItem = (p, idx) => {
-    const icon = SPORT_ICONS[p.sport || 'tennis'] || '🏅';
+  // Build per-sport pick arrays from locked list or best-available
+  const picksBySport = {};
+  if (lockedBySport) {
+    for (const [sport, ids] of Object.entries(lockedBySport)) {
+      const list = ids.map(id => allPicksMap[id]).filter(p => p && p.date === today && !p.type);
+      if (list.length) picksBySport[sport] = list;
+    }
+  } else {
+    for (const p of [...allGamePicks].sort((a, b) => (b.conf || 0) - (a.conf || 0))) {
+      const s = p.sport || 'tennis';
+      if (!picksBySport[s]) picksBySport[s] = [];
+      const limit = SPORT_LIMITS[s] || 2;
+      if (picksBySport[s].length < limit) picksBySport[s].push(p);
+    }
+  }
+
+  // Compact single-line pick row
+  const makePickRow = (p) => {
     const conf = Math.min(3, Math.max(1, p.conf || 1));
     const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
     const badge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
                 : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+    const matchupShort = (p.matchup || '').replace(/ @ /g, ' v ');
     const key = (p.matchup || '').toLowerCase().trim();
     const plrSection = makePlrSection(key);
+    const cls = ['sv-pick-row',
+      p.result === 'win' ? 'sv-row-win' : p.result === 'loss' ? 'sv-row-loss' : '',
+      plrSection ? 'sv-has-plrs' : ''
+    ].filter(Boolean).join(' ');
     const clickAttr = plrSection ? `onclick="this.classList.toggle('sv-expanded')"` : '';
-    return `<div class="sv-top-item ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrSection ? 'sv-has-plrs' : ''}" ${clickAttr}>
-      <span class="sv-top-num">${idx + 1}</span>
-      <span class="sv-top-icon">${icon}</span>
-      <div class="sv-top-info">
-        <div class="sv-top-matchup">${esc(p.matchup || '')}</div>
-        <div class="sv-top-pick">
-          <span class="sv-arrow">→</span>
-          <span class="sv-pick-name">${esc(p.team)}</span>
-          <span class="sv-conf">${dots}</span>
-          ${badge}
-        </div>
-        ${plrSection ? '<div class="sv-tap-hint">▾ players</div>' : ''}
-        ${plrSection}
+    return `<div class="${cls}" ${clickAttr}>
+      <div class="sv-row-main">
+        <span class="sv-row-match">${esc(matchupShort)}</span>
+        <span class="sv-row-arrow">→</span>
+        <span class="sv-row-team">${esc(p.team)}</span>
+        <span class="sv-conf">${dots}</span>
+        ${badge}${plrSection ? '<span class="sv-tap-hint">▾</span>' : ''}
       </div>
+      ${plrSection}
     </div>`;
   };
 
-  const statusNote = lockedIds
-    ? `<div class="sv-lock-note">🔒 Today's picks locked · <button class="sv-unlock-btn" onclick="resetDailyPicks()">↺ Reset</button></div>`
-    : `<div class="sv-lock-note sv-lock-pending">⏳ Loading all sports — will lock shortly…</div>`;
+  // Sport section card (header + rows)
+  const makeSportSection = (sport) => {
+    const picks = picksBySport[sport] || [];
+    if (!picks.length) return '';
+    const icon = SPORT_ICONS[sport] || '🏅';
+    const label = SPORT_LABELS[sport] || sport;
+    return `<div class="sv-sport-section">
+      <div class="sv-sport-hdr">${icon} ${label}</div>
+      <div class="sv-picks-list">${picks.map(makePickRow).join('')}</div>
+    </div>`;
+  };
+
+  const statusNote = lockedBySport
+    ? `<div class="sv-lock-note">🔒 Locked for today · <button class="sv-unlock-btn" onclick="resetDailyPicks()">↺ Reset</button></div>`
+    : `<div class="sv-lock-note sv-lock-pending">⏳ Loading all sports…</div>`;
 
   const lotteryBlock = _svLotteryHTML
-    ? `<div class="sv-lottery-block"><div class="sv-sport-hdr">🎰 Lottery Numbers</div><div class="sv-lottery-cards">${_svLotteryHTML}</div></div>`
+    ? `<div class="sv-lottery-block"><div class="sv-sport-hdr" style="margin-bottom:6px">🎰 Lottery</div><div class="sv-lottery-cards">${_svLotteryHTML}</div></div>`
     : '';
 
-  document.getElementById('sv-content').innerHTML =
-    statusNote +
-    `<div class="sv-top-picks-list">${displayPicks.map((p, i) => makeTopItem(p, i)).join('')}</div>` +
-    lotteryBlock;
+  const tennisHTML = makeSportSection('tennis');
+  const OTHER_SPORTS = ['mlb', 'nba', 'wnba', 'nfl', 'nhl', 'soccer', 'golf'];
+  const otherHTML   = OTHER_SPORTS.map(makeSportSection).filter(Boolean).join('');
+
+  let gridHTML;
+  if (tennisHTML && otherHTML) {
+    gridHTML = `<div class="sv-sections-grid">
+      <div class="sv-left-col">${tennisHTML}</div>
+      <div class="sv-right-col">${otherHTML}</div>
+    </div>`;
+  } else {
+    gridHTML = `<div class="sv-sections-grid sv-single-col">${tennisHTML || otherHTML}</div>`;
+  }
+
+  document.getElementById('sv-content').innerHTML = statusNote + gridHTML + lotteryBlock;
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────
