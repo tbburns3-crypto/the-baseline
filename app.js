@@ -5941,15 +5941,16 @@ async function loadLottery() {
 const SPORT_ICONS  = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'🏈', nhl:'🏒', soccer:'⚽', golf:'⛳' };
 const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', nfl:'Football', nhl:'Hockey', soccer:'Soccer', golf:'Golf' };
 
-let _svPreloaded = false;
+let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
 
 // Silently fetch today's games for all sports in the background and record picks
 // into localStorage so renderSimpleView() can show them without the user
 // needing to click through every sport tab manually.
 async function preloadPicksForSimpleView() {
-  if (_svPreloaded) return;
-  _svPreloaded = true;
+  const now = Date.now();
+  if (now - _svPreloadedAt < 20 * 60 * 1000) return;  // re-run at most every 20 min
+  _svPreloadedAt = now;
   const isActive = () => document.getElementById('simple-view')?.classList.contains('sv-active');
 
   // ESPN summary paths + which stat categories to record as player picks (per team)
@@ -6002,21 +6003,42 @@ async function preloadPicksForSimpleView() {
   }
 
   // MLB: run the full picks page (pitcher ERA + lineup analysis records team + player picks)
-  // Falls back to simple win% picks only if the full analysis fails entirely.
+  // Falls back to simple win% picks only for UNFINISHED games with no prior pick.
+  // Never creates a new prediction for a finished game — that would record the wrong team.
+  const mlbFallback = (games) => {
+    games.forEach(g => {
+      const { fin } = gameRowState(g);
+      if (!fin) {
+        // Unfinished game with no lineup pick yet — seed with win% math
+        autoRecordAndResolvePick(g);
+      } else {
+        // Finished game: only resolve an existing pick, never create a fresh wrong prediction
+        const existing = getPicks()[String(g.id)];
+        if (existing && existing.result === null && g.awayScore !== '' && g.homeScore !== '') {
+          const aS = parseFloat(g.awayScore) || 0, hS = parseFloat(g.homeScore) || 0;
+          if (aS !== hS) resolvePick(String(g.id), aS > hS ? g.awayTeam.split(' ').pop() : g.homeTeam.split(' ').pop());
+        }
+      }
+    });
+  };
   let mlbFallbackGames = [];
   try {
     mlbFallbackGames = await espnGames('mlb', 0);
   } catch (e) {}
   try {
     await loadMLBPicksPage();
-    // Any game the analysis couldn't pick (no lineup/schedule data) gets the simple seed
-    mlbFallbackGames.forEach(g => autoRecordAndResolvePick(g));
+    mlbFallback(mlbFallbackGames);
     if (isActive()) renderSimpleView();
   } catch (e) {
-    // Full analysis failed entirely — use simple picks so MLB at least appears
-    mlbFallbackGames.forEach(g => autoRecordAndResolvePick(g));
+    mlbFallback(mlbFallbackGames);
     if (isActive()) renderSimpleView();
   }
+
+  // Soccer: loadSoccerScores renders game rows via buildOtherRow → autoRecordAndResolvePick
+  try {
+    await loadSoccerScores();
+    if (isActive()) renderSimpleView();
+  } catch (e) {}
 
   // Golf: picks are recorded inside buildGolfGroupPickCard, which runs via loadGolfPicksPage(),
   // NOT loadGolfLeaderboard(). loadGolfPicksPage renders to the hidden #mlb-picks-area — harmless.
