@@ -4662,14 +4662,18 @@ function formatTeeTime(raw) {
   return String(raw);
 }
 
-// ESPN embeds tee time inside linescores statistics rather than at the competitor root
+// ESPN embeds tee time inside linescores statistics rather than at the competitor root.
+// Search ALL linescores rounds and ALL stat categories in case it's not in [0].
 function extractTeeTime(p) {
   if (p.teeTime) return p.teeTime;
   try {
-    for (const cat of (p.linescores?.[0]?.statistics?.categories || [])) {
-      for (const stat of (cat.stats || [])) {
-        const dv = stat.displayValue || '';
-        if (/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/.test(dv)) return dv;
+    for (const ls of (p.linescores || [])) {
+      for (const cat of (ls.statistics?.categories || [])) {
+        for (const stat of (cat.stats || [])) {
+          const dv = String(stat.displayValue || '');
+          // Match any string that looks like a date/time (contains colon-separated time + year)
+          if (dv.length > 15 && /\d{1,2}:\d{2}:\d{2}/.test(dv)) return dv;
+        }
       }
     }
   } catch {}
@@ -4684,42 +4688,34 @@ function playerRoundStatus(p, round) {
   return 'upcoming';
 }
 
+// Returns { groups: [...], upcomingCount: N }
+// groups: only players who have hole data — keyed by (teeTime + startingNine) so
+// split-tee tournaments (hole 1 and hole 10 sharing the same tee time) are correct.
+// upcomingCount: players without hole data — we can't determine their actual groups
+// from the ESPN API, so we count them rather than guessing wrong pairings.
 function groupByTeeTime(players, round = 1) {
-  // Group players who have started by (teeTime + startingNine) — definitive
-  // because split-tee tournaments have 2 groups at the same tee time (hole 1 vs hole 10).
   const definite = new Map();
-  const upcoming = new Map(); // players with no hole data yet
+  let upcomingCount = 0;
 
   for (const p of players) {
-    const t = extractTeeTime(p);
-    if (!t) continue;
     const holeScores = p.linescores?.[round - 1]?.linescores || [];
-    if (holeScores.length > 0) {
-      // Determine starting nine from the first hole period
-      const nine = holeScores[0].period >= 10 ? 'back' : 'front';
-      const key  = `${t}||${nine}`;
-      if (!definite.has(key)) definite.set(key, { time: t, nine, players: [] });
-      definite.get(key).players.push(p);
-    } else {
-      if (!upcoming.has(t)) upcoming.set(t, []);
-      upcoming.get(t).push(p);
-    }
+    if (holeScores.length === 0) { upcomingCount++; continue; }
+
+    const t = extractTeeTime(p);
+    if (!t) continue; // no tee time — skip this player
+
+    // Use first hole period to determine starting nine (split-tee disambiguation)
+    const nine = holeScores[0].period >= 10 ? 'back' : 'front';
+    const key  = `${t}||${nine}`;
+    if (!definite.has(key)) definite.set(key, { time: t, nine, players: [] });
+    definite.get(key).players.push(p);
   }
 
-  const result = [...definite.values()];
+  const groups = [...definite.values()]
+    .filter(g => g.players.length >= 1)
+    .sort((a, b) => new Date(a.time) - new Date(b.time) || a.nine.localeCompare(b.nine));
 
-  // Upcoming players: can't distinguish front/back nine — split into groups of 3
-  // using their position in the competitors array (ESPN tends to list group-mates nearby)
-  for (const [time, ps] of upcoming) {
-    for (let i = 0; i < ps.length; i += 3) {
-      const chunk = ps.slice(i, i + 3);
-      if (chunk.length >= 2) result.push({ time, nine: null, players: chunk });
-    }
-  }
-
-  return result
-    .filter(g => g.players.length >= 2)
-    .sort((a, b) => new Date(a.time) - new Date(b.time) || (a.nine || '').localeCompare(b.nine || ''));
+  return { groups, upcomingCount };
 }
 
 function renderGolfGroup(group, round, tournIsLive) {
@@ -4802,14 +4798,13 @@ async function loadGolfLeaderboard() {
         const players = [...allComp].sort((a, b) => (+a.order||999) - (+b.order||999)).slice(0, 30);
         if (!players.length) continue;
 
-        // Build groups and sort: Live first → Upcoming → Finished
-        const groups = groupByTeeTime(allComp, round);
-        const liveG     = groups.filter(g => g.players.some(p => playerRoundStatus(p, round) === 'live'));
-        const upcomingG = groups.filter(g => g.players.every(p => playerRoundStatus(p, round) === 'upcoming'));
-        const doneG     = groups.filter(g => g.players.every(p => playerRoundStatus(p, round) === 'finished'));
+        // Groups: only players with hole data — correctly splits split-tee starts
+        const { groups, upcomingCount } = groupByTeeTime(allComp, round);
+        const liveG = groups.filter(g => g.players.some(p => playerRoundStatus(p, round) === 'live'));
+        const doneG = groups.filter(g => g.players.every(p => playerRoundStatus(p, round) === 'finished'));
 
         let groupsHTML = '';
-        if (groups.length >= 2) {
+        if (groups.length >= 1) {
           const mkSection = (label, grps) => {
             if (!grps.length) return '';
             return `<div class="golf-group-status-section">
@@ -4817,11 +4812,14 @@ async function loadGolfLeaderboard() {
               ${grps.map(g => renderGolfGroup(g, round, isLive)).join('')}
             </div>`;
           };
+          const upcomingNote = upcomingCount > 0
+            ? `<div class="golf-upcoming-note">⏰ ${upcomingCount} player${upcomingCount !== 1 ? 's' : ''} yet to tee off — groups shown when they start</div>`
+            : '';
           groupsHTML = `<div class="golf-groups-section">
             <div class="golf-groups-hdr">🎯 Groups &amp; 3-Ball Matchups</div>
-            ${mkSection(`● Live Now — ${liveG.length} group${liveG.length !== 1 ? 's' : ''} on the course`, liveG)}
-            ${mkSection(`⏰ Upcoming — ${upcomingG.length} group${upcomingG.length !== 1 ? 's' : ''} yet to tee off`, upcomingG)}
-            ${mkSection(`✓ Finished — ${doneG.length} group${doneG.length !== 1 ? 's' : ''} completed`, doneG)}
+            ${mkSection(`● On the Course — ${liveG.length} group${liveG.length !== 1 ? 's' : ''}`, liveG)}
+            ${mkSection(`✓ Finished Round ${round} — ${doneG.length} group${doneG.length !== 1 ? 's' : ''}`, doneG)}
+            ${upcomingNote}
           </div>`;
         }
 
@@ -4997,11 +4995,14 @@ async function loadGolfPicksPage() {
         const round = comp.status?.period || 1;
         const isLive = state === 'in';
         const allComp = comp.competitors || [];
-        const groups  = groupByTeeTime(allComp, round);
+        const { groups, upcomingCount } = groupByTeeTime(allComp, round);
         if (!groups.length) continue;
+        const upNote = upcomingCount > 0
+          ? `<div class="golf-upcoming-note">⏰ ${upcomingCount} player${upcomingCount !== 1 ? 's' : ''} yet to tee off — picks shown when play starts</div>` : '';
         html += `<div class="golf-picks-section">
           <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
-          ${groups.slice(0,30).map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+          ${groups.slice(0,40).map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+          ${upNote}
         </div>`;
       }
     }
