@@ -153,11 +153,12 @@ function showPicksHistory() {
   const SPORT_LABEL = { tennis:'🎾 Tennis', mlb:'⚾ MLB', nba:'🏀 NBA', wnba:'🏀 WNBA', nfl:'🏈 NFL', nhl:'🏒 NHL', soccer:'⚽ Soccer', golf:'⛳ Golf' };
   const sportLabel  = SPORT_LABEL[sport] || sport.toUpperCase();
 
+  const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃', Points:'🏀', Rebounds:'📊', Assists:'🎽' };
+
   const makeRow = p => {
     const win = p.result === 'win';
     return `<div class="ph-row ${win ? 'ph-win' : 'ph-loss'}">
       <span class="ph-icon">${win ? '✓' : '✗'}</span>
-      <span class="ph-date">${esc(p.date)}</span>
       <span class="ph-matchup">${esc(p.matchup || p.team)}</span>
       <span class="ph-pick">→ ${esc(p.team)}</span>
     </div>`;
@@ -165,19 +166,16 @@ function showPicksHistory() {
 
   const makePendingRow = p => `<div class="ph-row ph-pending-row">
     <span class="ph-icon">⏳</span>
-    <span class="ph-date">${esc(p.date)}</span>
     <span class="ph-matchup">${esc(p.matchup || p.team)}</span>
     <span class="ph-pick">→ ${esc(p.team)}</span>
   </div>`;
 
-  const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃', Points:'🏀', Rebounds:'📊', Assists:'🎽' };
   const makePlayerRow = p => {
     const win  = p.result === 'win';
     const icon = p.result === null ? '⏳' : (win ? '✓' : '✗');
     const cls  = p.result === null ? 'ph-pending-row' : (win ? 'ph-win' : 'ph-loss');
     return `<div class="ph-row ph-player-row ${cls}">
       <span class="ph-icon">${icon}</span>
-      <span class="ph-date">${esc(p.date)}</span>
       <span class="ph-matchup"><span class="ph-prop-badge">${PROP_ICON[p.prop]||''} ${esc(p.prop)}</span> ${esc(lastName(p.player || ''))}</span>
       <span class="ph-pick">${esc(p.gameMatchup || '')}</span>
     </div>`;
@@ -186,37 +184,59 @@ function showPicksHistory() {
   const renderRow  = p => p.type === 'player' ? makePlayerRow(p) : makeRow(p);
   const renderPend = p => p.type === 'player' ? makePlayerRow(p) : makePendingRow(p);
 
-  // Build content: pending section then results section
+  // Group all picks by date (most recent first)
+  const allSorted = [...sportPicks].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  const byDay = new Map();
+  for (const p of allSorted) {
+    const d = p.date || 'unknown';
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d).push(p);
+  }
+
+  const todayUTC = dateStrUTC(0);
+  const ystUTC   = dateStrUTC(-1);
+  const fmtDayLabel = d => {
+    if (d === todayUTC) return 'Today';
+    if (d === ystUTC)   return 'Yesterday';
+    const dt = new Date(d + 'T12:00:00');
+    return dt.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+  };
+
+  // Build content
   let content = '';
 
-  // Player picks summary (for sports with player picks)
+  // Player picks prop-type summary chips
   if (playerPicks.length) {
-    const pRes  = playerPicks.filter(p => p.result !== null);
-    const cats  = {};
+    const pRes = playerPicks.filter(p => p.result !== null);
+    const cats = {};
     for (const p of pRes) {
       if (!cats[p.prop]) cats[p.prop] = { w:0, l:0 };
       if (p.result === 'win') cats[p.prop].w++; else cats[p.prop].l++;
     }
     if (Object.keys(cats).length) {
       content += `<div class="ph-cat-summary">${Object.entries(cats).map(([prop, r]) => {
-        const tot = r.w + r.l;
-        const pct = Math.round(r.w / tot * 100);
+        const tot = r.w + r.l, pct = Math.round(r.w / tot * 100);
         return `<span class="ph-cat-chip ph-cat-${pct >= 55 ? 'good' : pct <= 40 ? 'bad' : 'avg'}">${PROP_ICON[prop]||''} ${prop} ${r.w}–${r.l}</span>`;
       }).join('')}</div>`;
     }
   }
 
-  if (pending.length) {
-    content += `<div class="ph-sport-hdr ph-pending-hdr">Pending (${pending.length})</div>`;
-    content += pending.map(renderPend).join('');
-  }
-  if (resolved.length) {
-    const w = resolved.filter(p => p.result === 'win').length;
-    content += `<div class="ph-sport-hdr">Results — ${w}W ${resolved.length - w}L</div>`;
-    content += resolved.map(renderRow).join('');
-  }
-  if (!pending.length && !resolved.length) {
+  if (byDay.size === 0) {
     content = '<div class="ph-empty">No picks yet for this sport.<br><span class="muted">Picks are generated automatically as you browse games.</span></div>';
+  } else {
+    for (const [date, dayPicks] of byDay) {
+      const dayResolved = dayPicks.filter(p => p.result !== null);
+      const dayPending  = dayPicks.filter(p => p.result === null);
+      const w = dayResolved.filter(p => p.result === 'win').length;
+      const l = dayResolved.length - w;
+      const recordBadge = dayResolved.length
+        ? `<span class="ph-day-record ${w > l ? 'ph-day-up' : w < l ? 'ph-day-down' : 'ph-day-even'}">${w}W–${l}L</span>` : '';
+      const pendBadge = dayPending.length
+        ? `<span class="ph-day-pend">${dayPending.length} pending</span>` : '';
+      content += `<div class="ph-day-hdr">${fmtDayLabel(date)}${recordBadge}${pendBadge}</div>`;
+      if (dayPending.length)  content += dayPending.map(renderPend).join('');
+      if (dayResolved.length) content += dayResolved.map(renderRow).join('');
+    }
   }
 
   // Confidence calibration (how accurate are high-conf vs low-conf picks?)
