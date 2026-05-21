@@ -1818,6 +1818,10 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-plr-l { color: var(--text-muted); }
 .sv-empty { text-align: center; padding: 50px 24px; color: var(--text-muted); font-size: .92rem; line-height: 1.6; }
 .sv-hint { display: block; font-size: .78rem; margin-top: 10px; opacity: .7; }
+/* Lottery in simple view — spans both columns, compact number display */
+.sv-lottery-section { grid-column: 1 / -1; }
+.sv-lottery-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+.sv-lottery-cards .lottery-card { margin: 0; }
 
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }

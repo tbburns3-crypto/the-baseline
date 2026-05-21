@@ -5828,15 +5828,7 @@ async function fetchOhioLotteryGames() {
   return null; // all strategies failed
 }
 
-async function loadLottery() {
-  const seq  = _loadSeq;
-  const area = document.getElementById('lottery-area');
-  if (!area) return;
-  if (!area.querySelector('.lottery-card')) {
-    area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading lottery numbers…</p></div>';
-  }
-
-  // Fetch all sources in parallel; Ohio uses sequential multi-strategy fetch
+async function fetchLotteryGames() {
   const [ohioData, mmR, pbR, mmFbR, pbFbR] = await Promise.allSettled([
     fetchOhioLotteryGames(),
     fetch(LOTTERY_MM_URL).then(r => r.json()),
@@ -5845,12 +5837,9 @@ async function loadLottery() {
     fetch(LOTTERY_PB_FALLBACK).then(r => r.json()),
   ]);
 
-  if (_loadSeq !== seq) return;
-
   const games = [];
-
-  // Ohio Lottery games
   const ohioList = ohioData.status === 'fulfilled' ? (ohioData.value || []) : [];
+
   for (const g of ohioList) {
     const name = g.GameName || g.gameName || g.name || '';
     if (!name) continue;
@@ -5866,7 +5855,6 @@ async function loadLottery() {
     games.push({ name, icon, numbers: nums, special: fireStr || null, specialCls: 'lotto-ball-fire', multiplier: null, date: g.DrawDate || g.drawDate || '' });
   }
 
-  // Mega Millions — try official site first, then NY Open Data fallback
   const mmRow = (() => {
     if (mmR.status === 'fulfilled') {
       const v = mmR.value;
@@ -5891,7 +5879,6 @@ async function loadLottery() {
     games.push({ name:'Mega Millions', icon:'💰', numbers:nums, special:mb||null, specialCls:'lotto-ball-mega', multiplier:mult, date });
   }
 
-  // Powerball — try official site first, then NY Open Data fallback
   const pbRow = (() => {
     if (pbR.status === 'fulfilled') {
       const v = pbR.value;
@@ -5918,8 +5905,21 @@ async function loadLottery() {
   }
 
   games.sort((a, b) => lotteryGameOrder(a.name) - lotteryGameOrder(b.name));
+  return { games, ohioList };
+}
 
-  // Ohio game link cards shown when API data unavailable
+async function loadLottery() {
+  const seq  = _loadSeq;
+  const area = document.getElementById('lottery-area');
+  if (!area) return;
+  if (!area.querySelector('.lottery-card')) {
+    area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading lottery numbers…</p></div>';
+  }
+
+  const { games, ohioList } = await fetchLotteryGames();
+
+  if (_loadSeq !== seq) return;
+
   const OHIO_GAMES = [
     { name:'Pick 3', icon:'3️⃣', slug:'Pick-3' }, { name:'Pick 4', icon:'4️⃣', slug:'Pick-4' },
     { name:'Pick 5', icon:'5️⃣', slug:'Pick-5' }, { name:'Rolling Cash 5', icon:'🎱', slug:'Rolling-Cash-5' },
@@ -5942,6 +5942,7 @@ const SPORT_ICONS  = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'�
 const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', nfl:'Football', nhl:'Hockey', soccer:'Soccer', golf:'Golf' };
 
 let _svPreloaded = false;
+let _svLotteryHTML = '';
 
 // Silently fetch today's games for all sports in the background and record picks
 // into localStorage so renderSimpleView() can show them without the user
@@ -5997,11 +5998,26 @@ async function preloadPicksForSimpleView() {
     } catch (e) { /* offseason or network — skip silently */ }
   }
 
+  // MLB: run the full picks page (hidden) so lineup-based player picks get recorded
+  try {
+    await loadMLBPicksPage();
+    if (isActive()) renderSimpleView();
+  } catch (e) {}
+
   // Golf: picks are recorded inside buildGolfGroupPickCard, which runs via loadGolfPicksPage(),
   // NOT loadGolfLeaderboard(). loadGolfPicksPage renders to the hidden #mlb-picks-area — harmless.
   try {
     await loadGolfPicksPage();
     if (isActive()) renderSimpleView();
+  } catch (e) {}
+
+  // Lottery: fetch numbers and cache for simple view display
+  try {
+    const { games } = await fetchLotteryGames();
+    if (games.length) {
+      _svLotteryHTML = games.map(renderLotteryCard).join('');
+      if (isActive()) renderSimpleView();
+    }
   } catch (e) {}
 }
 
@@ -6081,7 +6097,8 @@ function renderSimpleView() {
     const key = (p.matchup || '').toLowerCase().trim();
     const plrSection = makePlrSection(key);
     const tapHint = plrSection ? `<div class="sv-tap-hint">▾ players</div>` : '';
-    return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrSection ? 'sv-has-plrs' : ''}" onclick="this.classList.toggle('sv-expanded')">
+    const clickAttr = plrSection ? `onclick="this.classList.toggle('sv-expanded')"` : '';
+    return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrSection ? 'sv-has-plrs' : ''}" ${clickAttr}>
       <div class="sv-matchup">${esc(p.matchup || '')}</div>
       <div class="sv-pick-line">
         <span class="sv-arrow">→</span>
@@ -6104,7 +6121,14 @@ function renderSimpleView() {
     </div>`;
   }).join('');
 
-  document.getElementById('sv-content').innerHTML = `<div class="sv-sections-grid">${sections}</div>`;
+  const lotterySection = _svLotteryHTML
+    ? `<div class="sv-sport-section sv-lottery-section">
+        <div class="sv-sport-hdr">🎰 Lottery Numbers</div>
+        <div class="sv-lottery-cards">${_svLotteryHTML}</div>
+      </div>`
+    : '';
+
+  document.getElementById('sv-content').innerHTML = `<div class="sv-sections-grid">${sections}${lotterySection}</div>`;
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────
