@@ -5041,16 +5041,28 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
 
   // Auto-resolve when all players in the group have finished the round (18 holes)
   const allDone = players.every(p => playerRoundStatus(p, round) === 'finished');
-  if (allDone) {
-    const best = scored.reduce((b, c) => {
-      const bt = c.p.linescores?.[round-1]?.displayValue;
-      const bv = bt === 'E' ? 0 : parseInt(bt) || 0;
-      const prev = b.p.linescores?.[round-1]?.displayValue;
-      const pv = prev === 'E' ? 0 : parseInt(prev) || 0;
-      return bv < pv ? c : b;
+  if (allDone && existingPick) {
+    const parseRndScore = p => {
+      const v = p.linescores?.[round-1]?.displayValue;
+      if (!v || v === '-') return 999;
+      if (v === 'E') return 0;
+      const n = parseInt(v);
+      return isNaN(n) ? 999 : n;
+    };
+    const bestScore = Math.min(...players.map(parseRndScore));
+    const pickWon = bestScore < 999 && players.some(p => {
+      if (parseRndScore(p) !== bestScore) return false;
+      const ln = (p.athlete?.shortName || p.athlete?.displayName || '').split(' ').pop().toLowerCase();
+      return ln === storedLastName;
     });
-    const winnerName = best.p.athlete?.shortName || best.p.athlete?.displayName || '';
-    resolvePick(pickId, winnerName.split(' ').pop());
+    const todayDateStr = new Date().toISOString().slice(0, 10);
+    const allPicksNow = getPicks();
+    const thisPick = allPicksNow[pickId];
+    if (thisPick && (thisPick.result === null || existingPick.date === todayDateStr)) {
+      thisPick.result = pickWon ? 'win' : 'loss';
+      savePicks(allPicksNow);
+      updatePicksDisplay();
+    }
   }
 
   const rows = displayScored.map(({ p, score, factors, total, totalNum, todayNum }, idx) => {
@@ -5914,10 +5926,40 @@ async function loadLottery() {
 const SPORT_ICONS  = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'🏈', nhl:'🏒', soccer:'⚽', golf:'⛳' };
 const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', nfl:'Football', nhl:'Hockey', soccer:'Soccer', golf:'Golf' };
 
+let _svPreloaded = false;
+
+// Silently fetch today's games for all sports in the background and record picks
+// into localStorage so renderSimpleView() can show them without the user
+// needing to click through every sport tab manually.
+async function preloadPicksForSimpleView() {
+  if (_svPreloaded) return;
+  _svPreloaded = true;
+  const isActive = () => document.getElementById('simple-view')?.classList.contains('sv-active');
+
+  // ESPN-backed sports: fetch games then call autoRecordAndResolvePick directly
+  // (pure localStorage write — no DOM side-effects)
+  for (const sport of ['mlb', 'nba', 'nfl', 'nhl', 'wnba']) {
+    try {
+      const games = await espnGames(sport, 0);
+      games.forEach(g => autoRecordAndResolvePick(g));
+      if (isActive()) renderSimpleView();
+    } catch (e) { /* offseason or network — skip silently */ }
+  }
+
+  // Golf: pick logic lives inside buildGolfGroupPickCard which only runs via the
+  // full render pipeline, so we call loadGolfLeaderboard() — it renders to the
+  // hidden #golf-leaderboard-area (harmless) and records picks as a side-effect.
+  try {
+    await loadGolfLeaderboard();
+    if (isActive()) renderSimpleView();
+  } catch (e) {}
+}
+
 function showSimpleView() {
   document.body.classList.add('simple-mode');
   document.getElementById('simple-view').classList.add('sv-active');
   renderSimpleView();
+  preloadPicksForSimpleView();
 }
 
 function hideSimpleView() {
@@ -5937,7 +5979,7 @@ function renderSimpleView() {
 
   if (gamePicks.length === 0) {
     document.getElementById('sv-content').innerHTML =
-      `<div class="sv-empty">No picks recorded yet today.<br><span class="sv-hint">Tap "Full App" → open a sport → come back here to see picks.</span></div>`;
+      `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Loading today's picks…</div>`;
     return;
   }
 
