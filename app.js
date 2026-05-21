@@ -4802,49 +4802,61 @@ function toggleGolfGroups(btn) {
   btn.textContent = collapsed ? `🎯 3-Ball Groups (${n}) ▼` : `🎯 3-Ball Groups (${n}) ▲`;
 }
 
-// Full ranked leaderboard — proper golf format with tied positions and live indicators
-function renderGolfLeaderboard(players, round) {
-  if (!players.length) return '';
+// Leaderboard grouped by 3-ball groups, sorted by best player position
+function renderGroupedLeaderboard(activeG, upcomingGroups, round) {
+  const allPlayers = [...activeG, ...upcomingGroups].flatMap(g => g.players);
+  if (!allPlayers.length) return '';
 
-  // Count how many players share each position (for T prefix)
   const posCount = new Map();
-  for (const p of players) {
+  for (const p of allPlayers) {
     const k = p.order ? String(p.order) : '';
     if (k) posCount.set(k, (posCount.get(k) || 0) + 1);
   }
 
-  const rows = players.map(p => {
+  const makeRow = p => {
     const name     = p.athlete?.shortName || p.athlete?.displayName || '-';
     const rawPos   = p.order ? String(p.order) : '-';
     const isTied   = rawPos !== '-' && (posCount.get(rawPos) || 0) > 1;
     const posDisp  = rawPos === '-' ? '-' : (isTied ? 'T' + rawPos : rawPos);
-
     const total    = p.score || 'E';
     const totalNum = total === 'E' ? 0 : parseInt(total) || 0;
     const scoreCls = totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
-
     const today    = p.linescores?.[round - 1]?.displayValue || '-';
     const todayNum = today === 'E' ? 0 : parseInt(today) || 0;
     const todayCls = isNaN(todayNum) ? '' : todayNum < 0 ? 'golf-under' : todayNum > 0 ? 'golf-over' : 'golf-even';
-
-    const holes  = p.linescores?.[round - 1]?.linescores?.length || 0;
-    const status = playerRoundStatus(p, round);
+    const holes    = p.linescores?.[round - 1]?.linescores?.length || 0;
+    const status   = playerRoundStatus(p, round);
     const thruHTML = status === 'finished'
       ? `<span class="golf-thru-done">F</span>`
       : status === 'live'
       ? `<span class="golf-thru-live">● ${holes}</span>`
       : `<span class="golf-thru-pre">—</span>`;
-
-    const rowCls = status === 'live' ? ' golf-lb-row-live' : status === 'upcoming' ? ' golf-lb-row-pre' : '';
-
-    return `<div class="golf-player-row${rowCls}">
+    return `<div class="golf-player-row">
       <span class="gc-pos">${esc(posDisp)}</span>
       <span class="gc-name">${esc(name)}</span>
       <span class="gc-score ${scoreCls}">${esc(total)}</span>
       <span class="gc-today ${todayCls}">${esc(today)}</span>
       <span class="gc-thru">${thruHTML}</span>
     </div>`;
-  }).join('');
+  };
+
+  let inner = '';
+  for (const group of activeG) {
+    const players   = [...group.players].sort((a, b) => (+a.order || 9999) - (+b.order || 9999));
+    const statuses  = players.map(p => playerRoundStatus(p, round));
+    const groupLive = statuses.some(s => s === 'live');
+    const groupDone = statuses.every(s => s === 'finished');
+    const nineLabel = group.nine === 'back' ? ' · Hole 10' : group.nine === 'front' ? ' · Hole 1' : '';
+    const sepLabel  = groupLive ? `● LIVE${nineLabel}` : groupDone ? `✓ F` : `⏰ ${formatTeeTime(group.time)}${nineLabel}`;
+    const sepCls    = groupLive ? 'golf-group-lb-sep golf-group-lb-sep-live'
+                    : groupDone ? 'golf-group-lb-sep golf-group-lb-sep-done'
+                    :             'golf-group-lb-sep golf-group-lb-sep-pre';
+    inner += `<div class="${sepCls}">${esc(sepLabel)}</div>${players.map(makeRow).join('')}`;
+  }
+  for (const group of upcomingGroups) {
+    const players = [...group.players].sort((a, b) => (+a.order || 9999) - (+b.order || 9999));
+    inner += `<div class="golf-group-lb-sep golf-group-lb-sep-pre">⏰ ${esc(formatTeeTime(group.time))}</div>${players.map(makeRow).join('')}`;
+  }
 
   return `<div class="golf-leaderboard">
     <div class="golf-lb-hdr">
@@ -4854,7 +4866,7 @@ function renderGolfLeaderboard(players, round) {
       <span class="gc-today">RD${round}</span>
       <span class="gc-thru">THRU</span>
     </div>
-    ${rows}
+    ${inner}
   </div>`;
 }
 
@@ -4901,33 +4913,12 @@ async function loadGolfLeaderboard() {
           return bestA - bestB;
         });
 
-        // Build groups section (collapsible — starts closed)
-        let groupsSection = '';
-        const totalGroups = activeG.length + upcomingGroups.length;
-        if (totalGroups >= 1) {
-          const preSection = upcomingGroups.length > 0
-            ? `<div class="golf-group-status-section">
-                <div class="golf-group-status-hdr">⏰ Pre-Round — ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''} · approx. pairings</div>
-                ${upcomingGroups.map(g => renderGolfGroup(g, round, isLive)).join('')}
-              </div>`
-            : '';
-          groupsSection = `
-            <button class="golf-groups-toggle" onclick="toggleGolfGroups(this)">🎯 3-Ball Groups (${totalGroups}) ▼</button>
-            <div class="golf-groups-body golf-groups-collapsed">
-              <div class="golf-groups-section">
-                ${activeG.map(g => renderGolfGroup(g, round, isLive)).join('')}
-                ${preSection}
-              </div>
-            </div>`;
-        }
-
         html += `<div class="golf-tournament">
           <div class="golf-tourn-header">
             <div class="golf-tourn-name">${tour.icon} ${esc(ev.name || ev.shortName || tour.label)}</div>
             <div class="golf-tourn-meta">${statusTxt}${venue ? ` · ${esc(venue)}` : ''}${city ? `, ${esc(city)}` : ''}</div>
           </div>
-          ${renderGolfLeaderboard(players, round)}
-          ${groupsSection}
+          ${renderGroupedLeaderboard(activeG, upcomingGroups, round)}
         </div>`;
       }
     }
