@@ -1258,7 +1258,12 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     const roundNote = earlyRound ? ' <span class="gp-round-note">(early rd)</span>' : lateRound ? ' <span class="gp-round-note">(late rd)</span>' : '';
     verdictHTML = `<div class="gp-pick-verdict"><span class="gp-pick-team">${esc(p2Name)}</span> likely to win <span class="gp-pick-count">(${pct}%${round !== 'unknown' ? ` · ${round.toUpperCase()}` : ''})</span>${badge}${roundNote}</div>`;
   } else {
-    verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup - too close to call</div>`;
+    let leanName = null;
+    if      (rd1 && rd2 && rd1.rank !== rd2.rank) leanName = rd1.rank < rd2.rank ? p1Name : p2Name;
+    else if (aw1 !== aw2)                          leanName = aw1 > aw2 ? p1Name : p2Name;
+    else if (fw1 >= 0 && fw2 >= 0 && fw1 !== fw2)  leanName = fw1 > fw2 ? p1Name : p2Name;
+    const leanHTML = leanName ? ` <em class="gp-verdict-lean">(leaning towards ${esc(lastName(leanName))})</em>` : '';
+    verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup — too close to call${leanHTML}</div>`;
   }
 
   const factorsHTML = factors.map(f => {
@@ -2361,7 +2366,7 @@ function buildPickSection(awayName, homeName, opts) {
   const fTotal = factors.filter(f => f.winner !== 'tie').length;
 
   const verdictHTML = gap < 0.025
-    ? `<div class="gp-pick-verdict gp-verdict-toss">🎲 Toss-up - factors split evenly</div>`
+    ? `<div class="gp-pick-verdict gp-verdict-toss">🎲 Toss-up — too close to call <em class="gp-verdict-lean">(leaning towards ${esc(pickTeam)})</em></div>`
     : `<div class="gp-pick-verdict">📌 ${gap > 0.14 ? 'Strong lean' : gap > 0.08 ? 'Lean' : 'Slight lean'}: <span class="gp-pick-team">${esc(pickTeam)}</span>${fTotal > 0 ? ` <span class="gp-pick-count">${fWins}/${fTotal} factors</span>` : ''}</div>`;
 
   const factorsHTML = factors.map(f => {
@@ -3046,9 +3051,16 @@ function buildTomorrowPickCard(m) {
 
   const tierBadge = tier === 'slam' ? '<span class="tp-tier-slam">GS</span>' : tier === 'masters' ? '<span class="tp-tier-masters">M1000</span>' : '';
   const bo5Badge  = bo5 ? '<span class="tp-bo5-badge">BO5</span>' : '';
+  let tpLeanName = null;
+  if (!pickName) {
+    if      (tr1 && tr2 && tr1.rank !== tr2.rank) tpLeanName = tr1.rank < tr2.rank ? p1Name : p2Name;
+    else if (aw1 !== aw2)                          tpLeanName = aw1 > aw2 ? p1Name : p2Name;
+    else if (fw1 >= 0 && fw2 >= 0 && fw1 !== fw2)  tpLeanName = fw1 > fw2 ? p1Name : p2Name;
+  }
+  const tpLeanHTML = tpLeanName ? ` <em class="tp-lean-note">(leaning towards ${esc(lastName(tpLeanName))})</em>` : '';
   const verdictHTML = pickName
     ? `<div class="tp-pick-line">→ <strong>${esc(lastName(pickName))}</strong> ${confDots}${bo5Badge}${tierBadge}</div>`
-    : `<div class="tp-pick-line tp-pick-even">Too close to call${tierBadge}</div>`;
+    : `<div class="tp-pick-line tp-pick-even">Too close to call${tpLeanHTML}${tierBadge}</div>`;
 
   const roundLabel = round !== 'unknown' && round !== 'mid' ? `<span class="tp-round-tag">${round.toUpperCase()}</span>` : '';
   const fatigueTag = (p1Tired || p2Tired)
