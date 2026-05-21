@@ -5086,10 +5086,10 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
 
-  // Only record pick for upcoming groups — once a group starts, the pre-round pick is locked.
-  // recordPick is idempotent anyway, but the guard makes intent clear.
+  // Always record the pre-round pick — recordPick is idempotent so existing picks aren't overwritten.
+  // Removing the !groupStarted guard means mid-round preloads (from simple view) also capture picks.
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
-  if (!groupStarted) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+  recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
 
   // Display: if group has started, show the stored pre-round pick at the top
   const storedLastName = (existingPick?.team || '').toLowerCase();
