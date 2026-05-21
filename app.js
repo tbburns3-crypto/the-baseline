@@ -935,12 +935,21 @@ function inlineTennisPick(m) {
   if (m.event_date && m.event_date > dateStrUTC(0)) return '';
   if (isLive(m.event_status)) return '';
 
+  // Only pick ATP and WTA singles — Doubles and ITF are too noisy to predict reliably
+  const cat = matchCategory(m.event_type || '');
+  if (cat === 'doubles' || cat === 'itf-m' || cat === 'itf-w') return '';
+  // For Challenger, only pick when a seed is present (ranking data is less reliable)
+  const isChallenger = cat === 'challenger-m' || cat === 'challenger-w';
+
   const pickId  = 'tn_' + m.event_key;
   const surface = m.event_surface ? ` (${m.event_surface})` : '';
   const matchup = `${lastName(m.event_first_player||'')} vs ${lastName(m.event_second_player||'')}${surface}`;
   const s1 = parseInt(m.event_first_player_seed) || 0;
   const s2 = parseInt(m.event_second_player_seed) || 0;
   if (s1 || s2) {
+    // Require meaningful seeding gap — don't pick seed 7 over seed 8 (too coin-flippy)
+    const seedGap = (s1 && s2) ? Math.abs(s1 - s2) : 99;
+    if (s1 && s2 && seedGap < 2) return '';
     let pick = '';
     if (s1 && !s2)      pick = lastName(m.event_first_player || '');
     else if (s2 && !s1) pick = lastName(m.event_second_player || '');
@@ -948,9 +957,12 @@ function inlineTennisPick(m) {
     else if (s2 < s1)   pick = lastName(m.event_second_player || '');
     if (pick && pick !== '-') { recordPick(pickId, pick, matchup, 'tennis'); return `<span class="match-pick-inline" title="Pick based on seeding (click match for full H2H + ranking analysis)">→ ${esc(pick)}</span>`; }
   }
+  // Challenger without seeds — skip (ranking data too unreliable)
+  if (isChallenger) return '';
   const r1 = S.rankIndex.get(String(m.first_player_key  || ''));
   const r2 = S.rankIndex.get(String(m.second_player_key || ''));
-  if (r1 && r2 && r1.rank !== r2.rank) {
+  // Require a meaningful ranking gap — at least 15 spots to call it a real edge
+  if (r1 && r2 && Math.abs(r1.rank - r2.rank) >= 15) {
     const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
     if (pick && pick !== '-') { recordPick(pickId, pick, matchup, 'tennis'); return `<span class="match-pick-inline" title="Pick based on live ranking: #${r1.rank} vs #${r2.rank} (click for full H2H + form analysis)">→ ${esc(pick)} #${Math.min(r1.rank, r2.rank)}</span>`; }
   }
