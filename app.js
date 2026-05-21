@@ -49,6 +49,11 @@ const S = {
 
 const _detailLoaded = new Set();
 
+// ── TENNIS INJURY MAP ────────────────────────────────────────
+// Keyed by lowercase last name → { note, returning, published }
+// Populated from ESPN tennis news headlines on tab open.
+const _tennisInjuryMap = new Map();
+
 // ── FAVORITES ────────────────────────────────────────────────
 const _FAV_KEY = 'burnsideFavs';
 function getFavs() { try { return JSON.parse(localStorage.getItem(_FAV_KEY) || '{}'); } catch { return {}; } }
@@ -681,6 +686,51 @@ async function preloadRankIndex() {
   } catch { /* silent — rankings are best-effort for pick generation */ }
 }
 
+// Fetch ESPN ATP + WTA news and build _tennisInjuryMap from injury/withdrawal headlines.
+// Only runs once per session. Helps inlineTennisPick avoid backing injured players.
+async function loadTennisInjuryNews() {
+  if (_tennisInjuryMap.size > 0) return; // already loaded
+  const INJURY_RX = /injur|withdraw|pulls?\s+out|out\s+of|ruled?\s+out|absent|surgery|unable|won't\s+(return|play)|falls?\s+ill|thigh|wrist|achilles|knee|elbow|ankle|hamstring|hip|rib|arm\s+pain|leg\s+pain|muscle|fitness\s+doubt/i;
+  const RETURN_RX  = /returns?\s+(to|from)|back\s+from\s+injur|recovered?|cleared\s+to\s+play/i;
+  const urls = [
+    'https://site.api.espn.com/apis/site/v2/sports/tennis/atp/news?limit=50',
+    'https://site.api.espn.com/apis/site/v2/sports/tennis/wta/news?limit=50'
+  ];
+  try {
+    const results = await Promise.allSettled(urls.map(u => fetch(u).then(r => r.json())));
+    for (const res of results) {
+      if (res.status !== 'fulfilled') continue;
+      const articles = res.value.articles || [];
+      for (const art of articles) {
+        const hl = art.headline || '';
+        if (!INJURY_RX.test(hl)) continue;
+        // Skip articles about coaching staff, not the player themselves
+        if (/\bcoach(es|ing)?\b/i.test(hl)) continue;
+        const isReturn = RETURN_RX.test(hl);
+        for (const cat of (art.categories || [])) {
+          if (cat.type !== 'athlete') continue;
+          const fullName = cat.description || cat.athlete?.description || '';
+          if (!fullName) continue;
+          const ln = lastName(fullName).toLowerCase();
+          if (!ln || ln === '-') continue;
+          if (!_tennisInjuryMap.has(ln)) {
+            _tennisInjuryMap.set(ln, {
+              note:      hl,
+              returning: isReturn,  // true = returning/recovered (lighter flag)
+              published: art.published || ''
+            });
+          }
+        }
+      }
+    }
+    // Re-run picks now that injury data is available
+    if (_tennisInjuryMap.size > 0) {
+      for (const m of S.matches.values()) inlineTennisPick(m);
+      updatePicksDisplay();
+    }
+  } catch { /* silent — injury data is best-effort */ }
+}
+
 // ── WEBSOCKET ────────────────────────────────────────────────
 function wsConnect() {
   if (S.ws) { S.ws.onclose = null; S.ws.close(); S.ws = null; }
@@ -942,24 +992,57 @@ function inlineTennisPick(m) {
   const pickId  = 'tn_' + m.event_key;
   const surface = m.event_surface ? ` (${m.event_surface})` : '';
   const matchup = `${lastName(m.event_first_player||'')} vs ${lastName(m.event_second_player||'')}${surface}`;
+
+  // Injury check — ESPN news flags recent injuries, withdrawals, surgery
+  const p1Ln  = lastName(m.event_first_player  || '').toLowerCase();
+  const p2Ln  = lastName(m.event_second_player || '').toLowerCase();
+  const p1Inj = _tennisInjuryMap.get(p1Ln);
+  const p2Inj = _tennisInjuryMap.get(p2Ln);
+  // If a player is confirmed injured (not just returning), skip them as the pick
+  const p1Hurt = p1Inj && !p1Inj.returning;
+  const p2Hurt = p2Inj && !p2Inj.returning;
+  // If both are injured or the situation is murky, defer to other signals
+  const injuryForcePick = (p1Hurt && !p2Hurt) ? p2Ln :
+                          (p2Hurt && !p1Hurt) ? p1Ln : null;
+
   const s1 = parseInt(m.event_first_player_seed) || 0;
   const s2 = parseInt(m.event_second_player_seed) || 0;
 
-  // Seeding: tournament directors set seeds based on current form + fitness, not just ranking.
+  // Seeding: tournament directors factor in current fitness, not just ranking.
   // Any seed difference is a real signal — even in ITF/Challenger events.
   if (s1 || s2) {
-    let pick = '';
-    if (s1 && !s2)      pick = lastName(m.event_first_player || '');
-    else if (s2 && !s1) pick = lastName(m.event_second_player || '');
-    else if (s1 < s2)   pick = lastName(m.event_first_player || '');
-    else if (s2 < s1)   pick = lastName(m.event_second_player || '');
-    if (pick && pick !== '-') { recordPick(pickId, pick, matchup, 'tennis'); return `<span class="match-pick-inline" title="Pick based on seeding (click match for full H2H + ranking analysis)">→ ${esc(pick)}</span>`; }
+    let seedPick = '';
+    if (s1 && !s2)      seedPick = lastName(m.event_first_player || '');
+    else if (s2 && !s1) seedPick = lastName(m.event_second_player || '');
+    else if (s1 < s2)   seedPick = lastName(m.event_first_player || '');
+    else if (s2 < s1)   seedPick = lastName(m.event_second_player || '');
+
+    // Override seed pick if seed winner is injured and opponent is healthy
+    const pick = (injuryForcePick && seedPick && seedPick.toLowerCase() !== injuryForcePick)
+      ? (p1Hurt ? lastName(m.event_second_player||'') : lastName(m.event_first_player||''))
+      : seedPick;
+
+    const injNote = injuryForcePick && pick.toLowerCase() !== seedPick.toLowerCase()
+      ? ` · opp. has injury news` : '';
+    if (pick && pick !== '-') {
+      recordPick(pickId, pick, matchup, 'tennis');
+      return `<span class="match-pick-inline" title="Pick based on seeding${injNote} (click for full H2H analysis)">→ ${esc(pick)}</span>`;
+    }
+  }
+
+  // If injury clearly overrides ranking — one player is injured, skip normal logic and pick healthy one
+  if (injuryForcePick) {
+    const pick = injuryForcePick === p1Ln ? lastName(m.event_first_player||'') : lastName(m.event_second_player||'');
+    if (pick && pick !== '-') {
+      recordPick(pickId, pick, matchup, 'tennis');
+      return `<span class="match-pick-inline match-pick-injury" title="Pick: opponent has recent injury news — ${(p1Hurt ? p1Inj : p2Inj).note}">→ ${esc(pick)} ⚕</span>`;
+    }
   }
 
   // Points-ratio comparison: more honest than rank gap alone.
   // Rank #45 (820 pts) vs #50 (780 pts) = nearly identical → no pick.
   // Rank #100 (700 pts) vs #400 (120 pts) = massive real gap → pick.
-  // This handles upsets naturally: a rising #400 with 500 pts would beat a declining #100 with 480 pts in the ratio.
+  // A rising player at #400 with 500 pts beats a declining #100 at 480 pts in this ratio.
   const r1 = S.rankIndex.get(String(m.first_player_key  || ''));
   const r2 = S.rankIndex.get(String(m.second_player_key || ''));
   if (r1 && r2) {
@@ -967,10 +1050,18 @@ function inlineTennisPick(m) {
     const pts2 = parseInt(r2.points) || 0;
     if (pts1 > 0 && pts2 > 0) {
       const ratio = Math.max(pts1, pts2) / Math.min(pts1, pts2);
-      // Only pick when one player has at least 50% more ranking points — meaningful real gap
-      if (ratio >= 1.5) {
-        const pick = pts1 > pts2 ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
-        if (pick && pick !== '-') { recordPick(pickId, pick, matchup, 'tennis'); return `<span class="match-pick-inline" title="Pick based on ranking points: ${pts1} vs ${pts2} pts (click for full H2H + form analysis)">→ ${esc(pick)}</span>`; }
+      // Threshold: 1.5× normally, but lower to 1.3× when opponent has injury news (more confident)
+      const threshold = (p1Hurt || p2Hurt) ? 1.3 : 1.5;
+      if (ratio >= threshold) {
+        let pick = pts1 > pts2 ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
+        // Override if ranking winner is injured and opponent is healthy
+        if (injuryForcePick && pick.toLowerCase() !== injuryForcePick)
+          pick = injuryForcePick === p1Ln ? lastName(m.event_first_player||'') : lastName(m.event_second_player||'');
+        const injNote2 = (p1Hurt || p2Hurt) ? ' · opp. has injury news' : '';
+        if (pick && pick !== '-') {
+          recordPick(pickId, pick, matchup, 'tennis');
+          return `<span class="match-pick-inline" title="Pick: ${pts1} vs ${pts2} ranking pts${injNote2} (click for H2H)">→ ${esc(pick)}</span>`;
+        }
       }
     } else if (r1.rank !== r2.rank) {
       // Fallback when points data missing: use rank but only when gap is very clear (top 50 vs 100+)
@@ -978,11 +1069,23 @@ function inlineTennisPick(m) {
       const botRank = Math.max(r1.rank, r2.rank);
       if (topRank <= 50 && botRank >= 100) {
         const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
-        if (pick && pick !== '-') { recordPick(pickId, pick, matchup, 'tennis'); return `<span class="match-pick-inline" title="Pick based on live ranking: #${r1.rank} vs #${r2.rank} (click for full H2H + form analysis)">→ ${esc(pick)} #${topRank}</span>`; }
+        if (pick && pick !== '-') {
+          recordPick(pickId, pick, matchup, 'tennis');
+          return `<span class="match-pick-inline" title="Pick: #${r1.rank} vs #${r2.rank} (click for H2H + form analysis)">→ ${esc(pick)} #${topRank}</span>`;
+        }
       }
     }
   }
   return '';
+}
+
+function injBadge(playerName = '') {
+  const data = _tennisInjuryMap.get(lastName(playerName).toLowerCase());
+  if (!data) return '';
+  const icon  = data.returning ? '↩' : '⚠';
+  const label = data.returning ? 'Returning from injury' : 'Recent injury/withdrawal news';
+  const tip   = esc(data.note.length > 80 ? data.note.slice(0, 80) + '…' : data.note);
+  return `<span class="inj-flag${data.returning ? ' inj-return' : ''}" title="${label}: ${tip}">${icon}</span>`;
 }
 
 // idSuffix: when provided (e.g. 'live'), creates a unique panel ID so the same
@@ -1043,10 +1146,10 @@ function buildMatchRow(m, idSuffix = '') {
       <div class="match-status">${statusHTML}</div>
       <div class="match-players">
         <div class="player p1 ${serve==='1'?'serving':''}">
-          <span class="player-name">${esc(m.event_first_player||'-')}</span>${p1serve}
+          <span class="player-name">${esc(m.event_first_player||'-')}</span>${injBadge(m.event_first_player)}${p1serve}
         </div>
         <div class="player p2 ${serve==='2'?'serving':''}">
-          <span class="player-name">${esc(m.event_second_player||'-')}</span>${p2serve}
+          <span class="player-name">${esc(m.event_second_player||'-')}</span>${injBadge(m.event_second_player)}${p2serve}
         </div>
       </div>
       <div class="match-scores">
@@ -1910,7 +2013,8 @@ function switchSport(sport) {
   if (isTennis) {
     wsDisconnect(); wsConnect();
     loadFixtures(S.dateOffset);
-    preloadRankIndex(); // fire-and-forget: fills S.rankIndex and re-runs picks once ready
+    preloadRankIndex();    // fire-and-forget: fills S.rankIndex and re-runs picks once ready
+    loadTennisInjuryNews(); // fire-and-forget: ESPN news injury flags — re-runs picks once loaded
   } else {
     wsDisconnect();
     setConn('disconnected', `${sport.toUpperCase()} - updating every 30s`);
