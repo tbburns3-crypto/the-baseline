@@ -935,21 +935,19 @@ function inlineTennisPick(m) {
   if (m.event_date && m.event_date > dateStrUTC(0)) return '';
   if (isLive(m.event_status)) return '';
 
-  // Only pick ATP and WTA singles — Doubles and ITF are too noisy to predict reliably
+  // Skip doubles only — singles rankings are meaningless in doubles
   const cat = matchCategory(m.event_type || '');
-  if (cat === 'doubles' || cat === 'itf-m' || cat === 'itf-w') return '';
-  // For Challenger, only pick when a seed is present (ranking data is less reliable)
-  const isChallenger = cat === 'challenger-m' || cat === 'challenger-w';
+  if (cat === 'doubles') return '';
 
   const pickId  = 'tn_' + m.event_key;
   const surface = m.event_surface ? ` (${m.event_surface})` : '';
   const matchup = `${lastName(m.event_first_player||'')} vs ${lastName(m.event_second_player||'')}${surface}`;
   const s1 = parseInt(m.event_first_player_seed) || 0;
   const s2 = parseInt(m.event_second_player_seed) || 0;
+
+  // Seeding: tournament directors set seeds based on current form + fitness, not just ranking.
+  // Any seed difference is a real signal — even in ITF/Challenger events.
   if (s1 || s2) {
-    // Require meaningful seeding gap — don't pick seed 7 over seed 8 (too coin-flippy)
-    const seedGap = (s1 && s2) ? Math.abs(s1 - s2) : 99;
-    if (s1 && s2 && seedGap < 2) return '';
     let pick = '';
     if (s1 && !s2)      pick = lastName(m.event_first_player || '');
     else if (s2 && !s1) pick = lastName(m.event_second_player || '');
@@ -957,14 +955,32 @@ function inlineTennisPick(m) {
     else if (s2 < s1)   pick = lastName(m.event_second_player || '');
     if (pick && pick !== '-') { recordPick(pickId, pick, matchup, 'tennis'); return `<span class="match-pick-inline" title="Pick based on seeding (click match for full H2H + ranking analysis)">→ ${esc(pick)}</span>`; }
   }
-  // Challenger without seeds — skip (ranking data too unreliable)
-  if (isChallenger) return '';
+
+  // Points-ratio comparison: more honest than rank gap alone.
+  // Rank #45 (820 pts) vs #50 (780 pts) = nearly identical → no pick.
+  // Rank #100 (700 pts) vs #400 (120 pts) = massive real gap → pick.
+  // This handles upsets naturally: a rising #400 with 500 pts would beat a declining #100 with 480 pts in the ratio.
   const r1 = S.rankIndex.get(String(m.first_player_key  || ''));
   const r2 = S.rankIndex.get(String(m.second_player_key || ''));
-  // Require a meaningful ranking gap — at least 15 spots to call it a real edge
-  if (r1 && r2 && Math.abs(r1.rank - r2.rank) >= 15) {
-    const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
-    if (pick && pick !== '-') { recordPick(pickId, pick, matchup, 'tennis'); return `<span class="match-pick-inline" title="Pick based on live ranking: #${r1.rank} vs #${r2.rank} (click for full H2H + form analysis)">→ ${esc(pick)} #${Math.min(r1.rank, r2.rank)}</span>`; }
+  if (r1 && r2) {
+    const pts1 = parseInt(r1.points) || 0;
+    const pts2 = parseInt(r2.points) || 0;
+    if (pts1 > 0 && pts2 > 0) {
+      const ratio = Math.max(pts1, pts2) / Math.min(pts1, pts2);
+      // Only pick when one player has at least 50% more ranking points — meaningful real gap
+      if (ratio >= 1.5) {
+        const pick = pts1 > pts2 ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
+        if (pick && pick !== '-') { recordPick(pickId, pick, matchup, 'tennis'); return `<span class="match-pick-inline" title="Pick based on ranking points: ${pts1} vs ${pts2} pts (click for full H2H + form analysis)">→ ${esc(pick)}</span>`; }
+      }
+    } else if (r1.rank !== r2.rank) {
+      // Fallback when points data missing: use rank but only when gap is very clear (top 50 vs 100+)
+      const topRank = Math.min(r1.rank, r2.rank);
+      const botRank = Math.max(r1.rank, r2.rank);
+      if (topRank <= 50 && botRank >= 100) {
+        const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
+        if (pick && pick !== '-') { recordPick(pickId, pick, matchup, 'tennis'); return `<span class="match-pick-inline" title="Pick based on live ranking: #${r1.rank} vs #${r2.rank} (click for full H2H + form analysis)">→ ${esc(pick)} #${topRank}</span>`; }
+      }
+    }
   }
   return '';
 }
