@@ -2400,15 +2400,17 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const awayHand = awayPD?.pitchHand || null;
   const homeHand = homePD?.pitchHand || null;
 
-  // Pitcher rate stats derived from season totals — no extra API calls
+  // Pitcher rate stats — adjusted for recent form (last 3 starts trend)
   const _pRates = pd => {
     const s  = pd?.season;
     const ip = parseFloat(s?.inningsPitched || 0);
-    return {
-      hr9: ip > 5 ? (parseInt(s?.homeRuns||0)    / ip) * 9 : 1.2,
-      bb9: ip > 5 ? (parseInt(s?.baseOnBalls||0) / ip) * 9 : 3.0,
-      k9:  ip > 5 ? (parseInt(s?.strikeOuts||0)  / ip) * 9 : 8.5,
-    };
+    let hr9 = ip > 5 ? (parseInt(s?.homeRuns||0)    / ip) * 9 : 1.2;
+    let bb9 = ip > 5 ? (parseInt(s?.baseOnBalls||0) / ip) * 9 : 3.0;
+    let k9  = ip > 5 ? (parseInt(s?.strikeOuts||0)  / ip) * 9 : 8.5;
+    // Adjust based on recent form: struggling pitcher → inflate hr9/bb9, deflate k9
+    if (pd?.eraTrend === 'cold') { hr9 *= 1.20; bb9 *= 1.12; k9  *= 0.88; }
+    if (pd?.eraTrend === 'hot')  { hr9 *= 0.85; bb9 *= 0.92; k9  *= 1.10; }
+    return { hr9, bb9, k9 };
   };
   const awayRates = _pRates(awayPD);   // home batters face away pitcher
   const homeRates = _pRates(homePD);   // away batters face home pitcher
@@ -2416,10 +2418,16 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const parkHit   = PARK_HIT[homeAbbr] || 1.0;
   const windMult  = wind.bonus >= 2 ? 1.16 : wind.bonus === 1 ? 1.08 : wind.bonus <= -2 ? 0.85 : wind.bonus === -1 ? 0.93 : 1.0;
 
-  // ── Compact pitcher line ──
+  // ── Compact pitcher line with recent-form trend ──
   const pitStr = (name, pd, hand) => {
-    const era = pd?.season?.era ? ` · ${pd.season.era} ERA` : '';
-    return `${esc(lastName(name))} (${hand||'?'}HP${esc(era)})`;
+    const era    = pd?.season?.era ? `${pd.season.era} ERA` : '';
+    const rEra   = pd?.recentEra != null ? pd.recentEra.toFixed(2) : null;
+    const trend  = pd?.eraTrend;
+    const tArrow = trend === 'hot' ? '<span class="pit-trend-hot">↑</span>' : trend === 'cold' ? '<span class="pit-trend-cold">↓</span>' : '';
+    const recentStr = rEra && pd?.last3starts >= 2
+      ? ` · L3: ${rEra}${tArrow}`
+      : '';
+    return `${esc(lastName(name))} (${hand||'?'}HP · ${era}${recentStr})`;
   };
   const pitcherLine = `<div class="pc-pit-line">${pitStr(awayPName, awayPD, awayHand)} <span class="pc-pit-sep">vs</span> ${pitStr(homePName, homePD, homeHand)}</div>`;
 
@@ -3666,14 +3674,33 @@ async function fetchPitcherPreview(pitcherId) {
   if (_pitcherCache.has(pitcherId)) return _pitcherCache.get(pitcherId);
   try {
     const [r1, r2] = await Promise.all([
-      fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season,gameLog&season=${CURRENT_SEASON}&group=pitching&limit=1`).then(r => r.json()),
+      fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}/stats?stats=season,gameLog&season=${CURRENT_SEASON}&group=pitching`).then(r => r.json()),
       fetch(`https://statsapi.mlb.com/api/v1/people/${pitcherId}?fields=people,id,pitchHand`).then(r => r.json())
     ]);
-    const result = {
-      season:    r1.stats?.find(s => s.type?.displayName === 'season')?.splits?.[0]?.stat || null,
-      lastStart: r1.stats?.find(s => s.type?.displayName === 'gameLog')?.splits?.[0] || null,
-      pitchHand: r2.people?.[0]?.pitchHand?.code || null
-    };
+    const season    = r1.stats?.find(s => s.type?.displayName === 'season')?.splits?.[0]?.stat || null;
+    const gameLogs  = r1.stats?.find(s => s.type?.displayName === 'gameLog')?.splits || [];
+    const lastStart = gameLogs[0] || null;
+
+    // Compute recent-form ERA from last 3 starts (most recent first)
+    const last3     = gameLogs.slice(0, 3);
+    let recentEra   = null, eraTrend = 'neutral';
+    if (last3.length >= 2) {
+      const totalER = last3.reduce((s, g) => s + parseInt(g.stat?.earnedRuns || 0), 0);
+      const totalIP = last3.reduce((s, g) => {
+        const ip = String(g.stat?.inningsPitched || '0');
+        const [full, frac] = ip.split('.');
+        return s + parseInt(full || 0) + (parseInt(frac || 0) / 3);
+      }, 0);
+      recentEra = totalIP > 0 ? (totalER / totalIP) * 9 : null;
+      const seasonEra = parseFloat(season?.era || 0);
+      if (recentEra !== null && seasonEra > 0) {
+        eraTrend = recentEra <= seasonEra - 0.75 ? 'hot'
+                 : recentEra >= seasonEra + 1.25 ? 'cold'
+                 : 'neutral';
+      }
+    }
+
+    const result = { season, lastStart, pitchHand: r2.people?.[0]?.pitchHand?.code || null, recentEra, eraTrend, last3starts: last3.length };
     _pitcherCache.set(pitcherId, result);
     return result;
   } catch { _pitcherCache.set(pitcherId, null); return null; }
