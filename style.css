@@ -1304,6 +1304,12 @@ input { font: inherit; }
 /* ── LEAN NOTES (too close to call) ── */
 .gp-verdict-lean, .tp-lean-note { font-style: italic; color: var(--text-muted); font-size: .85em; }
 
+/* ── PITCHER REST BONUS + PARK NOTES ── */
+.pit-rest-bonus { font-size: .65rem; font-weight: 700; background: rgba(0,230,118,.18); color: var(--accent); border-radius: 3px; padding: 1px 4px; margin-left: 2px; }
+.pc-park-note   { font-size: .68rem; font-weight: 600; border-radius: 3px; padding: 1px 5px; }
+.pc-park-up     { background: rgba(255,179,0,.15); color: #ffb300; }
+.pc-park-down   { background: rgba(66,165,245,.15); color: #42a5f5; }
+
 /* ── HIT PREDICTOR BADGES ── */
 .gp-babip {
   font-size: .68rem; font-weight: 700; border-radius: 3px;
