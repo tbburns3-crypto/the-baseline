@@ -1818,10 +1818,28 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-plr-l { color: var(--text-muted); }
 .sv-empty { text-align: center; padding: 50px 24px; color: var(--text-muted); font-size: .92rem; line-height: 1.6; }
 .sv-hint { display: block; font-size: .78rem; margin-top: 10px; opacity: .7; }
-/* Lottery in simple view — spans both columns, compact number display */
+/* Lottery in simple view */
 .sv-lottery-section { grid-column: 1 / -1; }
-.sv-lottery-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+.sv-lottery-block { margin-top: 14px; }
+.sv-lottery-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; margin-top: 6px; }
 .sv-lottery-cards .lottery-card { margin: 0; }
+/* ── FLAT TOP PICKS LIST ── */
+.sv-top-picks-list { display: flex; flex-direction: column; gap: 6px; }
+.sv-top-item { display: flex; align-items: flex-start; gap: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.sv-top-item.sv-card-win  { border-left: 3px solid var(--accent); }
+.sv-top-item.sv-card-loss { border-left: 3px solid #555; opacity: .72; }
+.sv-top-item.sv-has-plrs  { cursor: pointer; }
+.sv-top-item.sv-expanded .sv-tap-hint { display: none; }
+.sv-top-item.sv-expanded .sv-plr-section { display: block; }
+.sv-top-num  { font-size: .68rem; font-weight: 700; color: var(--text-muted); min-width: 16px; padding-top: 3px; flex-shrink: 0; }
+.sv-top-icon { font-size: .9rem; flex-shrink: 0; padding-top: 2px; }
+.sv-top-info { flex: 1; min-width: 0; }
+.sv-top-matchup { font-size: .7rem; color: var(--text-muted); margin-bottom: 3px; }
+.sv-top-pick { display: flex; align-items: center; gap: 5px; }
+.sv-lock-note { font-size: .68rem; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.sv-lock-pending { color: var(--accent); opacity: .85; }
+.sv-unlock-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); font-size: .65rem; padding: 1px 7px; border-radius: 3px; cursor: pointer; line-height: 1.6; }
+.sv-unlock-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }

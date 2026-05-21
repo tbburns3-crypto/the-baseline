@@ -5943,6 +5943,45 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
+const _DAILY_TOP_KEY = '_baseline_top';
+
+function getLockedTopPicks() {
+  try {
+    const s = localStorage.getItem(_DAILY_TOP_KEY);
+    if (!s) return null;
+    const obj = JSON.parse(s);
+    if (obj.date !== new Date().toISOString().slice(0, 10)) return null;
+    return obj.ids || null;
+  } catch { return null; }
+}
+
+function lockTopPicks() {
+  if (getLockedTopPicks()) return; // already locked today
+  const today = new Date().toISOString().slice(0, 10);
+  const allPicksMap = getPicks();
+  const gamePicks = Object.entries(allPicksMap)
+    .filter(([, p]) => p.date === today && !p.type && p.team)
+    .sort((a, b) => (b[1].conf || 0) - (a[1].conf || 0));
+  if (gamePicks.length < 4) return; // not enough picks to lock yet
+  // Up to 3 per sport for variety, 10 total max
+  const selected = [], sportCounts = {};
+  for (const [id, p] of gamePicks) {
+    const s = p.sport || 'tennis';
+    if ((sportCounts[s] || 0) >= 3) continue;
+    selected.push(id);
+    sportCounts[s] = (sportCounts[s] || 0) + 1;
+    if (selected.length >= 10) break;
+  }
+  if (selected.length < 4) return;
+  localStorage.setItem(_DAILY_TOP_KEY, JSON.stringify({ date: today, ids: selected }));
+}
+
+function resetDailyPicks() {
+  localStorage.removeItem(_DAILY_TOP_KEY);
+  _svPreloadedAt = 0; // force full re-preload
+  renderSimpleView();
+  preloadPicksForSimpleView();
+}
 
 // Silently fetch today's games for all sports in the background and record picks
 // into localStorage so renderSimpleView() can show them without the user
@@ -6066,9 +6105,13 @@ async function preloadPicksForSimpleView() {
     const { games } = await fetchLotteryGames();
     if (games.length) {
       _svLotteryHTML = games.map(renderLotteryCard).join('');
-      if (isActive()) renderSimpleView();
     }
   } catch (e) {}
+
+  // Final render — all sports done. Tennis picks recorded during init's loadTennisScores()
+  // run in parallel and should be in localStorage by now. Lock the top picks for the day.
+  lockTopPicks();
+  if (isActive()) renderSimpleView();
 }
 
 function showSimpleView() {
@@ -6086,45 +6129,26 @@ function hideSimpleView() {
 
 function renderSimpleView() {
   const today = new Date().toISOString().slice(0, 10);
-  const allPicks    = Object.values(getPicks()).filter(p => p.date === today);
-  const gamePicks   = allPicks.filter(p => !p.type);
-  const playerPicks = allPicks.filter(p => p.type === 'player');
+  const allPicksMap = getPicks();
 
   document.getElementById('sv-date').textContent =
     new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
 
-  if (gamePicks.length === 0) {
-    document.getElementById('sv-content').innerHTML =
-      `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Loading today's picks…</div>`;
-    return;
-  }
-
-  // Index player picks by normalised matchup string
+  // Index player picks by matchup for tap-to-expand
   const plrByMatchup = {};
-  for (const p of playerPicks) {
+  for (const p of Object.values(allPicksMap)) {
+    if (p.type !== 'player' || p.date !== today) continue;
     const key = (p.gameMatchup || '').toLowerCase().trim();
     if (!plrByMatchup[key]) plrByMatchup[key] = [];
     plrByMatchup[key].push(p);
   }
 
-  // Group game picks by sport
-  const bySport = {};
-  for (const p of gamePicks) {
-    const s = p.sport || 'tennis';
-    if (!bySport[s]) bySport[s] = [];
-    bySport[s].push(p);
-  }
-  const sportOrder = ['tennis','mlb','nba','golf','nfl','nhl','soccer','wnba'];
-  const sports = sportOrder.filter(s => bySport[s]).concat(Object.keys(bySport).filter(s => !sportOrder.includes(s)));
-
-  // Build player picks section — grouped by category so each stat is clearly labelled
   const makePlrSection = (matchupKey) => {
     const plrs = plrByMatchup[matchupKey] || [];
     if (!plrs.length) return '';
-    // Group by prop (Points, Rebounds, Passing Yards…)
     const byCat = {};
     for (const pp of plrs) {
-      const cat = pp.prop || pp.stat || '?';
+      const cat = pp.prop || '?';
       if (!byCat[cat]) byCat[cat] = [];
       byCat[cat].push(pp);
     }
@@ -6139,46 +6163,57 @@ function renderSimpleView() {
     return `<div class="sv-plr-section"><div class="sv-plr-hdr">Players to Watch</div>${rows}</div>`;
   };
 
-  const makeCard = (p) => {
+  const allGamePicks = Object.values(allPicksMap).filter(p => p.date === today && !p.type);
+  if (!allGamePicks.length) {
+    document.getElementById('sv-content').innerHTML =
+      `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Loading today's picks…</div>`;
+    return;
+  }
+
+  // Use locked list if available; otherwise show best available sorted by conf
+  const lockedIds = getLockedTopPicks();
+  const displayPicks = lockedIds
+    ? lockedIds.map(id => allPicksMap[id]).filter(p => p && p.date === today && !p.type)
+    : [...allGamePicks].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 10);
+
+  const makeTopItem = (p, idx) => {
+    const icon = SPORT_ICONS[p.sport || 'tennis'] || '🏅';
     const conf = Math.min(3, Math.max(1, p.conf || 1));
     const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
-    const resultBadge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
-                      : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+    const badge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
+                : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
     const key = (p.matchup || '').toLowerCase().trim();
     const plrSection = makePlrSection(key);
-    const tapHint = plrSection ? `<div class="sv-tap-hint">▾ players</div>` : '';
     const clickAttr = plrSection ? `onclick="this.classList.toggle('sv-expanded')"` : '';
-    return `<div class="sv-pick-card ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrSection ? 'sv-has-plrs' : ''}" ${clickAttr}>
-      <div class="sv-matchup">${esc(p.matchup || '')}</div>
-      <div class="sv-pick-line">
-        <span class="sv-arrow">→</span>
-        <span class="sv-pick-name">${esc(p.team)}</span>
-        <span class="sv-conf">${dots}</span>
-        ${resultBadge}
+    return `<div class="sv-top-item ${p.result === 'win' ? 'sv-card-win' : p.result === 'loss' ? 'sv-card-loss' : ''} ${plrSection ? 'sv-has-plrs' : ''}" ${clickAttr}>
+      <span class="sv-top-num">${idx + 1}</span>
+      <span class="sv-top-icon">${icon}</span>
+      <div class="sv-top-info">
+        <div class="sv-top-matchup">${esc(p.matchup || '')}</div>
+        <div class="sv-top-pick">
+          <span class="sv-arrow">→</span>
+          <span class="sv-pick-name">${esc(p.team)}</span>
+          <span class="sv-conf">${dots}</span>
+          ${badge}
+        </div>
+        ${plrSection ? '<div class="sv-tap-hint">▾ players</div>' : ''}
+        ${plrSection}
       </div>
-      ${tapHint}
-      ${plrSection}
     </div>`;
   };
 
-  const sections = sports.map(sport => {
-    // Golf shows top 10 (3-ball group picks), all others top 6
-    const limit = sport === 'golf' ? 10 : 6;
-    const picks = [...bySport[sport]].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, limit);
-    return `<div class="sv-sport-section">
-      <div class="sv-sport-hdr">${SPORT_ICONS[sport]||'🏅'} ${SPORT_LABELS[sport]||sport.toUpperCase()}</div>
-      ${picks.map(makeCard).join('')}
-    </div>`;
-  }).join('');
+  const statusNote = lockedIds
+    ? `<div class="sv-lock-note">🔒 Today's picks locked · <button class="sv-unlock-btn" onclick="resetDailyPicks()">↺ Reset</button></div>`
+    : `<div class="sv-lock-note sv-lock-pending">⏳ Loading all sports — will lock shortly…</div>`;
 
-  const lotterySection = _svLotteryHTML
-    ? `<div class="sv-sport-section sv-lottery-section">
-        <div class="sv-sport-hdr">🎰 Lottery Numbers</div>
-        <div class="sv-lottery-cards">${_svLotteryHTML}</div>
-      </div>`
+  const lotteryBlock = _svLotteryHTML
+    ? `<div class="sv-lottery-block"><div class="sv-sport-hdr">🎰 Lottery Numbers</div><div class="sv-lottery-cards">${_svLotteryHTML}</div></div>`
     : '';
 
-  document.getElementById('sv-content').innerHTML = `<div class="sv-sections-grid">${sections}${lotterySection}</div>`;
+  document.getElementById('sv-content').innerHTML =
+    statusNote +
+    `<div class="sv-top-picks-list">${displayPicks.map((p, i) => makeTopItem(p, i)).join('')}</div>` +
+    lotteryBlock;
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────
