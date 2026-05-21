@@ -4683,6 +4683,8 @@ async function loadSoccerScores() {
         });
       }
     }
+    // Always record picks regardless of seq (preload calls us from simple view context)
+    allGames.forEach(g => autoRecordAndResolvePick(g));
     if (_loadSeq !== seq) return;
     if (!allGames.length) {
       document.getElementById('other-scores-area').innerHTML = '<div class="empty-state"><p>No soccer matches today.</p><p class="muted">Check back later - fixtures are loaded day-of.</p></div>';
@@ -6268,11 +6270,20 @@ function renderSimpleView() {
     gridHTML = `<div class="sv-sections-grid sv-single-col">${tennisHTML || otherHTML}</div>`;
   }
 
-  // Top 10 ticket — all locked picks across all sports, sorted by conf desc
+  // Top 10 ticket — diverse across all sports (max 2 per sport), sorted by conf desc
   const allLockedFlat = lockedBySport
     ? Object.values(lockedBySport).flat().map(id => allPicksMap[id]).filter(p => p && p.date === today && !p.type)
     : [...allGamePicks];
-  const top10 = [...allLockedFlat].sort((a, b) => (b.conf || 0) - (a.conf || 0)).slice(0, 10);
+  const ticketCounts = {};
+  const top10 = [...allLockedFlat]
+    .sort((a, b) => (b.conf || 0) - (a.conf || 0))
+    .filter(p => {
+      const s = p.sport || 'tennis';
+      if ((ticketCounts[s] || 0) >= 2) return false;
+      ticketCounts[s] = (ticketCounts[s] || 0) + 1;
+      return true;
+    })
+    .slice(0, 10);
   const ticketRow = (p, i) => {
     const conf = Math.min(3, Math.max(1, p.conf || 1));
     const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
