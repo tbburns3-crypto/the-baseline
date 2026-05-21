@@ -49,6 +49,10 @@ const S = {
 
 const _detailLoaded = new Set();
 
+// Incremented on every switchSport call. Async loaders capture the value at start
+// and bail before writing to the DOM if the sport has since changed.
+let _loadSeq = 0;
+
 // ── TENNIS INJURY MAP ────────────────────────────────────────
 // Keyed by lowercase last name → { note, returning, published }
 // Populated from ESPN tennis news headlines on tab open.
@@ -1967,6 +1971,7 @@ function startScoresTimer(sport) {
 }
 
 function switchSport(sport) {
+  _loadSeq++;           // invalidate any in-flight loads from the previous sport
   S.sport = sport;
   S.otherDateOffset = 0;
   document.querySelectorAll('.sport-tab').forEach(t => t.classList.toggle('active', t.dataset.sport === sport));
@@ -2118,6 +2123,7 @@ function otherDatePickerChange(val) {
 
 // ── OTHER SPORTS (ESPN primary, BDL + API-Sports fallback) ────
 async function loadOtherScores(sport) {
+  const seq = _loadSeq;
   showLoading('other-scores-area', `Loading ${sport.toUpperCase()} games…`);
   try {
     const off = S.otherDateOffset;
@@ -2135,6 +2141,7 @@ async function loadOtherScores(sport) {
         games = await apiSportsGames(sport, dateStr(off));
       }
     }
+    if (_loadSeq !== seq) return;
     renderOtherScores(games, sport, src);
     const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
     setConn('connected', `${sport.toUpperCase()} - updated ${t} · refreshes every 30s`);
@@ -3062,6 +3069,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
 
 // ── TENNIS PICKS PAGE ────────────────────────────────────────
 async function loadTennisPicksPage() {
+  const seq  = _loadSeq;
   const area = document.getElementById('mlb-picks-area');
   area.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Loading picks…</p></div>`;
 
@@ -3112,6 +3120,7 @@ async function loadTennisPicksPage() {
     }
   }
 
+  if (_loadSeq !== seq) return;
   area.innerHTML = `
     <div class="pc-data-note">Picks use seedings · rankings · H2H · surface form · fatigue · round weighting</div>
     <div class="ph-list">${todayHTML}</div>
@@ -3130,6 +3139,7 @@ async function loadTennisPicksPage() {
 
 // ── TOMORROW'S TENNIS PREVIEW ─────────────────────────────────
 async function loadTomorrowPreview() {
+  const seq  = _loadSeq;
   const area = document.getElementById('tomorrow-preview-area');
   if (!area) return;
   try {
@@ -3151,6 +3161,7 @@ async function loadTomorrowPreview() {
     await Promise.allSettled(eligible.map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
 
     const cards = eligible.map(m => buildTomorrowPickCard(m)).join('');
+    if (_loadSeq !== seq) return;
     area.innerHTML = cards || '<div class="tp-empty">No analysis available.</div>';
   } catch (err) {
     const area2 = document.getElementById('tomorrow-preview-area');
@@ -3558,6 +3569,7 @@ function buildWinPredCard(g) {
 }
 
 async function loadOtherPicksPage(sport) {
+  const seq  = _loadSeq;
   const area = document.getElementById('mlb-picks-area');
   const nav  = picksDateNavHTML();
   area.innerHTML = `${nav}<div class="loading-spinner"><div class="spinner"></div><p>Loading ${sport.toUpperCase()} picks…</p></div>`;
@@ -3566,6 +3578,7 @@ async function loadOtherPicksPage(sport) {
     const isNBALeague = ['nba','wnba'].includes(sport);
     const games = await espnGames(sport, off);
     if (!games.length) {
+      if (_loadSeq !== seq) return;
       const isNFL = sport === 'nfl' && off === 0;
       area.innerHTML = nav + `<div class="empty-state"><p>No ${sport.toUpperCase()} games on this date.</p>${isNFL ? '<p class="muted">Use the date navigation above to browse the schedule.</p>' : ''}</div>`;
       return;
@@ -3585,6 +3598,7 @@ async function loadOtherPicksPage(sport) {
       });
     }
 
+    if (_loadSeq !== seq) return;
     const cards = games.map(g => isNBALeague ? buildNBAPicksCard(g, summaryMap.get(String(g.id))) : buildWinPredCard(g)).join('');
     const note  = off !== 0 ? '' : `<div class="pc-data-note">${isNBALeague ? 'Win prediction · season stat leaders from ESPN' : 'Win predictions based on season records · ESPN odds where available'}</div>`;
     area.innerHTML = nav + note + `<div class="picks-cards">${cards}</div>`;
@@ -3595,6 +3609,7 @@ async function loadOtherPicksPage(sport) {
 }
 
 async function loadMLBPicksPage() {
+  const seq  = _loadSeq;
   const area = document.getElementById('mlb-picks-area');
   const off  = S.picksDateOffset;
   const nav  = picksDateNavHTML();
@@ -3609,6 +3624,7 @@ async function loadMLBPicksPage() {
     const schedule = schedResult.status === 'fulfilled' ? schedResult.value : [];
 
     if (!games.length) {
+      if (_loadSeq !== seq) return;
       area.innerHTML = nav + '<div class="empty-state"><p>No MLB games on this date.</p></div>';
       return;
     }
@@ -3648,6 +3664,7 @@ async function loadMLBPicksPage() {
 
     // Phase 5: build cards
     const cardHTMLs = await Promise.all(games.map(g => buildMLBPicksGameCard(g, findSched(g))));
+    if (_loadSeq !== seq) return;
     const note = `<div class="pc-data-note">Platoon splits · park factors · pitcher ERA + L3 trend · bullpen ERA · L10 momentum · career vs-pitcher</div>`;
     area.innerHTML = nav + note + `<div class="picks-cards">${cardHTMLs.join('')}</div>`;
     updatePicksDisplay();
@@ -4555,6 +4572,7 @@ const SOCCER_LEAGUES = [
 ];
 
 async function loadSoccerScores() {
+  const seq = _loadSeq;
   showLoading('other-scores-area', 'Loading soccer matches…');
   try {
     const results = await Promise.allSettled(
@@ -4594,6 +4612,7 @@ async function loadSoccerScores() {
         });
       }
     }
+    if (_loadSeq !== seq) return;
     if (!allGames.length) {
       document.getElementById('other-scores-area').innerHTML = '<div class="empty-state"><p>No soccer matches today.</p><p class="muted">Check back later - fixtures are loaded day-of.</p></div>';
       setConn('connected', 'Soccer - no matches today');
@@ -4784,6 +4803,7 @@ function toggleGolfLB(btn) {
 }
 
 async function loadGolfLeaderboard() {
+  const seq  = _loadSeq;
   const area = document.getElementById('golf-leaderboard-area');
   if (!area) return;
   if (!area.querySelector('.golf-tournament')) {
@@ -4860,6 +4880,7 @@ async function loadGolfLeaderboard() {
         </div>`;
       }
     }
+    if (_loadSeq !== seq) return;
     area.innerHTML = html || '<div class="empty-state"><p>No active golf tournaments right now.</p><p class="muted">Check back when a PGA/LPGA/DP World Tour event is in progress.</p></div>';
     const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
     setConn('connected', `Golf updated ${t} · refreshes every 30s`);
@@ -4994,6 +5015,7 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
 }
 
 async function loadGolfPicksPage() {
+  const seq  = _loadSeq;
   const area = document.getElementById('mlb-picks-area');
   area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf groups…</p></div>';
   try {
@@ -5025,6 +5047,7 @@ async function loadGolfPicksPage() {
         </div>`;
       }
     }
+    if (_loadSeq !== seq) return;
     const note = '<div class="pc-data-note">3-ball picks · world ranking · scoring avg · tournament position · round score</div>';
     area.innerHTML = note + (html || '<div class="empty-state"><p>No active golf groups available.</p><p class="muted">Picks appear when a tournament is in progress or tee times are posted.</p></div>');
     updatePicksDisplay();
@@ -5038,6 +5061,7 @@ let _mlbStandData = null;
 let _mlbLeadData  = null;
 
 async function loadMLBFullStandings() {
+  const seq = _loadSeq;
   showLoading('other-standings-area', 'Loading MLB standings…');
   try {
     const [standRes, leadRes] = await Promise.all([
@@ -5048,6 +5072,7 @@ async function loadMLBFullStandings() {
     if (!leadRes.ok)  throw new Error(`HTTP ${leadRes.status}`);
     _mlbStandData = await standRes.json();
     _mlbLeadData  = await leadRes.json();
+    if (_loadSeq !== seq) return;
     renderMLBStandingsView('standings');
   } catch (err) {
     showError('other-standings-area', `Could not load MLB stats - ${err.message}`, 'loadMLBFullStandings()');
@@ -5478,6 +5503,7 @@ function renderMatchupData(div, stat, batterName, pitcherName) {
 }
 
 async function loadOtherStandings(sport) {
+  const seq = _loadSeq;
   showLoading('other-standings-area', 'Loading standings…');
   try {
     // ESPN standings (covers all sports we need)
@@ -5493,6 +5519,7 @@ async function loadOtherStandings(sport) {
       const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${path}/standings`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
+      if (_loadSeq !== seq) return;
       renderESPNStandings(j, sport);
       return;
     }
