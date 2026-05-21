@@ -4659,79 +4659,100 @@ const GOLF_TOURS = [
 
 function formatTeeTime(raw) {
   try { const d = new Date(raw); if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }); } catch {}
-  return raw;
+  return String(raw);
+}
+
+// ESPN embeds tee time inside linescores statistics rather than at the competitor root
+function extractTeeTime(p) {
+  if (p.teeTime) return p.teeTime;
+  try {
+    for (const cat of (p.linescores?.[0]?.statistics?.categories || [])) {
+      for (const stat of (cat.stats || [])) {
+        const dv = stat.displayValue || '';
+        if (/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/.test(dv)) return dv;
+      }
+    }
+  } catch {}
+  return '';
+}
+
+// Returns 'live' | 'finished' | 'upcoming'
+function playerRoundStatus(p, round) {
+  const holes = p.linescores?.[round - 1]?.linescores?.length || 0;
+  if (holes >= 18) return 'finished';
+  if (holes > 0)   return 'live';
+  return 'upcoming';
 }
 
 function groupByTeeTime(players) {
   const map = new Map();
   for (const p of players) {
-    const t = p.teeTime || '';
+    const t = extractTeeTime(p);
     if (!map.has(t)) map.set(t, []);
     map.get(t).push(p);
   }
   return [...map.entries()]
     .sort(([a], [b]) => {
       if (!a && !b) return 0; if (!a) return 1; if (!b) return -1;
-      return a.localeCompare(b);
+      return new Date(a) - new Date(b) || a.localeCompare(b);
     })
     .map(([time, ps]) => ({ time, players: ps }))
-    .filter(g => g.players.length >= 2 && g.time); // only real groups with a tee time
+    .filter(g => g.players.length >= 2 && g.time);
 }
 
-function renderGolfGroup(group, round, isLive) {
+function renderGolfGroup(group, round, tournIsLive) {
   const players = group.players.slice(0, 3);
-  const getWRNum = p => { const s = p.statistics?.find(x => x.name === 'worldRanking' || x.abbreviation === 'WR'); return s ? parseInt(s.displayValue) || 9999 : 9999; };
-  const getWRStr = p => { const s = p.statistics?.find(x => x.name === 'worldRanking' || x.abbreviation === 'WR'); return s?.displayValue || null; };
-  let pick;
-  if (isLive) {
-    pick = [...players].sort((a, b) => (+a.sortOrder || 9999) - (+b.sortOrder || 9999))[0];
-  } else {
-    pick = [...players].sort((a, b) => getWRNum(a) - getWRNum(b))[0];
-    if (getWRNum(pick) === 9999) pick = [...players].sort((a, b) => (+a.sortOrder || 9999) - (+b.sortOrder || 9999))[0];
-  }
-  const pickWR = getWRStr(pick);
-  const pickName = pick?.athlete?.shortName || pick?.athlete?.displayName || '?';
+  if (players.length < 2) return '';
+
+  // Determine group status from individual player hole counts
+  const statuses  = players.map(p => playerRoundStatus(p, round));
+  const groupLive = statuses.some(s => s === 'live');
+  const groupDone = statuses.every(s => s === 'finished');
+
+  // Pick: best position for live/done groups, else lowest order (leaderboard rank)
+  const byPos  = [...players].sort((a, b) => (+a.order || 9999) - (+b.order || 9999));
+  const pick   = byPos[0];
+  const pickName  = pick?.athlete?.shortName || pick?.athlete?.displayName || '?';
   const pickScore = pick?.score || 'E';
-  let pickReason = '';
-  if (isLive) {
-    pickReason = (pick?.sortOrder || 9999) <= 5 ? `Leading at #${pick.sortOrder} - momentum is strong` : pickWR && parseInt(pickWR) <= 20 ? `World #${pickWR} - elite talent in this group` : `Best current position in the group`;
-  } else {
-    pickReason = pickWR && parseInt(pickWR) <= 30 ? `World #${pickWR} - highest-ranked player in this group` : `Best placed heading into the round`;
-  }
+
+  const statusTag = groupLive ? `<span class="golf-live-tag pulse">● LIVE</span>`
+                  : groupDone ? `<span class="golf-done-tag">✓ Finished</span>`
+                  :             `<span class="golf-time-tag">⏰ ${esc(formatTeeTime(group.time))}</span>`;
 
   const rows = players.map(p => {
-    const name = p.athlete?.shortName || p.athlete?.displayName || '-';
-    const total = p.score || 'E';
+    const name     = p.athlete?.shortName || p.athlete?.displayName || '-';
+    const total    = p.score || (playerRoundStatus(p, round) === 'upcoming' ? '-' : 'E');
     const totalNum = total === 'E' ? 0 : parseInt(total);
     const scoreCls = isNaN(totalNum) ? '' : totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
-    const thru  = p.status?.displayValue || '-';
-    const today = p.linescores?.[round - 1]?.displayValue || '-';
-    const pos   = p.sortOrder ? `#${p.sortOrder}` : '-';
-    const wr    = getWRStr(p);
-    const isPick = p === pick;
+    const holes    = p.linescores?.[round - 1]?.linescores?.length || 0;
+    const thruStr  = holes === 18 ? 'F' : holes > 0 ? `${holes}` : '-';
+    const todayVal = p.linescores?.[round - 1]?.displayValue || (holes > 0 ? 'E' : '-');
+    const todayNum = todayVal === 'E' ? 0 : parseInt(todayVal);
+    const todayCls = isNaN(todayNum) ? '' : todayNum < 0 ? 'golf-under' : todayNum > 0 ? 'golf-over' : 'golf-even';
+    const pos      = p.order ? String(p.order) : '-';
+    const isPick   = p === pick;
     return `<div class="golf-group-row${isPick ? ' golf-group-pick-row' : ''}">
       <span class="golf-group-pos">${esc(pos)}</span>
-      <span class="golf-group-name">${esc(name)}${wr ? ` <span class="golf-wr">WR${esc(wr)}</span>` : ''}</span>
+      <span class="golf-group-name">${esc(name)}</span>
       <span class="golf-group-score ${scoreCls}">${esc(total)}</span>
-      <span class="golf-group-today">${esc(today)}</span>
-      <span class="golf-group-thru">${esc(thru)}</span>
+      <span class="golf-group-today ${todayCls}">${esc(todayVal)}</span>
+      <span class="golf-group-thru">${thruStr === 'F' ? `<span class="golf-thru-done">F</span>` : esc(thruStr)}</span>
     </div>`;
   }).join('');
 
-  return `<div class="golf-group-card">
-    <div class="golf-group-time">⏰ ${esc(formatTeeTime(group.time))}</div>
-    <div class="golf-group-hdr">
-      <span>POS</span><span>PLAYER</span><span>TOTAL</span><span>TODAY</span><span>THRU</span>
-    </div>
+  return `<div class="golf-group-card${groupLive ? ' golf-gc-live' : ''}">
+    <div class="golf-group-time">${statusTag}<span class="golf-gc-edge">→ <b>${esc(pickName)}</b> ${esc(pickScore)}</span></div>
+    <div class="golf-group-hdr"><span>POS</span><span>PLAYER</span><span>TOT</span><span>RD${round}</span><span>THRU</span></div>
     ${rows}
-    <div class="golf-group-edge">📌 Edge: <b>${esc(pickName)}</b> (${esc(pickScore)}) - ${esc(pickReason)}</div>
   </div>`;
 }
 
 async function loadGolfLeaderboard() {
   const area = document.getElementById('golf-leaderboard-area');
   if (!area) return;
-  area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf…</p></div>';
+  if (!area.querySelector('.golf-tournament')) {
+    area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf…</p></div>';
+  }
   try {
     const results = await Promise.allSettled(
       GOLF_TOURS.map(t =>
@@ -4749,23 +4770,38 @@ async function loadGolfLeaderboard() {
         const round   = comp.status?.period || 1;
         const isLive  = state === 'in';
         const isFinal = state === 'post' || comp.status?.type?.completed;
-        const venue   = comp.venue?.fullName ? `${comp.venue.fullName}` : '';
+        const venue   = comp.venue?.fullName || '';
         const city    = comp.venue?.address?.city || '';
         const statusTxt = isLive  ? `<span class="live-badge pulse">LIVE</span> Round ${round}`
                         : isFinal ? `<span class="fin-badge">FINAL</span>`
                         :           `Round ${round} · Upcoming`;
-        const allCompetitors = comp.competitors || [];
-        const players = [...allCompetitors]
-          .sort((a, b) => (+a.sortOrder||99) - (+b.sortOrder||99))
-          .slice(0, 25);
+        const allComp = comp.competitors || [];
+        const players = [...allComp].sort((a, b) => (+a.order||999) - (+b.order||999)).slice(0, 30);
         if (!players.length) continue;
-        const groups = groupByTeeTime(allCompetitors);
-        const groupsHTML = groups.length >= 2
-          ? `<div class="golf-groups-section">
-              <div class="golf-groups-hdr">🎯 Today's Groups &amp; Picks</div>
-              ${groups.slice(0, 24).map(g => renderGolfGroup(g, round, isLive)).join('')}
-            </div>`
-          : '';
+
+        // Build groups and sort: Live first → Upcoming → Finished
+        const groups = groupByTeeTime(allComp);
+        const liveG     = groups.filter(g => g.players.some(p => playerRoundStatus(p, round) === 'live'));
+        const upcomingG = groups.filter(g => g.players.every(p => playerRoundStatus(p, round) === 'upcoming'));
+        const doneG     = groups.filter(g => g.players.every(p => playerRoundStatus(p, round) === 'finished'));
+
+        let groupsHTML = '';
+        if (groups.length >= 2) {
+          const mkSection = (label, grps) => {
+            if (!grps.length) return '';
+            return `<div class="golf-group-status-section">
+              <div class="golf-group-status-hdr">${label}</div>
+              ${grps.map(g => renderGolfGroup(g, round, isLive)).join('')}
+            </div>`;
+          };
+          groupsHTML = `<div class="golf-groups-section">
+            <div class="golf-groups-hdr">🎯 Groups &amp; 3-Ball Matchups</div>
+            ${mkSection(`● Live Now — ${liveG.length} group${liveG.length !== 1 ? 's' : ''} on the course`, liveG)}
+            ${mkSection(`⏰ Upcoming — ${upcomingG.length} group${upcomingG.length !== 1 ? 's' : ''} yet to tee off`, upcomingG)}
+            ${mkSection(`✓ Finished — ${doneG.length} group${doneG.length !== 1 ? 's' : ''} completed`, doneG)}
+          </div>`;
+        }
+
         html += `<div class="golf-tournament">
           <div class="golf-tourn-header">
             <div class="golf-tourn-name">${tour.icon} ${esc(ev.name || ev.shortName || tour.label)}</div>
@@ -4777,7 +4813,7 @@ async function loadGolfLeaderboard() {
               <span class="gc-pos">POS</span>
               <span class="gc-name">PLAYER</span>
               <span class="gc-score">SCORE</span>
-              <span class="gc-today">TODAY</span>
+              <span class="gc-today">RD${round}</span>
               <span class="gc-thru">THRU</span>
             </div>
             ${players.map(p => renderGolfRow(p, round)).join('')}
@@ -4787,10 +4823,10 @@ async function loadGolfLeaderboard() {
     }
     area.innerHTML = html || '<div class="empty-state"><p>No active golf tournaments right now.</p><p class="muted">Check back when a PGA/LPGA/DP World Tour event is in progress.</p></div>';
     const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-    setConn('connected', `Golf - updated ${t} · refreshes every 30s`);
+    setConn('connected', `Golf updated ${t} · refreshes every 30s`);
   } catch (err) {
     setConn('disconnected', 'Golf - update failed');
-    area.innerHTML = `<div class="pp-error" style="padding:16px">Could not load golf - ${esc(err.message)}</div>`;
+    area.innerHTML = `<div class="pp-error" style="padding:16px">Could not load golf — ${esc(err.message)}</div>`;
   }
 }
 
@@ -4799,26 +4835,27 @@ function renderGolfRow(p, round) {
   const total    = p.score || 'E';
   const totalNum = total === 'E' ? 0 : parseInt(total);
   const scoreCls = isNaN(totalNum) ? '' : totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
-  const thru     = p.status?.displayValue || '-';
-  const status   = (p.status?.type?.name || '').toLowerCase();
-  const isCut    = status === 'cut' || thru === 'CUT' || status === 'wd' || status === 'dq';
-  const today    = p.linescores?.[round - 1]?.displayValue || (p.statistics?.find?.(s => s.name === 'scoringPlayByPlay')?.displayValue) || '-';
-  const pos      = p.sortOrder ? String(p.sortOrder) : '-';
-
-  if (isCut) {
-    return `<div class="golf-player-row golf-row-cut">
-      <span class="gc-pos golf-cut-lbl">${esc(status.toUpperCase() || 'CUT')}</span>
+  const holes    = p.linescores?.[round - 1]?.linescores?.length || 0;
+  const thru     = holes === 18 ? 'F' : holes > 0 ? String(holes) : (p.status?.displayValue || '-');
+  const today    = p.linescores?.[round - 1]?.displayValue || '-';
+  const todayNum = today === 'E' ? 0 : parseInt(today);
+  const todayCls = isNaN(todayNum) ? '' : todayNum < 0 ? 'golf-under' : todayNum > 0 ? 'golf-over' : 'golf-even';
+  const pos      = p.order ? String(p.order) : '-';
+  const rndStatus = playerRoundStatus(p, round);
+  if (rndStatus === 'upcoming' && total === 'E') {
+    return `<div class="golf-player-row golf-row-upcoming">
+      <span class="gc-pos">${esc(pos)}</span>
       <span class="gc-name">${esc(name)}</span>
-      <span class="gc-score golf-over">${esc(total)}</span>
+      <span class="gc-score golf-even">-</span>
       <span class="gc-today">-</span>
-      <span class="gc-thru">-</span>
+      <span class="gc-thru golf-thru-upcoming">⏰</span>
     </div>`;
   }
   return `<div class="golf-player-row">
     <span class="gc-pos">${esc(pos)}</span>
     <span class="gc-name">${esc(name)}</span>
     <span class="gc-score ${scoreCls}">${esc(total)}</span>
-    <span class="gc-today">${esc(today)}</span>
+    <span class="gc-today ${todayCls}">${esc(today)}</span>
     <span class="gc-thru ${thru === 'F' ? 'golf-thru-done' : ''}">${esc(thru)}</span>
   </div>`;
 }
@@ -4828,46 +4865,40 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const players = group.players.slice(0, 3);
   if (players.length < 2) return '';
 
-  const getWR  = p => { const s = p.statistics?.find(x => x.name === 'worldRanking' || x.abbreviation === 'WR'); return s ? parseInt(s.displayValue) || 9999 : 9999; };
-  const getSA  = p => { const s = p.statistics?.find(x => ['SA','AVG','scoringAverage'].includes(x.abbreviation||x.name)); return s ? parseFloat(s.displayValue) || 0 : 0; };
+  const getSA = p => { const s = p.statistics?.find(x => ['SA','AVG','scoringAverage'].includes(x.abbreviation||x.name)); return s ? parseFloat(s.displayValue) || 0 : 0; };
   const getTodayNum = p => { const t = p.linescores?.[round-1]?.displayValue; return t ? (t === 'E' ? 0 : parseInt(t) || 0) : null; };
 
   const avgSA = players.reduce((s,p) => s + (getSA(p)||70), 0) / players.length;
 
   const scored = players.map(p => {
-    const wr  = getWR(p);
     const sa  = getSA(p);
-    const pos = parseInt(p.sortOrder) || 999;
+    const pos = parseInt(p.order) || 999;   // p.order is the leaderboard/sort position
     const todayNum = getTodayNum(p);
     let score = 0;
     const factors = [];
 
-    // World ranking (primary pre-round factor)
-    const wrPts = wr <= 10 ? 5 : wr <= 25 ? 4 : wr <= 50 ? 3 : wr <= 100 ? 2 : wr <= 150 ? 1 : 0;
-    if (wrPts > 0) { score += wrPts; factors.push(`WR${wr}`); }
+    // Leaderboard position — meaningful in all rounds
+    const posPts = pos <= 3 ? 5 : pos <= 10 ? 4 : pos <= 25 ? 3 : pos <= 50 ? 2 : pos <= 80 ? 1 : 0;
+    if (posPts > 0 && pos < 999) { score += posPts; factors.push(`#${pos}`); }
 
-    // Tournament position (rounds 2+)
-    if (round > 1 || isLive) {
-      const posPts = pos <= 5 ? 4 : pos <= 15 ? 3 : pos <= 30 ? 2 : pos <= 60 ? 1 : 0;
-      if (posPts > 0 && pos < 999) { score += posPts; factors.push(`#${pos} tourn`); }
-    }
-
-    // Scoring average vs group
+    // Scoring average vs group (when available)
     if (sa > 0 && avgSA > 0) {
       const diff = sa - avgSA;
       if (diff < -0.4) { score += 2; factors.push(`${sa.toFixed(1)} avg`); }
       else if (diff < 0) { score += 1; factors.push(`${sa.toFixed(1)} avg`); }
     }
 
-    // Today's round (if in-progress or complete)
-    if (todayNum !== null && isLive) {
-      if (todayNum <= -2) { score += 3; factors.push(`${todayNum > 0 ? '+' : ''}${todayNum} today`); }
+    // Today's round score (live or finished)
+    if (todayNum !== null) {
+      if (todayNum <= -3) { score += 4; factors.push(`${todayNum} today`); }
+      else if (todayNum === -2) { score += 3; factors.push(`-2 today`); }
       else if (todayNum === -1) { score += 2; factors.push(`-1 today`); }
+      else if (todayNum >= 2)  { score -= 1; factors.push(`+${todayNum} today`); }
     }
 
     const total = p.score || 'E';
     const totalNum = total === 'E' ? 0 : parseInt(total) || 0;
-    return { p, score, factors, wr, sa, pos, total, totalNum, todayNum };
+    return { p, score, factors, sa, pos, total, totalNum, todayNum };
   });
 
   scored.sort((a, b) => b.score - a.score);
@@ -4878,13 +4909,13 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
   const confDots = `<span class="tp-conf tp-conf-${conf}">${'●'.repeat(conf)}${'○'.repeat(3-conf)}</span>`;
 
-  // Record pick
+  // Record pick (idempotent)
   const pickId  = `golf_${eventId}_${group.time.replace(/\D/g,'')}`;
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
   recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
 
-  // Auto-resolve if round is complete
-  const allDone = players.every(p => (p.status?.displayValue||'') === 'F');
+  // Auto-resolve when all players in the group have finished the round (18 holes)
+  const allDone = players.every(p => playerRoundStatus(p, round) === 'finished');
   if (allDone) {
     const best = scored.reduce((b, c) => {
       const bt = c.p.linescores?.[round-1]?.displayValue;
@@ -4897,11 +4928,12 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
     resolvePick(pickId, winnerName.split(' ').pop());
   }
 
-  const rows = scored.map(({ p, score, factors, wr, sa, total, totalNum, todayNum }, idx) => {
+  const rows = scored.map(({ p, score, factors, total, totalNum, todayNum }, idx) => {
     const name = p.athlete?.shortName || p.athlete?.displayName || '-';
-    const thru = p.status?.displayValue || '-';
+    const holes = p.linescores?.[round-1]?.linescores?.length || 0;
+    const thru  = holes === 18 ? 'F' : holes > 0 ? String(holes) : '-';
     const scoreCls = totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
-    const todayStr = todayNum !== null ? (todayNum > 0 ? `+${todayNum}` : String(todayNum)) : '';
+    const todayStr = todayNum !== null ? (todayNum > 0 ? `+${todayNum}` : todayNum === 0 ? 'E' : String(todayNum)) : '-';
     const isPick = idx === 0;
     const chips  = factors.map(f => `<span class="golf-pick-chip">${esc(f)}</span>`).join('');
     return `<div class="golf-pick-row ${isPick ? 'golf-pick-winner' : ''}">
