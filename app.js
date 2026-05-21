@@ -5953,6 +5953,20 @@ async function preloadPicksForSimpleView() {
   _svPreloadedAt = now;
   const isActive = () => document.getElementById('simple-view')?.classList.contains('sv-active');
 
+  // Purge any MLB picks that were seeded by simple win% math (conf=0) and have already
+  // been resolved. These are wrong retroactive predictions, not real analysis picks.
+  // Analysis picks always have conf >= 1 (from buildPickSection's pickedConf logic).
+  const today = new Date().toISOString().slice(0, 10);
+  const stalePicks = getPicks();
+  let purged = false;
+  for (const [id, p] of Object.entries(stalePicks)) {
+    if (p.sport === 'mlb' && p.date === today && (p.conf || 0) === 0 && p.result !== null) {
+      delete stalePicks[id];
+      purged = true;
+    }
+  }
+  if (purged) { savePicks(stalePicks); updatePicksDisplay(); }
+
   // ESPN summary paths + which stat categories to record as player picks (per team)
   const sportCfg = {
     nba:  { path: 'basketball/nba',  cats: ['points', 'rebounds', 'assists'] },
