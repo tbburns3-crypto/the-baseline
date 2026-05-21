@@ -1958,8 +1958,9 @@ function stopScoresTimer() {
 }
 
 function loadSportScores(sport) {
-  if (sport === 'soccer') loadSoccerScores();
-  else if (sport === 'golf') loadGolfLeaderboard();
+  if (sport === 'soccer')   loadSoccerScores();
+  else if (sport === 'golf')    loadGolfLeaderboard();
+  else if (sport === 'lottery') loadLottery();
   else loadOtherScores(sport);
 }
 
@@ -1997,6 +1998,11 @@ function switchSport(sport) {
     lineupsTab.style.display  = 'none';
     picksTab.style.display    = '';
     picksTab.textContent = '⛳ Picks';
+  } else if (sport === 'lottery') {
+    secTab.style.display    = 'none';
+    playersTab.style.display = 'none';
+    lineupsTab.style.display = 'none';
+    picksTab.style.display   = 'none';
   } else if (sport === 'soccer') {
     secTab.textContent = 'Tables'; secTab.dataset.view = 'secondary';
     secTab.style.display   = '';
@@ -2050,7 +2056,7 @@ function switchView(view) {
     }
   } else {
     if (view === 'scores') {
-      const panelId = S.sport === 'golf' ? 'view-golf-leaderboard' : 'view-other-scores';
+      const panelId = S.sport === 'golf' ? 'view-golf-leaderboard' : S.sport === 'lottery' ? 'view-lottery' : 'view-other-scores';
       document.getElementById(panelId).classList.add('active');
       loadSportScores(S.sport);
       startScoresTimer(S.sport);
@@ -5686,6 +5692,140 @@ async function refresh() {
     if (S.view === 'scores') loadOtherScores(S.sport);
     else loadOtherStandings(S.sport);
   }
+}
+
+// ── OHIO LOTTERY ─────────────────────────────────────────────
+// Ohio-specific games: fetched from Ohio Lottery's winning numbers API (via CORS proxy)
+// Multi-state games (Mega Millions, Powerball): New York Open Data — free, no key, CORS-friendly
+const LOTTERY_OHIO_URL = 'https://corsproxy.io/?https://www.ohiolottery.com/Winning-Numbers/WinningNumbersJSON';
+const LOTTERY_MM_URL   = 'https://data.ny.gov/resource/5xaw-6ayf.json?$limit=1&$order=draw_date+DESC';
+const LOTTERY_PB_URL   = 'https://data.ny.gov/resource/d6yy-54nr.json?$limit=1&$order=draw_date+DESC';
+
+// Display order — Ohio games first, multi-state at bottom
+const LOTTERY_ORDER = [
+  'Pick 3', 'Pick 4', 'Pick 5',
+  'Rolling Cash 5', 'Classic Lotto', 'Lucky for Life',
+  'Mega Millions', 'Powerball',
+];
+
+function lottoBall(n, cls = '') {
+  return `<span class="lotto-ball${cls ? ' ' + cls : ''}">${esc(String(n))}</span>`;
+}
+
+function renderLotteryCard(game) {
+  const balls      = (game.numbers || []).map(n => lottoBall(n)).join('');
+  const specialBall = game.special != null
+    ? `<span class="lotto-sep">+</span>${lottoBall(game.special, game.specialCls || 'lotto-ball-special')}`
+    : '';
+  const multBadge = game.multiplier
+    ? `<span class="lotto-mult">${esc(game.multiplier)}</span>`
+    : '';
+  const jackpot = game.jackpot
+    ? `<div class="lottery-next">💰 Next jackpot: <b>${esc(game.jackpot)}</b></div>`
+    : '';
+  const nextDraw = game.nextDraw
+    ? `<div class="lottery-next">Next draw: ${esc(game.nextDraw)}</div>`
+    : '';
+  return `<div class="lottery-card">
+    <div class="lottery-card-hdr">
+      <span class="lottery-game-icon">${game.icon}</span>
+      <span class="lottery-game-name">${esc(game.name)}</span>
+      <span class="lottery-draw-date">${esc(game.date || '')}</span>
+    </div>
+    <div class="lottery-numbers">${balls}${specialBall}${multBadge}</div>
+    ${jackpot}${nextDraw}
+  </div>`;
+}
+
+function lotteryGameOrder(name) {
+  const i = LOTTERY_ORDER.findIndex(n => name.toLowerCase().includes(n.toLowerCase()));
+  return i < 0 ? 99 : i;
+}
+
+async function loadLottery() {
+  const seq  = _loadSeq;
+  const area = document.getElementById('lottery-area');
+  if (!area) return;
+  if (!area.querySelector('.lottery-card')) {
+    area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading lottery numbers…</p></div>';
+  }
+
+  const [ohioR, mmR, pbR] = await Promise.allSettled([
+    fetch(LOTTERY_OHIO_URL).then(r => r.json()),
+    fetch(LOTTERY_MM_URL).then(r => r.json()),
+    fetch(LOTTERY_PB_URL).then(r => r.json()),
+  ]);
+
+  if (_loadSeq !== seq) return;
+
+  const games = [];
+
+  // Ohio Lottery games
+  if (ohioR.status === 'fulfilled') {
+    const list = Array.isArray(ohioR.value) ? ohioR.value : (ohioR.value?.results || ohioR.value?.games || []);
+    for (const g of list) {
+      const name = g.GameName || g.gameName || g.name || '';
+      if (!name) continue;
+      const low  = name.toLowerCase();
+      // skip KENO (draws every 4 min — not useful here) and multi-state (handled separately)
+      if (low.includes('keno') || low.includes('mega') || low.includes('powerball')) continue;
+      const numStr = g.WinningNumbers || g.winningNumbers || g.numbers || '';
+      const nums   = String(numStr).split(/[-,\s]+/).map(s => s.trim()).filter(Boolean);
+      const fireStr= g.Fireball || g.fireball || '';
+      const icon   = low.includes('pick 3') ? '3️⃣'
+                   : low.includes('pick 4') ? '4️⃣'
+                   : low.includes('pick 5') ? '5️⃣'
+                   : low.includes('rolling')? '🎱'
+                   : low.includes('classic')? '🎰'
+                   : low.includes('lucky')  ? '🍀'
+                   : '🎲';
+      const dateRaw = g.DrawDate || g.drawDate || '';
+      games.push({
+        name, icon,
+        numbers:  nums,
+        special:  fireStr || null,
+        specialCls: 'lotto-ball-fire',
+        multiplier: null,
+        date:     dateRaw,
+      });
+    }
+  }
+
+  // Mega Millions (NY Open Data)
+  if (mmR.status === 'fulfilled') {
+    const row = Array.isArray(mmR.value) ? mmR.value[0] : mmR.value;
+    if (row) {
+      const nums = String(row.winning_numbers || '').split(/\s+/).filter(Boolean);
+      const date = row.draw_date ? new Date(row.draw_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '';
+      const mult = row.multiplier ? `${row.multiplier}x Megaplier` : null;
+      games.push({ name:'Mega Millions', icon:'💰', numbers:nums, special:row.mega_ball||null, specialCls:'lotto-ball-mega', multiplier:mult, date });
+    }
+  }
+
+  // Powerball (NY Open Data)
+  if (pbR.status === 'fulfilled') {
+    const row = Array.isArray(pbR.value) ? pbR.value[0] : pbR.value;
+    if (row) {
+      const nums = String(row.winning_numbers || '').split(/\s+/).filter(Boolean);
+      const date = row.draw_date ? new Date(row.draw_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '';
+      const mult = row.multiplier ? `${row.multiplier}x Power Play` : null;
+      games.push({ name:'Powerball', icon:'⚡', numbers:nums, special:row.powerball||null, specialCls:'lotto-ball-special', multiplier:mult, date });
+    }
+  }
+
+  games.sort((a, b) => lotteryGameOrder(a.name) - lotteryGameOrder(b.name));
+
+  const ohioFailed = ohioR.status !== 'fulfilled';
+  const errNote = ohioFailed
+    ? `<div class="lottery-api-note">⚠️ Ohio games unavailable — <a href="https://www.ohiolottery.com/Winning-Numbers" target="_blank" rel="noopener">check OhioLottery.com</a></div>`
+    : '';
+
+  area.innerHTML = games.length
+    ? `<div class="lottery-section">${errNote}${games.map(renderLotteryCard).join('')}</div>`
+    : `<div class="empty-state"><p>No lottery data available.</p><p class="muted"><a href="https://www.ohiolottery.com" target="_blank" rel="noopener">Visit OhioLottery.com</a></p></div>`;
+
+  const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+  setConn('connected', `Lottery updated ${t}`);
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────

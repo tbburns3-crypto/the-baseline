@@ -1731,6 +1731,30 @@ input { font: inherit; }
 .golf-pick-verdict     { margin-top: 7px; font-size: .78rem; color: var(--text-2); border-top: 1px solid var(--border); padding-top: 6px; }
 .golf-pick-verdict strong { color: var(--accent); }
 
+/* ── LOTTERY ── */
+.lottery-section { padding: 12px 12px 24px; max-width: 540px; }
+.lottery-api-note { font-size: .74rem; color: #ffb300; background: rgba(255,179,0,.08); border: 1px solid rgba(255,179,0,.2); border-radius: 7px; padding: 8px 12px; margin-bottom: 10px; }
+.lottery-api-note a { color: #ffb300; }
+.lottery-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+.lottery-card-hdr { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+.lottery-game-icon { font-size: 1.1rem; flex-shrink: 0; }
+.lottery-game-name { font-weight: 700; font-size: .95rem; flex: 1; }
+.lottery-draw-date { color: var(--text-muted); font-size: .72rem; white-space: nowrap; }
+.lottery-numbers { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+.lotto-ball {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255,255,255,.07); border: 1.5px solid var(--border);
+  font-weight: 700; font-size: .82rem; color: var(--text); flex-shrink: 0;
+}
+.lotto-ball-special { background: #c62828; color: #fff; border-color: #b71c1c; }
+.lotto-ball-mega    { background: #fdd835; color: #1a1a1a; border-color: #f9a825; }
+.lotto-ball-fire    { background: #e64a19; color: #fff; border-color: #bf360c; }
+.lotto-sep { color: var(--text-muted); font-size: .9rem; align-self: center; }
+.lotto-mult { background: rgba(255,255,255,.08); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: .72rem; font-weight: 700; color: var(--text-muted); align-self: center; margin-left: 2px; }
+.lottery-next { color: var(--text-muted); font-size: .76rem; margin-top: 7px; }
+.lottery-next b { color: var(--accent); }
+
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-text {
