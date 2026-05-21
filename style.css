@@ -528,6 +528,9 @@ input { font: inherit; }
 }
 .player.serving .player-name { font-weight: 700; color: var(--accent); }
 .serve-dot { color: var(--accent); font-size: 0.65rem; flex-shrink: 0; }
+.inj-flag { font-size: .6rem; color: #ffb300; margin-left: 3px; cursor: help; flex-shrink: 0; }
+.inj-flag.inj-return { color: var(--text-muted); }
+.match-pick-injury { color: #ffb300 !important; }
 
 .match-scores {
   display: flex;
