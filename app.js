@@ -2532,7 +2532,7 @@ function buildPickSection(awayName, homeName, opts) {
     : '';
 
   const hasData = awayRec || homeRec || awayERA !== null || seriesSummary || awayForm;
-  if (!hasData) return seriesHTML;
+  if (!hasData) return { html: seriesHTML, team: '', conf: 1 };
 
   const factors = []; // { label, detail, winner: 'away'|'home'|'tie' }
   let aScore = 0, hScore = 0;
@@ -5997,11 +5997,10 @@ async function preloadPicksForSimpleView() {
     } catch (e) { /* offseason or network — skip silently */ }
   }
 
-  // Golf: pick logic lives inside buildGolfGroupPickCard which only runs via the
-  // full render pipeline, so we call loadGolfLeaderboard() — it renders to the
-  // hidden #golf-leaderboard-area (harmless) and records picks as a side-effect.
+  // Golf: picks are recorded inside buildGolfGroupPickCard, which runs via loadGolfPicksPage(),
+  // NOT loadGolfLeaderboard(). loadGolfPicksPage renders to the hidden #mlb-picks-area — harmless.
   try {
-    await loadGolfLeaderboard();
+    await loadGolfPicksPage();
     if (isActive()) renderSimpleView();
   } catch (e) {}
 }
