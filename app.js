@@ -4795,7 +4795,7 @@ async function loadGolfLeaderboard() {
                         : isFinal ? `<span class="fin-badge">FINAL</span>`
                         :           `Round ${round} · Upcoming`;
         const allComp = comp.competitors || [];
-        const players = [...allComp].sort((a, b) => (+a.order||999) - (+b.order||999)).slice(0, 30);
+        const players = [...allComp].sort((a, b) => (+a.order||999) - (+b.order||999));
         if (!players.length) continue;
 
         // Groups: only players with hole data — correctly splits split-tee starts
@@ -5001,7 +5001,7 @@ async function loadGolfPicksPage() {
           ? `<div class="golf-upcoming-note">⏰ ${upcomingCount} player${upcomingCount !== 1 ? 's' : ''} yet to tee off — picks shown when play starts</div>` : '';
         html += `<div class="golf-picks-section">
           <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
-          ${groups.slice(0,40).map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+          ${groups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
           ${upNote}
         </div>`;
       }
