@@ -1629,6 +1629,10 @@ input { font: inherit; }
 .tp-factor-p2   { background: rgba(33,150,243,.12); color: #42a5f5; }
 .tp-factor-tie  { background: rgba(255,255,255,.05); color: var(--text-muted); }
 
+/* ── PITCHER TREND ARROWS ── */
+.pit-trend-hot  { color: var(--accent); font-weight: 700; }
+.pit-trend-cold { color: #ffb300; font-weight: 700; }
+
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse-text {
