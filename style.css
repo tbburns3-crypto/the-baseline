@@ -1301,6 +1301,9 @@ input { font: inherit; }
   color: var(--text-muted); margin-bottom: 3px; font-weight: 600;
 }
 
+/* ── LEAN NOTES (too close to call) ── */
+.gp-verdict-lean, .tp-lean-note { font-style: italic; color: var(--text-muted); font-size: .85em; }
+
 /* ── HIT PREDICTOR BADGES ── */
 .gp-babip {
   font-size: .68rem; font-weight: 700; border-radius: 3px;
