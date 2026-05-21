@@ -77,6 +77,19 @@ const _PICKS_KEY = 'baselinePicks';
 function getPicks()     { try { return JSON.parse(localStorage.getItem(_PICKS_KEY) || '{}'); } catch { return {}; } }
 function savePicks(obj) { try { localStorage.setItem(_PICKS_KEY, JSON.stringify(obj)); } catch {} }
 
+// Returns -1 (deflate conf), 0 (no change), or +1 (inflate conf) based on historical accuracy
+function getConfCalibration(sport) {
+  const all = Object.values(getPicks()).filter(p => p.result && p.conf > 0 && (!sport || p.sport === sport) && p.type !== 'player');
+  if (all.length < 12) return 0;
+  const tiers = { 1:{w:0,t:0}, 2:{w:0,t:0}, 3:{w:0,t:0} };
+  for (const p of all) { const c = Math.min(3, Math.max(1, parseInt(p.conf))); tiers[c].t++; if (p.result === 'win') tiers[c].w++; }
+  const r3 = tiers[3].t >= 5 ? tiers[3].w / tiers[3].t : null;
+  const r1 = tiers[1].t >= 5 ? tiers[1].w / tiers[1].t : null;
+  if (r3 !== null && r3 < 0.45) return -1;  // high-conf picks losing too often → be more conservative
+  if (r1 !== null && r1 > 0.68) return  1;  // low-conf picks hitting well → we can trust more
+  return 0;
+}
+
 function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0) {
   const picks = getPicks();
   if (picks[gameId]) return;
@@ -851,6 +864,27 @@ function tennisRound(m) {
 const CLAY_COUNTRIES  = new Set(['ESP','ARG','ITA','FRA','CHL','COL','PER','URU','BRA','AUT','SUI','MON','SVK']);
 const GRASS_COUNTRIES = new Set(['AUS','GBR','USA','GER','CAN','RSA','NZL','SWE']);
 
+// Tournament-specific affinity — last name (lowercase) → partial tournament name → strength (1-4)
+const TOURNAMENT_AFFINITY = {
+  nadal:     { 'roland garros':4, 'french open':4, 'monte carlo':3, 'barcelona':3, 'madrid':2, 'rome':2 },
+  djokovic:  { 'australian open':4, 'wimbledon':3, 'us open':2, 'paris masters':3 },
+  federer:   { 'wimbledon':4, 'halle':3, 'basel':3, 'dubai':2, 'australian open':2 },
+  alcaraz:   { 'roland garros':3, 'wimbledon':3, 'us open':2, 'madrid':2, 'barcelona':2 },
+  sinner:    { 'australian open':3, 'miami':2, 'us open':2 },
+  zverev:    { 'roland garros':2, 'paris masters':3, 'hamburg':2 },
+  tsitsipas: { 'monte carlo':3, 'barcelona':2, 'lyon':2 },
+  medvedev:  { 'us open':3, 'paris masters':2, 'shanghai':2 },
+  swiatek:   { 'roland garros':4, 'french open':4, 'madrid':3, 'rome':3, 'miami':2 },
+  sabalenka: { 'australian open':3, 'us open':3, 'madrid':2 },
+  gauff:     { 'us open':3, 'roland garros':2, 'miami':2 },
+  rybakina:  { 'wimbledon':3, 'australian open':2, 'dubai':2 },
+  kvitova:   { 'wimbledon':3, 'prague':2 },
+  halep:     { 'roland garros':3, 'wimbledon':2 },
+  murray:    { 'wimbledon':3, 'us open':2, 'madrid':2 },
+  wawrinka:  { 'roland garros':2, 'australian open':2, 'us open':2 },
+  thiem:     { 'roland garros':3, 'us open':2 },
+};
+
 function isGrandSlam(m) {
   const n = (m.tournament_name || m.event_type_type || '').toLowerCase();
   return /wimbledon|us open|french open|roland.?garros|australian open/.test(n);
@@ -1181,11 +1215,20 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     }
   }
 
-  // H2H overall
+  // H2H overall (recency-weighted: matches ≤12 months count 2×, ≤24 months 1.5×)
   if (h2hAll.length >= 2) {
-    if (aw1 > aw2)      { p1Score += 2; factors.push({ win: true, label: 'H2H overall', detail: `${l1} leads ${aw1}–${aw2}`, side: 1 }); }
-    else if (aw2 > aw1) { p2Score += 2; factors.push({ win: true, label: 'H2H overall', detail: `${l2} leads ${aw2}–${aw1}`, side: 2 }); }
-    else                 {               factors.push({ win: null, label: 'H2H overall', detail: `Even ${aw1}–${aw2}`, side: 0 }); }
+    const now = Date.now();
+    let hw1 = 0, hw2 = 0;
+    for (const g of h2hAll) {
+      const age = g.event_date ? (now - new Date(g.event_date + 'T12:00:00').getTime()) / 2592000000 : 24;
+      const wt  = age <= 12 ? 2 : age <= 24 ? 1.5 : 1;
+      const gp1 = String(g.first_player_key || '');
+      const p1won = (g.event_winner === 'First Player' && gp1 === p1key) || (g.event_winner === 'Second Player' && gp1 !== p1key);
+      if (p1won) hw1 += wt; else hw2 += wt;
+    }
+    if (hw1 > hw2)      { p1Score += 2; factors.push({ win: true, label: 'H2H (weighted)', detail: `${l1} leads ${aw1}–${aw2}`, side: 1 }); }
+    else if (hw2 > hw1) { p2Score += 2; factors.push({ win: true, label: 'H2H (weighted)', detail: `${l2} leads ${aw2}–${aw1}`, side: 2 }); }
+    else                {               factors.push({ win: null,  label: 'H2H', detail: `Even ${aw1}–${aw2}`, side: 0 }); }
   }
 
   // H2H on this surface
@@ -1213,6 +1256,31 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     if (fw1 > fw2) { p1Score += 2; factors.push({ win: true, label: 'Recent form', detail: `${l1} ${fw1}/${p1Recent.length} vs ${l2} ${fw2}/${p2Recent.length}`, side: 1 }); }
     else           { p2Score += 2; factors.push({ win: true, label: 'Recent form', detail: `${l2} ${fw2}/${p2Recent.length} vs ${l1} ${fw1}/${p1Recent.length}`, side: 2 }); }
   }
+
+  // Recent form on this surface
+  const matchesSurf1 = g => {
+    const gs = inferSurface(g.tournament_name || '').toLowerCase();
+    if (surfLow2.includes('clay'))   return gs.includes('clay');
+    if (surfLow2.includes('grass'))  return gs.includes('grass');
+    if (surfLow2.includes('indoor')) return gs.includes('indoor');
+    return gs === 'hard';
+  };
+  const p1SF = p1Recent.filter(matchesSurf1), p2SF = p2Recent.filter(matchesSurf1);
+  const sf1 = p1SF.length >= 2 ? formWins(p1SF, p1key) : -1;
+  const sf2 = p2SF.length >= 2 ? formWins(p2SF, p2key) : -1;
+  if (sf1 >= 0 && sf2 >= 0) {
+    const r1sf = sf1 / p1SF.length, r2sf = sf2 / p2SF.length;
+    if (r1sf > r2sf + 0.20) { p1Score += 2; factors.push({ win: true, label: `${surfLabel} form`, detail: `${l1} ${sf1}/${p1SF.length} vs ${l2} ${sf2}/${p2SF.length}`, side: 1 }); }
+    else if (r2sf > r1sf + 0.20) { p2Score += 2; factors.push({ win: true, label: `${surfLabel} form`, detail: `${l2} ${sf2}/${p2SF.length} vs ${l1} ${sf1}/${p1SF.length}`, side: 2 }); }
+  } else if (sf1 >= 0 && p1SF.length >= 2) { p1Score += 1; factors.push({ win: true, label: `${surfLabel} form`, detail: `${l1} ${sf1}/${p1SF.length} (no data ${l2})`, side: 1 }); }
+    else if (sf2 >= 0 && p2SF.length >= 2) { p2Score += 1; factors.push({ win: true, label: `${surfLabel} form`, detail: `${l2} ${sf2}/${p2SF.length} (no data ${l1})`, side: 2 }); }
+
+  // Tournament affinity (known specialists)
+  const tourLow1 = (m.tournament_name || '').toLowerCase();
+  const getAff = name => { const lname = lastName(name).toLowerCase(); const aff = TOURNAMENT_AFFINITY[lname]; if (!aff) return 0; for (const [ev, pts] of Object.entries(aff)) { if (tourLow1.includes(ev)) return pts; } return 0; };
+  const taff1 = getAff(p1Name), taff2 = getAff(p2Name);
+  if (taff1 > taff2) { p1Score += Math.min(3, Math.ceil((taff1-taff2)/2)); factors.push({ win: true, label: 'Tournament history', detail: `${l1} specialist here`, side: 1 }); }
+  else if (taff2 > taff1) { p2Score += Math.min(3, Math.ceil((taff2-taff1)/2)); factors.push({ win: true, label: 'Tournament history', detail: `${l2} specialist here`, side: 2 }); }
 
   // Fatigue: last match was yesterday — possible carry-over fatigue
   const ystStr = dateStr(-1);
@@ -2276,7 +2344,9 @@ function buildPickSection(awayName, homeName, opts) {
     awayRec = '', homeRec = '', awayERA = null, homeERA = null,
     seriesSummary = '', seriesTitle = '', awayAbbr = '', homeAbbr = '',
     awayForm = null, homeForm = null, awayH2H = 0, homeH2H = 0, h2hTotal = 0,
-    sport = '', weather = null, weatherFmt = 'espn'
+    sport = '', weather = null, weatherFmt = 'espn',
+    awayLastStartERA = null, homeLastStartERA = null,
+    awayRestDays = null, homeRestDays = null
   } = opts || {};
 
   const aShort = awayAbbr || awayName.split(' ').pop();
@@ -2355,6 +2425,29 @@ function buildPickSection(awayName, homeName, opts) {
     const wf = parseWeatherFactor(weather, weatherFmt);
     if (wf) {
       factors.push({ label: 'Weather', detail: wf.display, winner: 'tie', extreme: wf.isExtreme });
+    }
+  }
+
+  // 8. Pitcher last start quality (MLB)
+  if (sport === 'mlb' && (awayLastStartERA !== null || homeLastStartERA !== null)) {
+    const ase = parseFloat(awayERA || 4.20), hse = parseFloat(homeERA || 4.20);
+    if (awayLastStartERA !== null) { const d = awayLastStartERA - ase; if (d < -1.5) aScore += 0.025; else if (d > 2.5) aScore -= 0.025; }
+    if (homeLastStartERA !== null) { const d = homeLastStartERA - hse; if (d < -1.5) hScore += 0.025; else if (d > 2.5) hScore -= 0.025; }
+    if (awayLastStartERA !== null && homeLastStartERA !== null && Math.abs(awayLastStartERA - homeLastStartERA) >= 2.0) {
+      factors.push({ label: 'Last start', detail: `${esc(aShort)} ${awayLastStartERA.toFixed(2)} · ${esc(hShort)} ${homeLastStartERA.toFixed(2)}`, winner: awayLastStartERA < homeLastStartERA ? 'away' : 'home' });
+    }
+  }
+
+  // 9. Pitcher rest days (MLB)
+  if (sport === 'mlb' && (awayRestDays !== null || homeRestDays !== null)) {
+    const ar = awayRestDays, hr = homeRestDays;
+    if (ar !== null && ar >= 6) aScore += 0.02;
+    if (hr !== null && hr >= 6) hScore += 0.02;
+    const awayBonus = ar !== null && ar >= 6, homeBonus = hr !== null && hr >= 6;
+    if (awayBonus !== homeBonus) {
+      const who = awayBonus ? aShort : hShort;
+      const days = awayBonus ? ar : hr;
+      factors.push({ label: 'Extra rest', detail: `${esc(who)} ${days}d rest`, winner: awayBonus ? 'away' : 'home' });
     }
   }
 
@@ -2457,6 +2550,9 @@ function _fmtAvg(v) {
 // Park factors indexed by home team abbreviation (>1 = hitter-friendly)
 const PARK_HR  = { COL:1.25, CIN:1.15, BOS:1.12, PHI:1.10, TEX:1.08, CHC:1.06, MIL:1.05, NYY:1.04, DET:1.03, HOU:1.02, ATL:1.01, TOR:0.99, LAD:0.98, LAA:0.97, MIN:0.96, PIT:0.95, CLE:0.94, BAL:0.93, SEA:0.92, WSH:0.92, CWS:0.91, KC:0.90, OAK:0.89, MIA:0.88, NYM:0.90, SF:0.88, SD:0.85, TB:0.94 };
 const PARK_HIT = { COL:1.15, BOS:1.05, TEX:1.04, CIN:1.03, CHC:1.02, MIL:1.01, NYY:1.01, PHI:1.01, SD:0.88, SF:0.90, MIA:0.92, LAA:0.94, SEA:0.95, OAK:0.96 };
+// Run-scoring environment factor (affects both teams; >1 = more runs expected)
+const PARK_RUN = { COL:1.20, CIN:1.12, BOS:1.08, PHI:1.07, CHC:1.06, TEX:1.05, MIL:1.04, NYY:1.03, ATL:1.01, HOU:1.01, DET:1.00, TOR:0.99, LAD:0.97, LAA:0.96, PIT:0.96, MIN:0.95, CLE:0.95, BAL:0.93, SEA:0.93, WSH:0.93, CWS:0.91, KC:0.90, OAK:0.92, MIA:0.91, NYM:0.93, TB:0.94, SF:0.89, SD:0.88 };
+const PARK_NAMES = { COL:'Coors Field', BOS:'Fenway', CIN:'GABP', CHC:'Wrigley', SF:'Oracle', SD:'Petco', MIA:'LoanDepot', SEA:'T-Mobile' };
 
 async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const { fin, live } = gameRowState(espnGame);
@@ -2521,8 +2617,9 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const awayHand = awayPD?.pitchHand || null;
   const homeHand = homePD?.pitchHand || null;
 
-  // Pitcher rate stats — adjusted for recent form + bullpen drag
+  // Pitcher rate stats — adjusted for recent form + bullpen drag + last start + rest
   const LEAGUE_ERA = 4.20;
+  const mlbCalOffset = getConfCalibration('mlb');
   const _pRates = (pd, teamERA) => {
     const s  = pd?.season;
     const ip = parseFloat(s?.inningsPitched || 0);
@@ -2539,6 +2636,15 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       if (drag > 1.5) { hr9 *= 1.10; bb9 *= 1.07; k9 *= 0.95; }
       else if (drag > 0.5) { hr9 *= 1.05; bb9 *= 1.03; k9 *= 0.98; }
     }
+    // Last start quality
+    if (pd?.lastStartERA != null) {
+      const seasonERA = parseFloat(s?.era || LEAGUE_ERA);
+      const lsDiff = pd.lastStartERA - seasonERA;
+      if (lsDiff > 3.0)  { hr9 *= 1.08; bb9 *= 1.06; }
+      else if (lsDiff < -2.0) { hr9 *= 0.94; k9  *= 1.05; }
+    }
+    // Extra rest bonus (6+ days)
+    if (pd?.restDays != null && pd.restDays >= 6) { hr9 *= 0.97; k9 *= 1.03; }
     return { hr9, bb9, k9 };
   };
   const awayRates = _pRates(awayPD, awayTeamERA);   // home batters face away pitcher
@@ -2553,10 +2659,13 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const rEra   = pd?.recentEra != null ? pd.recentEra.toFixed(2) : null;
     const trend  = pd?.eraTrend;
     const tArrow = trend === 'hot' ? '<span class="pit-trend-hot">↑</span>' : trend === 'cold' ? '<span class="pit-trend-cold">↓</span>' : '';
-    const recentStr = rEra && pd?.last3starts >= 2
-      ? ` · L3: ${rEra}${tArrow}`
-      : '';
-    return `${esc(lastName(name))} (${hand||'?'}HP · ${era}${recentStr})`;
+    const recentStr = rEra && pd?.last3starts >= 2 ? ` · L3: ${rEra}${tArrow}` : '';
+    const sERA = parseFloat(pd?.season?.era || 0);
+    const lsStr = (pd?.lastStartERA != null && sERA > 0 && Math.abs(pd.lastStartERA - sERA) >= 1.0)
+      ? ` · LS: ${pd.lastStartERA.toFixed(2)}` : '';
+    const restStr = pd?.restDays != null && pd.restDays >= 6
+      ? ` <span class="pit-rest-bonus" title="${pd.restDays} days rest">+rest</span>` : '';
+    return `${esc(lastName(name))} (${hand||'?'}HP · ${era}${recentStr}${lsStr}${restStr})`;
   };
   const pitcherLine = `<div class="pc-pit-line">${pitStr(awayPName, awayPD, awayHand)} <span class="pc-pit-sep">vs</span> ${pitStr(homePName, homePD, homeHand)}</div>`;
 
@@ -2634,12 +2743,13 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const bbScore  = bbPct   * pitRates.bb9 * 100;
     const sbScore  = sb * 10 + sbSucc * 50;
     const hScore   = platAvg * 600 + (ab > 0 ? h / ab : 0) * 400;
-    // Confidence: 0–3 based on platoon avg quality, streak, sample size
-    const conf = Math.min(3,
+    // Confidence: 0–3 based on platoon avg quality, streak, sample size + historical calibration
+    const conf = Math.max(0, Math.min(3,
       (platAvg >= 0.310 ? 2 : platAvg >= 0.270 ? 1 : 0) +
       (streak === '🔥' ? 1 : 0) +
-      (ab >= 150 ? 1 : 0)
-    );
+      (ab >= 150 ? 1 : 0) +
+      mlbCalOffset
+    ));
     return {
       id: p.id, name: p.fullName, abbr: teamAbbr, pos,
       batSide, oppPitcherId, oppHand, hand, avg, platAvg, vsL, vsR,
@@ -2676,15 +2786,16 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     }
   }
 
-  // ── Projected run totals ──
+  // ── Projected run totals (park-adjusted) ──
   let projLine = '';
   if (hasLineup && awayValid.length && homeValid.length) {
     const LEAGUE_OPS = 0.728, LEAGUE_RPG = 4.50;
+    const parkRun = PARK_RUN[homeAbbr] || 1.0;
     const avgOPS = arr => arr.reduce((s,b) => s + parseFloat(b.ops||0), 0) / arr.length;
     const projR  = (batters, pitERA) => {
       const opsR = avgOPS(batters) / LEAGUE_OPS;
       const eraR = LEAGUE_ERA / Math.max(parseFloat(pitERA) || LEAGUE_ERA, 1.5);
-      return Math.max(0.5, Math.min(13, LEAGUE_RPG * opsR * eraR)).toFixed(1);
+      return Math.max(0.5, Math.min(13, LEAGUE_RPG * opsR * eraR * parkRun)).toFixed(1);
     };
     const awayProj = projR(awayValid, homePD?.season?.era);
     const homeProj = projR(homeValid, awayPD?.season?.era);
@@ -2692,7 +2803,10 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const ouNote = oddsInfo?.overUnder
       ? ` · O/U ${oddsInfo.overUnder} <span class="pc-ou-${parseFloat(projTotal) >= oddsInfo.overUnder ? 'over' : 'under'}">(model ${parseFloat(projTotal) >= oddsInfo.overUnder ? 'leans OVER' : 'leans UNDER'})</span>`
       : ` · total ${projTotal}`;
-    projLine = `<div class="pc-proj-line">${esc(espnGame.awayAbbr)}: <b>${awayProj}</b> · ${esc(espnGame.homeAbbr)}: <b>${homeProj}</b>${ouNote}</div>`;
+    const parkName = PARK_NAMES[homeAbbr];
+    const parkNote = parkRun >= 1.10 ? ` · <span class="pc-park-note pc-park-up">${parkName || 'Park'}: runs ↑</span>`
+                   : parkRun <= 0.91 ? ` · <span class="pc-park-note pc-park-down">${parkName || 'Park'}: runs ↓</span>` : '';
+    projLine = `<div class="pc-proj-line">${esc(espnGame.awayAbbr)}: <b>${awayProj}</b> · ${esc(espnGame.homeAbbr)}: <b>${homeProj}</b>${ouNote}${parkNote}</div>`;
   }
 
   // ── Simplified pick row (one line each) ──
@@ -2955,18 +3069,27 @@ function buildTomorrowPickCard(m) {
     }
   }
 
-  // H2H overall (need ≥2 matches)
+  // H2H overall (recency-weighted)
   if (h2h.length >= 2) {
-    if (aw1 > aw2)      { p1Score += 2; factors.push({ label:'H2H', detail:`${l1} leads ${aw1}–${aw2}`, side:1 }); }
-    else if (aw2 > aw1) { p2Score += 2; factors.push({ label:'H2H', detail:`${l2} leads ${aw2}–${aw1}`, side:2 }); }
-    else                 {               factors.push({ label:'H2H', detail:`Even ${aw1}–${aw2}`, side:0 }); }
+    const nowT = Date.now();
+    let hw1 = 0, hw2 = 0;
+    for (const g of h2h) {
+      const age = g.event_date ? (nowT - new Date(g.event_date + 'T12:00:00').getTime()) / 2592000000 : 24;
+      const wt  = age <= 12 ? 2 : age <= 24 ? 1.5 : 1;
+      const gp1 = String(g.first_player_key || '');
+      const p1won = (g.event_winner === 'First Player' && gp1 === p1key) || (g.event_winner === 'Second Player' && gp1 !== p1key);
+      if (p1won) hw1 += wt; else hw2 += wt;
+    }
+    if (hw1 > hw2)      { p1Score += 2; factors.push({ label:'H2H (weighted)', detail:`${l1} leads ${aw1}–${aw2}`, side:1 }); }
+    else if (hw2 > hw1) { p2Score += 2; factors.push({ label:'H2H (weighted)', detail:`${l2} leads ${aw2}–${aw1}`, side:2 }); }
+    else                {               factors.push({ label:'H2H',             detail:`Even ${aw1}–${aw2}`,      side:0 }); }
   }
 
   // H2H on surface (weight 3 — most predictive)
   if (h2hSurf.length >= 2) {
     if (sw1 > sw2)      { p1Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l1} leads ${sw1}–${sw2}`, side:1 }); }
     else if (sw2 > sw1) { p2Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l2} leads ${sw2}–${sw1}`, side:2 }); }
-    else                 {               factors.push({ label:`${surface} H2H`, detail:`Even ${sw1}–${sw2}`, side:0 }); }
+    else                 {               factors.push({ label:`${surface} H2H`, detail:`Even ${sw1}–${sw2}`,       side:0 }); }
   }
 
   // Recent form (up to 10 matches)
@@ -2980,6 +3103,31 @@ function buildTomorrowPickCard(m) {
     if (fw1 > fw2) { p1Score += 2; factors.push({ label:'Form', detail:`${l1} ${fw1}/${p1Recent.length} vs ${l2} ${fw2}/${p2Recent.length}`, side:1 }); }
     else           { p2Score += 2; factors.push({ label:'Form', detail:`${l2} ${fw2}/${p2Recent.length} vs ${l1} ${fw1}/${p1Recent.length}`, side:2 }); }
   }
+
+  // Recent form on this surface
+  const matchesSurfT = g => {
+    const gs = inferSurface(g.tournament_name || '').toLowerCase();
+    if (surfLow.includes('clay'))   return gs.includes('clay');
+    if (surfLow.includes('grass'))  return gs.includes('grass');
+    if (surfLow.includes('indoor')) return gs.includes('indoor');
+    return gs === 'hard';
+  };
+  const p1SFT = p1Recent.filter(matchesSurfT), p2SFT = p2Recent.filter(matchesSurfT);
+  const sf1t = p1SFT.length >= 2 ? formWins(p1SFT, p1key) : -1;
+  const sf2t = p2SFT.length >= 2 ? formWins(p2SFT, p2key) : -1;
+  if (sf1t >= 0 && sf2t >= 0) {
+    const r1sf = sf1t / p1SFT.length, r2sf = sf2t / p2SFT.length;
+    if (r1sf > r2sf + 0.20) { p1Score += 2; factors.push({ label:`${surface} form`, detail:`${l1} ${sf1t}/${p1SFT.length} vs ${l2} ${sf2t}/${p2SFT.length}`, side:1 }); }
+    else if (r2sf > r1sf + 0.20) { p2Score += 2; factors.push({ label:`${surface} form`, detail:`${l2} ${sf2t}/${p2SFT.length} vs ${l1} ${sf1t}/${p1SFT.length}`, side:2 }); }
+  } else if (sf1t >= 0) { p1Score += 1; factors.push({ label:`${surface} form`, detail:`${l1} ${sf1t}/${p1SFT.length} (no data ${l2})`, side:1 }); }
+    else if (sf2t >= 0) { p2Score += 1; factors.push({ label:`${surface} form`, detail:`${l2} ${sf2t}/${p2SFT.length} (no data ${l1})`, side:2 }); }
+
+  // Tournament affinity
+  const tourLowT = (m.tournament_name || '').toLowerCase();
+  const getAffT = name => { const lname = lastName(name).toLowerCase(); const aff = TOURNAMENT_AFFINITY[lname]; if (!aff) return 0; for (const [ev, pts] of Object.entries(aff)) { if (tourLowT.includes(ev)) return pts; } return 0; };
+  const taff1t = getAffT(p1Name), taff2t = getAffT(p2Name);
+  if (taff1t > taff2t) { p1Score += Math.min(3, Math.ceil((taff1t-taff2t)/2)); factors.push({ label:'Tournament history', detail:`${l1} specialist here`, side:1 }); }
+  else if (taff2t > taff1t) { p2Score += Math.min(3, Math.ceil((taff2t-taff1t)/2)); factors.push({ label:'Tournament history', detail:`${l2} specialist here`, side:2 }); }
 
   // Fatigue: player's last match was TODAY (playing tomorrow after today's match)
   const todayStr = dateStr(0);
@@ -3004,7 +3152,8 @@ function buildTomorrowPickCard(m) {
     else                   { p2Score += 1; factors.push({ label:'Best of 5', detail:`BO5 amplifies ${l2}'s edge`, side:2 }); }
   }
 
-  // Decide pick
+  // Decide pick (with historical calibration offset)
+  const tennisCalOffset = getConfCalibration('tennis');
   let pickName = '', pickSide = 0, conf = 0;
   const total = p1Score + p2Score;
   if (p1Score > p2Score) {
@@ -3012,11 +3161,13 @@ function buildTomorrowPickCard(m) {
     conf = total >= 10 ? 3 : total >= 6 ? 2 : 1;
     if (earlyRound || tier === '250') conf = Math.min(conf, 2);
     if (lateRound && tier === 'slam' && total >= 6) conf = Math.min(3, conf + 1);
+    conf = Math.max(1, Math.min(3, conf + tennisCalOffset));
   } else if (p2Score > p1Score) {
     pickName = p2Name; pickSide = 2;
     conf = total >= 10 ? 3 : total >= 6 ? 2 : 1;
     if (earlyRound || tier === '250') conf = Math.min(conf, 2);
     if (lateRound && tier === 'slam' && total >= 6) conf = Math.min(3, conf + 1);
+    conf = Math.max(1, Math.min(3, conf + tennisCalOffset));
   }
 
   // Record the pick with full analysis
@@ -3414,6 +3565,8 @@ async function renderMLBGamePreview(espnGame, panel) {
     const pickHTML = buildPickSection(awayAbbr, homeAbbr, {
       awayRec: espnGame.awayRec || '', homeRec: espnGame.homeRec || '',
       awayERA: awayPD?.season?.era ?? null, homeERA: homePD?.season?.era ?? null,
+      awayLastStartERA: awayPD?.lastStartERA ?? null, homeLastStartERA: homePD?.lastStartERA ?? null,
+      awayRestDays: awayPD?.restDays ?? null, homeRestDays: homePD?.restDays ?? null,
       awayAbbr, homeAbbr,
       sport: 'mlb', weather: mlbGame.weather || null, weatherFmt: 'mlb'
     });
@@ -3981,7 +4134,21 @@ async function fetchPitcherPreview(pitcherId) {
       }
     }
 
-    const result = { season, lastStart, pitchHand: r2.people?.[0]?.pitchHand?.code || null, recentEra, eraTrend, last3starts: last3.length };
+    // Last start ERA and days of rest
+    let lastStartERA = null, restDays = null;
+    if (lastStart) {
+      const er  = parseInt(lastStart.stat?.earnedRuns || 0);
+      const ips = String(lastStart.stat?.inningsPitched || '0');
+      const [ipF, ipFr] = ips.split('.');
+      const ip  = parseInt(ipF || 0) + (parseInt(ipFr || 0) / 3);
+      if (ip >= 1) lastStartERA = (er / ip) * 9;
+      const d = lastStart.date || lastStart.gameDate || '';
+      if (d) {
+        const lastDate = new Date(d.length === 10 ? d + 'T12:00:00' : d);
+        restDays = Math.round((Date.now() - lastDate.getTime()) / 86400000);
+      }
+    }
+    const result = { season, lastStart, pitchHand: r2.people?.[0]?.pitchHand?.code || null, recentEra, eraTrend, last3starts: last3.length, lastStartERA, restDays };
     _pitcherCache.set(pitcherId, result);
     return result;
   } catch { _pitcherCache.set(pitcherId, null); return null; }
