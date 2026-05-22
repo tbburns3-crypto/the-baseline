@@ -1127,110 +1127,148 @@ function groupRoundLabel(matches) {
 function inlineTennisPick(m, dateOverride = null) {
   if (isLive(m.event_status)) return '';
 
-  const today = dateStrLocal(0);
+  const today     = dateStrLocal(0);
   const matchDate = m.event_date || '';
-  // Use match's own date as authoritative stamp; fall back to dateOverride, then today.
-  const pickDate = dateOverride || (matchDate && matchDate >= today ? matchDate : today);
-  // During normal rendering (no dateOverride), skip future-dated matches entirely.
+  const pickDate  = dateOverride || (matchDate && matchDate >= today ? matchDate : today);
   if (!dateOverride && pickDate > today) return '';
 
-  // Skip doubles only — singles rankings are meaningless in doubles
-  const cat  = matchCategory(m.event_type || '');
+  const cat = matchCategory(m.event_type || '');
   if (cat === 'doubles') return '';
-  const tier = tournamentTier(m);
-
+  const tier    = tournamentTier(m);
   const pickId  = 'tn_' + m.event_key;
-  const surface = m.event_surface ? ` (${m.event_surface})` : '';
-  const matchup = `${lastName(m.event_first_player||'')} vs ${lastName(m.event_second_player||'')}${surface}`;
+  const surface = m.tournament_surface || inferSurface(m.tournament_name || '');
+  const surfLow = surface.toLowerCase();
+  const matchup = `${lastName(m.event_first_player||'')} vs ${lastName(m.event_second_player||'')}`;
 
-  // Injury check — ESPN news flags recent injuries, withdrawals, surgery
-  const p1Ln  = lastName(m.event_first_player  || '').toLowerCase();
-  const p2Ln  = lastName(m.event_second_player || '').toLowerCase();
-  const p1Inj = _tennisInjuryMap.get(p1Ln);
-  const p2Inj = _tennisInjuryMap.get(p2Ln);
-  // If a player is confirmed injured (not just returning), skip them as the pick
+  const p1Name = m.event_first_player  || '-';
+  const p2Name = m.event_second_player || '-';
+  const p1key  = String(m.first_player_key  || '');
+  const p2key  = String(m.second_player_key || '');
+  const s1     = parseInt(m.event_first_player_seed)  || 0;
+  const s2     = parseInt(m.event_second_player_seed) || 0;
+  const l1     = lastName(p1Name);
+  const l2     = lastName(p2Name);
+
+  // Injury check
+  const p1Inj  = _tennisInjuryMap.get(l1.toLowerCase());
+  const p2Inj  = _tennisInjuryMap.get(l2.toLowerCase());
   const p1Hurt = p1Inj && !p1Inj.returning;
   const p2Hurt = p2Inj && !p2Inj.returning;
-  // If both are injured or the situation is murky, defer to other signals
-  const injuryForcePick = (p1Hurt && !p2Hurt) ? p2Ln :
-                          (p2Hurt && !p1Hurt) ? p1Ln : null;
 
-  const s1 = parseInt(m.event_first_player_seed) || 0;
-  const s2 = parseInt(m.event_second_player_seed) || 0;
+  // ── Multi-factor scoring — same model as buildTennisPrediction ──
+  let p1Score = 0, p2Score = 0;
 
-  // Seeding: tournament directors factor in current fitness, not just ranking.
-  // Any seed difference is a real signal — even in ITF/Challenger events.
-  if (s1 || s2) {
-    let seedPick = '';
-    if (s1 && !s2)      seedPick = lastName(m.event_first_player || '');
-    else if (s2 && !s1) seedPick = lastName(m.event_second_player || '');
-    else if (s1 < s2)   seedPick = lastName(m.event_first_player || '');
-    else if (s2 < s1)   seedPick = lastName(m.event_second_player || '');
+  // 1. Injury (decisive — injured player heavily penalised)
+  if (p1Hurt) p1Score -= 8;
+  if (p2Hurt) p2Score -= 8;
 
-    // Override seed pick if seed winner is injured and opponent is healthy
-    const pick = (injuryForcePick && seedPick && seedPick.toLowerCase() !== injuryForcePick)
-      ? (p1Hurt ? lastName(m.event_second_player||'') : lastName(m.event_first_player||''))
-      : seedPick;
+  // 2. Seeds
+  if (s1 && s2) {
+    if (s1 < s2)      p1Score += 2;
+    else if (s2 < s1) p2Score += 2;
+  } else if (s1) { p1Score += 1; }
+    else if (s2) { p2Score += 1; }
 
-    const injNote = injuryForcePick && pick.toLowerCase() !== seedPick.toLowerCase()
-      ? ` · opp. has injury news` : '';
-    if (pick && pick !== '-') {
-      // Seed gap confidence: top seed (1-4) vs unseeded or big gap = 2, smaller gap = 1
-      const seedConf = injuryForcePick ? 2 : (s1 && s2 && Math.abs(s1 - s2) >= 4) ? 2 : 1;
-      recordPick(pickId, pick, matchup, 'tennis', seedConf, false, pickDate, tier);
-      return `<span class="match-pick-inline" title="Pick based on seeding${injNote} (click for full H2H analysis)">→ ${esc(pick)}</span>`;
-    }
-  }
-
-  // If injury clearly overrides ranking — one player is injured, skip normal logic and pick healthy one
-  if (injuryForcePick) {
-    const pick = injuryForcePick === p1Ln ? lastName(m.event_first_player||'') : lastName(m.event_second_player||'');
-    if (pick && pick !== '-') {
-      recordPick(pickId, pick, matchup, 'tennis', 2, false, pickDate, tier);
-      return `<span class="match-pick-inline match-pick-injury" title="Pick: opponent has recent injury news — ${(p1Hurt ? p1Inj : p2Inj).note}">→ ${esc(pick)} ⚕</span>`;
-    }
-  }
-
-  // Points-ratio comparison: more honest than rank gap alone.
-  // Rank #45 (820 pts) vs #50 (780 pts) = nearly identical → no pick.
-  // Rank #100 (700 pts) vs #400 (120 pts) = massive real gap → pick.
-  // A rising player at #400 with 500 pts beats a declining #100 at 480 pts in this ratio.
-  const r1 = S.rankIndex.get(String(m.first_player_key  || ''));
-  const r2 = S.rankIndex.get(String(m.second_player_key || ''));
-  if (r1 && r2) {
-    const pts1 = parseInt(r1.points) || 0;
-    const pts2 = parseInt(r2.points) || 0;
+  // 3. Rankings / points
+  const rd1 = S.rankIndex.get(p1key), rd2 = S.rankIndex.get(p2key);
+  if (rd1 && rd2) {
+    const pts1 = parseInt(rd1.points) || 0;
+    const pts2 = parseInt(rd2.points) || 0;
     if (pts1 > 0 && pts2 > 0) {
       const ratio = Math.max(pts1, pts2) / Math.min(pts1, pts2);
-      // Threshold: 1.5× normally, but lower to 1.3× when opponent has injury news (more confident)
-      const threshold = (p1Hurt || p2Hurt) ? 1.3 : 1.5;
-      if (ratio >= threshold) {
-        let pick = pts1 > pts2 ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
-        // Override if ranking winner is injured and opponent is healthy
-        if (injuryForcePick && pick.toLowerCase() !== injuryForcePick)
-          pick = injuryForcePick === p1Ln ? lastName(m.event_first_player||'') : lastName(m.event_second_player||'');
-        const injNote2 = (p1Hurt || p2Hurt) ? ' · opp. has injury news' : '';
-        // Ratio confidence: 3x+ gap = 2, injury bonus adds 1
-        const ratioConf = (injuryForcePick ? 1 : 0) + (ratio >= 3 ? 2 : 1);
-        if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis', Math.min(3, ratioConf), false, pickDate, tier);
-          return `<span class="match-pick-inline" title="Pick: ${pts1} vs ${pts2} ranking pts${injNote2} (click for H2H)">→ ${esc(pick)}</span>`;
-        }
-      }
-    } else if (r1.rank !== r2.rank) {
-      // Fallback when points data missing: use rank but only when gap is very clear (top 50 vs 100+)
-      const topRank = Math.min(r1.rank, r2.rank);
-      const botRank = Math.max(r1.rank, r2.rank);
-      if (topRank <= 50 && botRank >= 100) {
-        const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
-        if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis', 1, false, pickDate, tier);
-          return `<span class="match-pick-inline" title="Pick: #${r1.rank} vs #${r2.rank} (click for H2H + form analysis)">→ ${esc(pick)} #${topRank}</span>`;
-        }
-      }
+      if (pts1 > pts2) { p1Score += ratio >= 3 ? 3 : ratio >= 1.5 ? 2 : ratio >= 1.2 ? 1 : 0; }
+      else             { p2Score += ratio >= 3 ? 3 : ratio >= 1.5 ? 2 : ratio >= 1.2 ? 1 : 0; }
+    } else if (rd1.rank !== rd2.rank) {
+      if (rd1.rank < rd2.rank) p1Score += 2; else p2Score += 2;
     }
   }
-  return '';
+
+  // 4. Nationality × surface affinity
+  const c1 = rd1?.country || '', c2 = rd2?.country || '';
+  if (surfLow.includes('clay')) {
+    if (CLAY_COUNTRIES.has(c1) && !CLAY_COUNTRIES.has(c2)) p1Score += 1;
+    else if (CLAY_COUNTRIES.has(c2) && !CLAY_COUNTRIES.has(c1)) p2Score += 1;
+  } else if (surfLow.includes('grass') || surfLow.includes('indoor')) {
+    if (GRASS_COUNTRIES.has(c1) && !GRASS_COUNTRIES.has(c2)) p1Score += 1;
+    else if (GRASS_COUNTRIES.has(c2) && !GRASS_COUNTRIES.has(c1)) p2Score += 1;
+  }
+
+  // 5. Tournament affinity (known specialists)
+  const tourLow = (m.tournament_name || '').toLowerCase();
+  const getAff  = name => { const ln = lastName(name).toLowerCase(); const a = TOURNAMENT_AFFINITY[ln]; if (!a) return 0; for (const [ev,pts] of Object.entries(a)) { if (tourLow.includes(ev)) return pts; } return 0; };
+  const ta1 = getAff(p1Name), ta2 = getAff(p2Name);
+  if (ta1 > ta2) p1Score += Math.min(3, Math.ceil((ta1-ta2)/2));
+  else if (ta2 > ta1) p2Score += Math.min(3, Math.ceil((ta2-ta1)/2));
+
+  // 6. H2H + recent form from cache (populated when user expands a match)
+  const ckey   = `${p1key}_${p2key}`;
+  const ckeyR  = `${p2key}_${p1key}`;
+  const h2hDat = _h2hCache.get(ckey) || _h2hCache.get(ckeyR);
+  if (h2hDat) {
+    const { h2h = [], p1Recent = [], p2Recent = [] } = h2hDat;
+    // Recency-weighted H2H
+    if (h2h.length >= 2) {
+      const now = Date.now(); let hw1 = 0, hw2 = 0;
+      for (const g of h2h) {
+        const age = g.event_date ? (now - new Date(g.event_date+'T12:00:00').getTime()) / 2592000000 : 24;
+        const wt  = age <= 12 ? 2 : age <= 24 ? 1.5 : 1;
+        const gp1 = String(g.first_player_key || '');
+        const p1w = (g.event_winner === 'First Player' && gp1 === p1key) || (g.event_winner === 'Second Player' && gp1 !== p1key);
+        if (p1w) hw1 += wt; else hw2 += wt;
+      }
+      if (hw1 > hw2) p1Score += 2; else if (hw2 > hw1) p2Score += 2;
+    }
+    // Surface H2H
+    const h2hS = h2h.filter(g => { const gs = inferSurface(g.tournament_name||'').toLowerCase(); return surfLow.includes('clay') ? gs.includes('clay') : surfLow.includes('grass') ? gs.includes('grass') : gs === 'hard'; });
+    if (h2hS.length >= 2) {
+      let sw1 = 0, sw2 = 0;
+      for (const g of h2hS) { const gp1 = String(g.first_player_key||''); const p1w = (g.event_winner==='First Player'&&gp1===p1key)||(g.event_winner==='Second Player'&&gp1!==p1key); if (p1w) sw1++; else sw2++; }
+      if (sw1 > sw2) p1Score += 3; else if (sw2 > sw1) p2Score += 3;
+    }
+    // Recent form (last 10)
+    const fWins = (games, pk) => games.reduce((w,g) => { const gp1=String(g.first_player_key||''); return w+(((g.event_winner==='First Player'&&gp1===pk)||(g.event_winner==='Second Player'&&gp1!==pk))?1:0); }, 0);
+    const fw1 = p1Recent.length ? fWins(p1Recent, p1key) : -1;
+    const fw2 = p2Recent.length ? fWins(p2Recent, p2key) : -1;
+    if (fw1 >= 0 && fw2 >= 0 && fw1 !== fw2) {
+      if (fw1 > fw2) p1Score += 2; else p2Score += 2;
+    }
+    // Surface form
+    const onSurf = g => { const gs = inferSurface(g.tournament_name||'').toLowerCase(); return surfLow.includes('clay') ? gs.includes('clay') : surfLow.includes('grass') ? gs.includes('grass') : gs === 'hard'; };
+    const p1SF = p1Recent.filter(onSurf), p2SF = p2Recent.filter(onSurf);
+    if (p1SF.length >= 2 && p2SF.length >= 2) {
+      const r1 = fWins(p1SF, p1key) / p1SF.length, r2 = fWins(p2SF, p2key) / p2SF.length;
+      if (r1 > r2 + 0.20) p1Score += 2; else if (r2 > r1 + 0.20) p2Score += 2;
+    }
+    // Fatigue
+    const todayStr = dateStrLocal(0);
+    if (p1Recent[0]?.event_date === todayStr && p2Recent[0]?.event_date !== todayStr) p2Score += 1;
+    else if (p2Recent[0]?.event_date === todayStr && p1Recent[0]?.event_date !== todayStr) p1Score += 1;
+  }
+
+  // 7. BO5 amplifies leader's edge
+  if (isBestOf5(m) && p1Score !== p2Score) {
+    if (p1Score > p2Score) p1Score += 1; else p2Score += 1;
+  }
+
+  // ── Decide pick ──
+  const gap = Math.abs(p1Score - p2Score);
+  if (gap < 2) return ''; // too close, no pick
+
+  const winner = p1Score > p2Score ? 1 : 2;
+  const pick   = winner === 1 ? l1 : l2;
+  if (!pick || pick === '-') return '';
+
+  const round      = tennisRound(m);
+  const earlyRound = ['r1','r2'].includes(round);
+  const lateRound  = ['quarter','semi','final'].includes(round);
+  let conf = gap >= 8 ? 3 : gap >= 5 ? 2 : 1;
+  if (earlyRound && tier !== 'slam') conf = Math.min(conf, 2);
+  if (lateRound && tier === 'slam' && gap >= 5) conf = Math.min(3, conf + 1);
+  conf = Math.max(1, Math.min(3, conf + getConfCalibration('tennis')));
+
+  const injTag = (winner === 1 && p2Hurt) || (winner === 2 && p1Hurt) ? ' ⚕' : '';
+  recordPick(pickId, pick, matchup, 'tennis', conf, false, pickDate, tier);
+  return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
 function injBadge(playerName = '') {
@@ -5717,11 +5755,39 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
         if (tab === 'yesterday') {
           const prevRound = round - 1;
           if (prevRound < 1) continue;
-          const { groups } = groupByTeeTime(allComp, prevRound);
-          if (!groups.length) continue;
+          // Round-specific tee times aren't stored in ESPN data for past rounds,
+          // so we can't reconstruct who played together. Show a score leaderboard instead.
+          const finishers = allComp.filter(p => {
+            const holes = p.linescores?.[prevRound - 1]?.linescores?.length || 0;
+            return holes >= 18;
+          }).sort((a, b) => {
+            const vA = a.linescores?.[prevRound-1]?.displayValue;
+            const vB = b.linescores?.[prevRound-1]?.displayValue;
+            const nA = !vA || vA === '-' ? 999 : vA === 'E' ? 0 : parseInt(vA) || 0;
+            const nB = !vB || vB === '-' ? 999 : vB === 'E' ? 0 : parseInt(vB) || 0;
+            return nA - nB;
+          });
+          if (!finishers.length) continue;
+          const rows = finishers.slice(0, 20).map(p => {
+            const name   = p.athlete?.shortName || p.athlete?.displayName || '-';
+            const rv     = p.linescores?.[prevRound-1]?.displayValue || '-';
+            const rn     = rv === 'E' ? 0 : parseInt(rv) || 0;
+            const rCls   = rn < 0 ? 'golf-under' : rn > 0 ? 'golf-over' : 'golf-even';
+            const total  = p.score || 'E';
+            const tn     = total === 'E' ? 0 : parseInt(total) || 0;
+            const tCls   = tn < 0 ? 'golf-under' : tn > 0 ? 'golf-over' : 'golf-even';
+            const pos    = p.order ? `#${p.order}` : '-';
+            return `<div class="golf-yday-row">
+              <span class="golf-yday-pos">${esc(pos)}</span>
+              <span class="golf-yday-name">${esc(name)}</span>
+              <span class="golf-yday-rnd ${rCls}">${esc(rv)}</span>
+              <span class="golf-yday-tot ${tCls}">${esc(total)}</span>
+            </div>`;
+          }).join('');
           html += `<div class="golf-picks-section">
-            <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${prevRound} · <span class="golf-tmrw-label">Yesterday</span></div>
-            ${groups.map(g => buildGolfGroupPickCard(g, prevRound, false, tour.key, ev.id)).join('')}
+            <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${prevRound} Results · <span class="golf-tmrw-label">Yesterday</span></div>
+            <div class="golf-yday-hdr"><span>POS</span><span>PLAYER</span><span>RND</span><span>TOT</span></div>
+            ${rows}
           </div>`;
 
         } else if (tab === 'today') {
@@ -6604,7 +6670,13 @@ function buildDailyTicketIfNeeded() {
 
     if (p.type === 'player') {
       score += SPORT_BONUS[p.sport] || 1;
-      const statLabel = p.stat && p.stat !== '-' ? `${p.prop} — ${p.stat}` : p.prop;
+      // Format: season totals (whole numbers) get labeled as season leaders to avoid
+      // confusion (e.g. "53 goals" looks like a nightly target, not a season stat).
+      const n = parseFloat(p.stat);
+      const isSeasonTotal = p.stat && p.stat !== '-' && !p.stat.includes('.') && !isNaN(n) && n > 5;
+      const statLabel = p.stat && p.stat !== '-'
+        ? (isSeasonTotal ? `${p.prop} leader` : `${p.stat} ${p.prop}`)
+        : p.prop;
       candidates.push({ id, score, sport: p.sport || 'other', type: 'player',
         pick: p.player, description: statLabel, matchup: p.gameMatchup || '', conf: p.conf || 1 });
     } else if (p.team) {

@@ -1776,6 +1776,12 @@ input { font: inherit; }
 .golf-tmrw-divider  { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--text-muted); padding: 10px 14px 4px; }
 .golf-tmrw-hdr      { background: rgba(0,230,118,.04); }
 .golf-tmrw-label    { color: var(--accent); font-weight: 700; }
+.golf-yday-hdr      { display:grid; grid-template-columns:36px 1fr 44px 44px; gap:4px; padding:4px 10px; font-size:.62rem; font-weight:700; color:var(--text-muted); border-bottom:1px solid var(--border); }
+.golf-yday-row      { display:grid; grid-template-columns:36px 1fr 44px 44px; gap:4px; padding:5px 10px; font-size:.76rem; border-bottom:1px solid rgba(255,255,255,.04); }
+.golf-yday-row:hover{ background:rgba(255,255,255,.03); }
+.golf-yday-pos      { color:var(--text-muted); font-size:.68rem; }
+.golf-yday-name     { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.golf-yday-rnd,.golf-yday-tot { text-align:right; font-weight:700; }
 
 /* ── TOMORROW'S TENNIS PREVIEW ── */
 .tp-tomorrow-section { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }
