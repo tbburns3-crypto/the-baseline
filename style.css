@@ -1840,6 +1840,12 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-lock-pending { color: var(--accent); opacity: .85; }
 .sv-unlock-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); font-size: .65rem; padding: 1px 7px; border-radius: 3px; cursor: pointer; line-height: 1.6; }
 .sv-unlock-btn:hover { color: var(--accent); border-color: var(--accent); }
+/* ── DATE NAVIGATION ── */
+.sv-date-nav { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; margin-bottom: 10px; background: rgba(255,255,255,.03); border-radius: 8px; border: 1px solid var(--border); }
+.sv-nav-btn { background: none; border: 1px solid rgba(255,255,255,.14); color: var(--text-secondary); border-radius: 5px; padding: 3px 11px; font-size: .74rem; cursor: pointer; transition: background .15s, color .15s; }
+.sv-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,.08); color: var(--text); }
+.sv-nav-btn:disabled { opacity: .28; cursor: default; }
+.sv-nav-label { font-size: .8rem; font-weight: 700; color: var(--text); }
 /* ── SIMPLE VIEW SECTIONS REDESIGN ── */
 .sv-sport-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 0; }
 .sv-sport-hdr { margin-bottom: 0; padding: 6px 10px; background: rgba(255,255,255,.03); }
