@@ -104,12 +104,12 @@ function getConfCalibration(sport) {
   return 0;
 }
 
-function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, force = false) {
+function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, force = false, dateOverride = null) {
   const picks = getPicks();
   const existing = picks[gameId];
   // force = true lets a nuanced pick overwrite a simple W-L seed, but never overwrite a resolved result
   if (existing && (!force || existing.result !== null)) return;
-  picks[gameId] = { team: pickedTeam, date: dateStrLocal(), result: existing?.result ?? null, matchup, sport, conf };
+  picks[gameId] = { team: pickedTeam, date: dateOverride || dateStrLocal(), result: existing?.result ?? null, matchup, sport, conf };
   savePicks(picks);
 }
 
@@ -1065,9 +1065,10 @@ function tournamentTier(m) {
   return '250';
 }
 
-function inlineTennisPick(m) {
-  // Don't generate picks for future-dated or in-progress matches
-  if (m.event_date && m.event_date > dateStrLocal(0)) return '';
+function inlineTennisPick(m, dateOverride = null) {
+  // Don't generate picks for in-progress matches.
+  // When dateOverride is set (pre-seeding tomorrow's picks), allow future dates.
+  if (!dateOverride && m.event_date && m.event_date > dateStrLocal(0)) return '';
   if (isLive(m.event_status)) return '';
 
   // Skip doubles only — singles rankings are meaningless in doubles
@@ -1112,7 +1113,7 @@ function inlineTennisPick(m) {
     if (pick && pick !== '-') {
       // Seed gap confidence: top seed (1-4) vs unseeded or big gap = 2, smaller gap = 1
       const seedConf = injuryForcePick ? 2 : (s1 && s2 && Math.abs(s1 - s2) >= 4) ? 2 : 1;
-      recordPick(pickId, pick, matchup, 'tennis', seedConf);
+      recordPick(pickId, pick, matchup, 'tennis', seedConf, false, dateOverride);
       return `<span class="match-pick-inline" title="Pick based on seeding${injNote} (click for full H2H analysis)">→ ${esc(pick)}</span>`;
     }
   }
@@ -1121,7 +1122,7 @@ function inlineTennisPick(m) {
   if (injuryForcePick) {
     const pick = injuryForcePick === p1Ln ? lastName(m.event_first_player||'') : lastName(m.event_second_player||'');
     if (pick && pick !== '-') {
-      recordPick(pickId, pick, matchup, 'tennis', 2);
+      recordPick(pickId, pick, matchup, 'tennis', 2, false, dateOverride);
       return `<span class="match-pick-inline match-pick-injury" title="Pick: opponent has recent injury news — ${(p1Hurt ? p1Inj : p2Inj).note}">→ ${esc(pick)} ⚕</span>`;
     }
   }
@@ -1148,7 +1149,7 @@ function inlineTennisPick(m) {
         // Ratio confidence: 3x+ gap = 2, injury bonus adds 1
         const ratioConf = (injuryForcePick ? 1 : 0) + (ratio >= 3 ? 2 : 1);
         if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis', Math.min(3, ratioConf));
+          recordPick(pickId, pick, matchup, 'tennis', Math.min(3, ratioConf), false, dateOverride);
           return `<span class="match-pick-inline" title="Pick: ${pts1} vs ${pts2} ranking pts${injNote2} (click for H2H)">→ ${esc(pick)}</span>`;
         }
       }
@@ -1159,7 +1160,7 @@ function inlineTennisPick(m) {
       if (topRank <= 50 && botRank >= 100) {
         const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
         if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis', 1);
+          recordPick(pickId, pick, matchup, 'tennis', 1, false, dateOverride);
           return `<span class="match-pick-inline" title="Pick: #${r1.rank} vs #${r2.rank} (click for H2H + form analysis)">→ ${esc(pick)} #${topRank}</span>`;
         }
       }
@@ -2411,7 +2412,8 @@ function getGameBestPickHTML(espnGameId, g) {
 }
 
 // Records pick + immediately resolves if game is finished. Pre-game only — never mid-game.
-function autoRecordAndResolvePick(g) {
+// dateOverride: pass dateStrLocal(1) when pre-loading tomorrow's games so picks get the right date.
+function autoRecordAndResolvePick(g, dateOverride = null) {
   if (!g.awayRec && !g.homeRec) return;
   const { fin, live } = gameRowState(g);
   if (!live && !fin) {
@@ -2430,7 +2432,7 @@ function autoRecordAndResolvePick(g) {
     const homePct  = Math.round(homeFrac * 100);
     const short    = (homePct >= 50 ? g.homeTeam : g.awayTeam).split(' ').pop();
     const conf     = wpToConf(homePct >= 50 ? homeFrac : 1 - homeFrac);
-    recordPick(String(g.id), short, `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '', conf);
+    recordPick(String(g.id), short, `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '', conf, false, dateOverride);
   }
   if (fin && g.awayScore !== '' && g.homeScore !== '') {
     const aS = parseFloat(g.awayScore) || 0, hS = parseFloat(g.homeScore) || 0;
@@ -6370,6 +6372,21 @@ async function preloadPicksForSimpleView() {
     if (games.length) _svLotteryHTML = games.map(renderLotteryCard).join('');
   } catch (e) {}
 
+  // Pre-seed tomorrow's picks so the "Tomorrow →" view is ready.
+  // These games are all pre-game; stamp them with tomorrow's date so they show up correctly.
+  const tomorrowDate = dateStrLocal(1);
+  for (const sport of ['nba', 'nfl', 'nhl', 'wnba', 'mlb']) {
+    try {
+      const games = await espnGames(sport, 1);
+      games.forEach(g => autoRecordAndResolvePick(g, tomorrowDate));
+    } catch (e) {}
+  }
+  try {
+    const tennisD = dateStrLocal(1);
+    const results = await tennisFetch('get_fixtures', { date_start: tennisD, date_stop: tennisD });
+    for (const m of results) inlineTennisPick(m, tomorrowDate);
+  } catch (e) {}
+
   // All sports done — render once.
   if (isActive()) renderSimpleView();
 }
@@ -6450,6 +6467,8 @@ function renderSimpleView() {
   if (!allGamePicks.length) {
     const msg = isToday
       ? `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Loading today's picks…</div>`
+      : _svDateOffset === 1
+      ? `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Loading tomorrow's picks…</div>`
       : `<div class="sv-empty">No picks recorded for this date.</div>`;
     document.getElementById('sv-content').innerHTML = dateNavHTML + msg;
     return;
