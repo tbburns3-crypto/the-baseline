@@ -104,7 +104,7 @@ function getConfCalibration(sport) {
   return 0;
 }
 
-function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, force = false, dateOverride = null) {
+function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, force = false, dateOverride = null, tier = '') {
   const picks = getPicks();
   const existing = picks[gameId];
   // Silently fix the date if an unresolved pick was stamped with the wrong date
@@ -115,7 +115,9 @@ function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, forc
   }
   // force = true lets a nuanced pick overwrite a simple W-L seed, but never overwrite a resolved result
   if (existing && (!force || existing.result !== null)) return;
-  picks[gameId] = { team: pickedTeam, date: dateOverride || dateStrLocal(), result: existing?.result ?? null, matchup, sport, conf };
+  const entry = { team: pickedTeam, date: dateOverride || dateStrLocal(), result: existing?.result ?? null, matchup, sport, conf };
+  if (tier) entry.tier = tier;
+  picks[gameId] = entry;
   savePicks(picks);
 }
 
@@ -1121,8 +1123,9 @@ function inlineTennisPick(m, dateOverride = null) {
   if (!dateOverride && pickDate > today) return '';
 
   // Skip doubles only — singles rankings are meaningless in doubles
-  const cat = matchCategory(m.event_type || '');
+  const cat  = matchCategory(m.event_type || '');
   if (cat === 'doubles') return '';
+  const tier = tournamentTier(m);
 
   const pickId  = 'tn_' + m.event_key;
   const surface = m.event_surface ? ` (${m.event_surface})` : '';
@@ -1162,7 +1165,7 @@ function inlineTennisPick(m, dateOverride = null) {
     if (pick && pick !== '-') {
       // Seed gap confidence: top seed (1-4) vs unseeded or big gap = 2, smaller gap = 1
       const seedConf = injuryForcePick ? 2 : (s1 && s2 && Math.abs(s1 - s2) >= 4) ? 2 : 1;
-      recordPick(pickId, pick, matchup, 'tennis', seedConf, false, pickDate);
+      recordPick(pickId, pick, matchup, 'tennis', seedConf, false, pickDate, tier);
       return `<span class="match-pick-inline" title="Pick based on seeding${injNote} (click for full H2H analysis)">→ ${esc(pick)}</span>`;
     }
   }
@@ -1171,7 +1174,7 @@ function inlineTennisPick(m, dateOverride = null) {
   if (injuryForcePick) {
     const pick = injuryForcePick === p1Ln ? lastName(m.event_first_player||'') : lastName(m.event_second_player||'');
     if (pick && pick !== '-') {
-      recordPick(pickId, pick, matchup, 'tennis', 2, false, pickDate);
+      recordPick(pickId, pick, matchup, 'tennis', 2, false, pickDate, tier);
       return `<span class="match-pick-inline match-pick-injury" title="Pick: opponent has recent injury news — ${(p1Hurt ? p1Inj : p2Inj).note}">→ ${esc(pick)} ⚕</span>`;
     }
   }
@@ -1198,7 +1201,7 @@ function inlineTennisPick(m, dateOverride = null) {
         // Ratio confidence: 3x+ gap = 2, injury bonus adds 1
         const ratioConf = (injuryForcePick ? 1 : 0) + (ratio >= 3 ? 2 : 1);
         if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis', Math.min(3, ratioConf), false, pickDate);
+          recordPick(pickId, pick, matchup, 'tennis', Math.min(3, ratioConf), false, pickDate, tier);
           return `<span class="match-pick-inline" title="Pick: ${pts1} vs ${pts2} ranking pts${injNote2} (click for H2H)">→ ${esc(pick)}</span>`;
         }
       }
@@ -1209,7 +1212,7 @@ function inlineTennisPick(m, dateOverride = null) {
       if (topRank <= 50 && botRank >= 100) {
         const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
         if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis', 1, false, pickDate);
+          recordPick(pickId, pick, matchup, 'tennis', 1, false, pickDate, tier);
           return `<span class="match-pick-inline" title="Pick: #${r1.rank} vs #${r2.rank} (click for H2H + form analysis)">→ ${esc(pick)} #${topRank}</span>`;
         }
       }
@@ -3439,16 +3442,16 @@ async function loadTennisPicksPage() {
   const area = document.getElementById('mlb-picks-area');
   area.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Loading picks…</p></div>`;
 
+  let results = [];
   try {
     const d = dateStrLocal(S.dateOffset);
-    const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
+    results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
     const picks = getPicks();
     let picksDirty = false;
     for (const m of results) {
       S.matches.set(String(m.event_key), m);
       inlineTennisPick(m);
       // Re-date any existing pick that was stamped with the wrong date.
-      // This catches picks saved before the event_date fix was deployed.
       if (m.event_date) {
         const pid = 'tn_' + m.event_key;
         const ex  = picks[pid];
@@ -3468,13 +3471,16 @@ async function loadTennisPicksPage() {
     if (picksDirty) savePicks(picks);
   } catch {}
 
-  const todayStr    = dateStrLocal(0);
+  const todayStr     = dateStrLocal(0);
   const selectedDate = dateStrLocal(S.dateOffset);
 
+  // Build match lookup from this date's fixtures (for time/tournament enrichment)
+  const matchByKey = new Map(results.map(m => ['tn_' + m.event_key, m]));
+
   const labelForDate = d => {
-    if (!d || d === todayStr)       return 'Today';
-    if (d === dateStrLocal(1))      return 'Tomorrow';
-    if (d === dateStrLocal(-1))     return 'Yesterday';
+    if (!d || d === todayStr)   return 'Today';
+    if (d === dateStrLocal(1))  return 'Tomorrow';
+    if (d === dateStrLocal(-1)) return 'Yesterday';
     try {
       const [y, mo, dy] = d.split('-').map(Number);
       return new Date(y, mo - 1, dy).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -3482,15 +3488,21 @@ async function loadTennisPicksPage() {
   };
   const selLabel = labelForDate(selectedDate);
 
-  const getSurface = matchup => {
-    const m = (matchup || '').match(/\((\w+)\)$/i);
-    return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() : '';
-  };
-
   const confDots = c => {
     if (!c) return '';
     const cls = c >= 3 ? 'tp-conf-3' : c === 2 ? 'tp-conf-2' : 'tp-conf-1';
     return `<span class="tp-conf ${cls}">${'•'.repeat(Math.min(c, 3))}</span>`;
+  };
+
+  // Enrich a pick with live match metadata (time, tournament, category)
+  const enrich = (p, id) => {
+    const match = matchByKey.get(id);
+    return { ...p, _id: id,
+      _time:    match?.event_time || '',
+      _tourn:   match?.tournament_name || '',
+      _cat:     match ? matchCategory(match.event_type_type || '') : '',
+      _tier:    p.tier || (match ? tournamentTier(match) : ''),
+    };
   };
 
   const makeRow = p => {
@@ -3499,7 +3511,9 @@ async function loadTennisPicksPage() {
     const resultIcon = p.result === null ? ''
       : `<span class="tp-row-icon ${win ? 'tp-ico-win' : 'tp-ico-loss'}">${win ? '✓' : '✗'}</span>`;
     const matchupClean = (p.matchup || p.team).replace(/\s*\(\w+\)$/i, '');
+    const timeStr = p._time ? `<span class="tp-row-time">${esc(fmtTime12(p._time))}</span>` : '';
     return `<div class="${rowCls}">
+      ${timeStr}
       <span class="tp-row-arrow">→</span>
       <span class="tp-row-pick">${esc(p.team)}</span>
       <span class="tp-row-vs">${esc(matchupClean)}</span>
@@ -3507,31 +3521,44 @@ async function loadTennisPicksPage() {
     </div>`;
   };
 
-  const renderSurfaceGroups = (picks) => {
-    const bySurf = new Map();
+  const CAT_LABEL = { atp:'ATP', wta:'WTA', 'challenger-m':'Challenger M', 'challenger-w':'Challenger W', 'itf-m':'ITF Men', 'itf-w':'ITF Women' };
+
+  // Group picks by tournament, sort each group by scheduled time
+  const renderTournamentGroups = picks => {
+    const byTourn = new Map();
     for (const p of picks) {
-      const surf = getSurface(p.matchup) || 'Other';
-      if (!bySurf.has(surf)) bySurf.set(surf, []);
-      bySurf.get(surf).push(p);
+      const key = p._tourn || 'Other';
+      if (!byTourn.has(key)) byTourn.set(key, { tier: p._tier, cat: p._cat, rows: [] });
+      byTourn.get(key).rows.push(p);
     }
-    const SURF_ORDER = ['Clay', 'Hard', 'Grass', 'Indoor', 'Other'];
-    const surfs = [...bySurf.keys()].sort((a, b) => {
-      const ai = SURF_ORDER.indexOf(a), bi = SURF_ORDER.indexOf(b);
-      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
-    });
-    return surfs.map(surf => {
-      const rows = bySurf.get(surf);
-      return `<div class="tp-surf-group">
-        <div class="tp-surf-lbl tp-surf-${surf.toLowerCase()}">${surf.toUpperCase()} <span class="tp-surf-n">${rows.length}</span></div>
+    // Sort by tier priority (slam first), then tournament name
+    const TIER_PRI = { slam:0, masters:1, '500':2, '250':3, chal:4, itf:5 };
+    const sorted = [...byTourn.entries()].sort(([, a], [, b]) =>
+      (TIER_PRI[a.tier] ?? 9) - (TIER_PRI[b.tier] ?? 9) || 0
+    );
+    return sorted.map(([name, { tier, cat, rows }]) => {
+      // Sort each tournament's picks by scheduled time
+      rows.sort((a, b) => (a._time || '99:99').localeCompare(b._time || '99:99'));
+      const tierBadge = tier && tier !== '250'
+        ? `<span class="tier-badge tier-${tier}">${TIER_LABEL[tier] || tier.toUpperCase()}</span>` : '';
+      const catLabel = CAT_LABEL[cat] || '';
+      return `<div class="tp-tourn-block">
+        <div class="tp-tourn-hdr">
+          <span class="tp-tourn-name">${esc(name || 'Other')}</span>
+          ${tierBadge}
+          ${catLabel ? `<span class="tp-tourn-cat">${esc(catLabel)}</span>` : ''}
+        </div>
         ${rows.map(makeRow).join('')}
       </div>`;
     }).join('');
   };
 
-  const allTennisPicks = Object.values(getPicks()).filter(p => (p.sport || 'tennis') === 'tennis');
-  const datePicks   = allTennisPicks.filter(p => (p.date || todayStr) === selectedDate);
-  const pending     = datePicks.filter(p => p.result === null);
-  const resolved    = datePicks.filter(p => p.result !== null);
+  // Enrich all picks with match metadata
+  const allPicksEntries = Object.entries(getPicks()).filter(([, p]) => (p.sport || 'tennis') === 'tennis');
+  const allTennisPicks  = allPicksEntries.map(([k, p]) => enrich(p, k));
+  const datePicks    = allTennisPicks.filter(p => (p.date || todayStr) === selectedDate);
+  const pending      = datePicks.filter(p => p.result === null);
+  const resolved     = datePicks.filter(p => p.result !== null);
   const otherPending = allTennisPicks.filter(p => p.result === null && (p.date || todayStr) !== selectedDate);
 
   let todayHTML = '';
@@ -3542,28 +3569,28 @@ async function loadTennisPicksPage() {
   } else {
     if (pending.length) {
       todayHTML += `<div class="tp-section-hdr">${selLabel} — Pending <span class="tp-section-count">${pending.length}</span></div>
-        <div class="tp-surf-block">${renderSurfaceGroups(pending)}</div>`;
+        <div class="tp-tourn-list">${renderTournamentGroups(pending)}</div>`;
     }
     if (resolved.length) {
       const w = resolved.filter(p => p.result === 'win').length;
       todayHTML += `<div class="tp-section-hdr tp-results-hdr">${selLabel} — Results
         <span class="tp-res-record">${w}W ${resolved.length - w}L</span></div>
-        <div class="tp-surf-block">${renderSurfaceGroups(resolved)}</div>`;
+        <div class="tp-tourn-list">${renderTournamentGroups(resolved)}</div>`;
     }
   }
 
-  // Summary of other-date pending picks
+  // Compact summary of other-date pending picks
   if (otherPending.length) {
     const otherByDate = new Map();
     for (const p of otherPending) {
       const d = p.date || todayStr;
       otherByDate.set(d, (otherByDate.get(d) || 0) + 1);
     }
-    const otherSummary = [...otherByDate.entries()]
+    const chips = [...otherByDate.entries()]
       .sort(([a],[b]) => a.localeCompare(b))
       .map(([d, n]) => `<span class="tp-other-chip">${labelForDate(d)}: ${n}</span>`)
       .join('');
-    todayHTML += `<div class="tp-other-dates">Other dates: ${otherSummary}</div>`;
+    todayHTML += `<div class="tp-other-dates">Other dates: ${chips}</div>`;
   }
 
   if (_loadSeq !== seq) return;
@@ -5598,15 +5625,23 @@ async function loadGolfPicksPage() {
   const area = document.getElementById('mlb-picks-area');
   area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf groups…</p></div>';
   try {
-    const results = await Promise.allSettled(
-      GOLF_TOURS.map(t =>
+    const tmrwDate = dateStr(1).replace(/-/g, '');
+    // Fetch today's scoreboard + tomorrow's (for pre-posted pairings) in parallel
+    const [todayResults, tmrwResults] = await Promise.all([
+      Promise.allSettled(GOLF_TOURS.map(t =>
         fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard`).then(r => r.json())
-      )
-    );
+      )),
+      Promise.allSettled(GOLF_TOURS.map(t =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard?dates=${tmrwDate}`).then(r => r.json())
+      ))
+    ]);
+
     let html = '';
+
+    // ── Today / current round ──
     for (let i = 0; i < GOLF_TOURS.length; i++) {
-      if (results[i].status !== 'fulfilled') continue;
-      const data = results[i].value;
+      if (todayResults[i].status !== 'fulfilled') continue;
+      const data = todayResults[i].value;
       const tour = GOLF_TOURS[i];
       for (const ev of (data.events || [])) {
         const comp  = ev.competitions?.[0]; if (!comp) continue;
@@ -5626,6 +5661,31 @@ async function loadGolfPicksPage() {
         </div>`;
       }
     }
+
+    // ── Tomorrow's pairings (if already posted and different from today's data) ──
+    let tmrwHTML = '';
+    for (let i = 0; i < GOLF_TOURS.length; i++) {
+      if (tmrwResults[i].status !== 'fulfilled') continue;
+      const data = tmrwResults[i].value;
+      const tour = GOLF_TOURS[i];
+      for (const ev of (data.events || [])) {
+        const comp  = ev.competitions?.[0]; if (!comp) continue;
+        const round = comp.status?.period || 1;
+        const allComp = comp.competitors || [];
+        const { upcomingGroups } = groupByTeeTime(allComp, round);
+        const validGroups = upcomingGroups.filter(g => g.players.length >= 2);
+        if (!validGroups.length) continue;
+        tmrwHTML += `<div class="golf-picks-section">
+          <div class="golf-picks-event-hdr golf-tmrw-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} · <span class="golf-tmrw-label">Tomorrow's Groups</span></div>
+          ${validGroups.map(g => buildGolfGroupPickCard(g, round, false, tour.key, ev.id)).join('')}
+        </div>`;
+      }
+    }
+
+    if (tmrwHTML) {
+      html += `<div class="golf-tmrw-section"><div class="golf-tmrw-divider">Tomorrow's Tee Times</div>${tmrwHTML}</div>`;
+    }
+
     if (_loadSeq !== seq) return;
     const note = '<div class="pc-data-note">3-ball picks · world ranking · scoring avg · tournament position · round score</div>';
     area.innerHTML = note + (html || '<div class="empty-state"><p>No active golf groups available.</p><p class="muted">Picks appear when a tournament is in progress or tee times are posted.</p></div>');
@@ -6696,9 +6756,11 @@ function renderSimpleView() {
   const SPORT_LIMITS = { tennis: 6, mlb: 3, nba: 3, wnba: 2, nfl: 3, nhl: 3, soccer: 3, golf: 6 };
 
   // Build per-sport pick arrays (top picks by conf, capped by SPORT_LIMITS)
+  // Tennis: simple view shows only Grand Slam matches to keep it focused
   const picksBySport = {};
   for (const p of allGamePicks) {
     const s = p.sport || 'tennis';
+    if (s === 'tennis' && p.tier !== 'slam') continue;
     if (!picksBySport[s]) picksBySport[s] = [];
     const limit = SPORT_LIMITS[s] || 2;
     if (picksBySport[s].length < limit) picksBySport[s].push(p);

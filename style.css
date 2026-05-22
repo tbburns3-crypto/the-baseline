@@ -1705,7 +1705,7 @@ input { font: inherit; }
 }
 .fav-remove-btn:hover { color: var(--live); }
 
-/* ── TENNIS PICKS — COMPACT SURFACE-GROUPED LAYOUT ── */
+/* ── TENNIS PICKS — TOURNAMENT-GROUPED, TIME-SORTED LAYOUT ── */
 .tp-section-hdr {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 14px 7px; font-size: .72rem; font-weight: 800;
@@ -1716,20 +1716,17 @@ input { font: inherit; }
 .tp-results-hdr   { margin-top: 8px; }
 .tp-res-record    { color: var(--accent); font-size: .78rem; font-weight: 700; letter-spacing: 0; text-transform: none; margin-left: auto; }
 
-.tp-surf-block  { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin: 0 0 4px; }
-.tp-surf-group  {}
-.tp-surf-lbl {
-  display: flex; align-items: center; gap: 5px;
-  padding: 4px 14px 3px; font-size: .6rem; font-weight: 800;
-  text-transform: uppercase; letter-spacing: .09em; color: var(--text-muted);
+.tp-tourn-list  { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin: 0 0 4px; }
+.tp-tourn-block {}
+.tp-tourn-hdr {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 14px 4px; font-size: .68rem; font-weight: 700;
   background: rgba(255,255,255,.025); border-top: 1px solid rgba(255,255,255,.05);
+  color: var(--text-2);
 }
-.tp-surf-group:first-child .tp-surf-lbl { border-top: none; }
-.tp-surf-n      { font-weight: 500; opacity: .7; }
-.tp-surf-clay   { color: var(--clay); }
-.tp-surf-hard   { color: #42a5f5; }
-.tp-surf-grass  { color: var(--grass); }
-.tp-surf-indoor { color: var(--indoor); }
+.tp-tourn-block:first-child .tp-tourn-hdr { border-top: none; }
+.tp-tourn-name { font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-tourn-cat  { font-size: .6rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
 
 .tp-row {
   display: flex; align-items: center; gap: 8px;
@@ -1740,6 +1737,7 @@ input { font: inherit; }
 .tp-row:hover { background: var(--bg-hover); }
 .tp-row-win   { border-left: 2px solid var(--accent); padding-left: 12px; }
 .tp-row-loss  { opacity: .55; }
+.tp-row-time  { font-size: .68rem; color: var(--text-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 44px; }
 .tp-row-arrow { color: var(--accent); font-size: .78rem; flex-shrink: 0; }
 .tp-row-pick  { font-weight: 700; color: var(--text); min-width: 72px; flex-shrink: 0; }
 .tp-row-vs    { flex: 1; color: var(--text-muted); font-size: .77rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -1759,6 +1757,12 @@ input { font: inherit; }
   background: rgba(255,255,255,.06); border-radius: 10px;
   padding: 2px 8px; font-size: .68rem; color: var(--text-muted);
 }
+
+/* ── GOLF TOMORROW PAIRINGS ── */
+.golf-tmrw-section  { margin-top: 6px; }
+.golf-tmrw-divider  { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--text-muted); padding: 10px 14px 4px; }
+.golf-tmrw-hdr      { background: rgba(0,230,118,.04); }
+.golf-tmrw-label    { color: var(--accent); font-weight: 700; }
 
 /* ── TOMORROW'S TENNIS PREVIEW ── */
 .tp-tomorrow-section { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }
