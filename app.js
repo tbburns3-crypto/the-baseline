@@ -2121,7 +2121,11 @@ function pickDate(offset) {
   S.dateOffset = offset;
   S.matches.clear();
   renderDateBar();
-  loadFixtures(offset);
+  if (S.sport === 'tennis' && S.view === 'picks') {
+    loadTennisPicksPage();
+  } else {
+    loadFixtures(offset);
+  }
 }
 
 // ── SPORT / VIEW SWITCHING ───────────────────────────────────
@@ -3437,60 +3441,102 @@ async function loadTennisPicksPage() {
     }
   } catch {}
 
-  let tennisPicks = Object.values(getPicks()).filter(p => (p.sport || 'tennis') === 'tennis');
   const todayStr    = dateStrLocal(0);
-  const tomorrowStr = dateStrLocal(1);
+  const selectedDate = dateStrLocal(S.dateOffset);
 
-  const fmtPickDate = d => {
-    if (!d || d === todayStr)    return 'Today';
-    if (d === tomorrowStr)       return 'Tomorrow';
+  const labelForDate = d => {
+    if (!d || d === todayStr)       return 'Today';
+    if (d === dateStrLocal(1))      return 'Tomorrow';
+    if (d === dateStrLocal(-1))     return 'Yesterday';
     try {
       const [y, mo, dy] = d.split('-').map(Number);
-      return new Date(y, mo - 1, dy).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return new Date(y, mo - 1, dy).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     } catch { return d; }
+  };
+  const selLabel = labelForDate(selectedDate);
+
+  const getSurface = matchup => {
+    const m = (matchup || '').match(/\((\w+)\)$/i);
+    return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() : '';
+  };
+
+  const confDots = c => {
+    if (!c) return '';
+    const cls = c >= 3 ? 'tp-conf-3' : c === 2 ? 'tp-conf-2' : 'tp-conf-1';
+    return `<span class="tp-conf ${cls}">${'•'.repeat(Math.min(c, 3))}</span>`;
   };
 
   const makeRow = p => {
-    const win  = p.result === 'win';
-    const icon = p.result === null ? '⏳' : (win ? '✓' : '✗');
-    const cls  = p.result === null ? 'ph-pending-row' : (win ? 'ph-win' : 'ph-loss');
-    return `<div class="ph-row ${cls}">
-      <span class="ph-icon">${icon}</span>
-      <span class="ph-date">${esc(fmtPickDate(p.date))}</span>
-      <span class="ph-matchup">${esc(p.matchup || p.team)}</span>
-      <span class="ph-pick">→ ${esc(p.team)}</span>
+    const win = p.result === 'win';
+    const rowCls = p.result === null ? 'tp-row' : win ? 'tp-row tp-row-win' : 'tp-row tp-row-loss';
+    const resultIcon = p.result === null ? ''
+      : `<span class="tp-row-icon ${win ? 'tp-ico-win' : 'tp-ico-loss'}">${win ? '✓' : '✗'}</span>`;
+    const matchupClean = (p.matchup || p.team).replace(/\s*\(\w+\)$/i, '');
+    return `<div class="${rowCls}">
+      <span class="tp-row-arrow">→</span>
+      <span class="tp-row-pick">${esc(p.team)}</span>
+      <span class="tp-row-vs">${esc(matchupClean)}</span>
+      <span class="tp-row-meta">${confDots(p.conf)}${resultIcon}</span>
     </div>`;
   };
 
-  const pending  = tennisPicks.filter(p => p.result === null);
-  const resolved = tennisPicks.filter(p => p.result !== null);
+  const renderSurfaceGroups = (picks) => {
+    const bySurf = new Map();
+    for (const p of picks) {
+      const surf = getSurface(p.matchup) || 'Other';
+      if (!bySurf.has(surf)) bySurf.set(surf, []);
+      bySurf.get(surf).push(p);
+    }
+    const SURF_ORDER = ['Clay', 'Hard', 'Grass', 'Indoor', 'Other'];
+    const surfs = [...bySurf.keys()].sort((a, b) => {
+      const ai = SURF_ORDER.indexOf(a), bi = SURF_ORDER.indexOf(b);
+      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+    });
+    return surfs.map(surf => {
+      const rows = bySurf.get(surf);
+      return `<div class="tp-surf-group">
+        <div class="tp-surf-lbl tp-surf-${surf.toLowerCase()}">${surf.toUpperCase()} <span class="tp-surf-n">${rows.length}</span></div>
+        ${rows.map(makeRow).join('')}
+      </div>`;
+    }).join('');
+  };
 
-  // Split pending by date so tomorrow's picks don't appear under "Today"
-  const todayPending    = pending.filter(p => !p.date || p.date === todayStr);
-  const tomorrowPending = pending.filter(p => p.date === tomorrowStr);
-  const futurePending   = pending.filter(p => p.date && p.date > tomorrowStr);
+  const allTennisPicks = Object.values(getPicks()).filter(p => (p.sport || 'tennis') === 'tennis');
+  const datePicks   = allTennisPicks.filter(p => (p.date || todayStr) === selectedDate);
+  const pending     = datePicks.filter(p => p.result === null);
+  const resolved    = datePicks.filter(p => p.result !== null);
+  const otherPending = allTennisPicks.filter(p => p.result === null && (p.date || todayStr) !== selectedDate);
 
   let todayHTML = '';
-  if (!tennisPicks.length) {
-    todayHTML = '<div class="empty-state muted">No picks recorded yet today.<br>Picks generate for seeded/ranked matches.</div>';
+  if (!allTennisPicks.length) {
+    todayHTML = '<div class="empty-state muted">No picks yet — browse the Scores tab to generate picks.</div>';
+  } else if (!datePicks.length) {
+    todayHTML = `<div class="empty-state muted">No picks for ${selLabel}.<br>Select another date or visit the Scores tab first.</div>`;
   } else {
-    if (todayPending.length) {
-      todayHTML += `<div class="ph-sport-hdr ph-pending-hdr">Today — Pending (${todayPending.length})</div>`;
-      todayHTML += todayPending.map(makeRow).join('');
+    if (pending.length) {
+      todayHTML += `<div class="tp-section-hdr">${selLabel} — Pending <span class="tp-section-count">${pending.length}</span></div>
+        <div class="tp-surf-block">${renderSurfaceGroups(pending)}</div>`;
     }
     if (resolved.length) {
       const w = resolved.filter(p => p.result === 'win').length;
-      todayHTML += `<div class="ph-sport-hdr">Today — Results ${w}W ${resolved.length - w}L</div>`;
-      todayHTML += resolved.map(makeRow).join('');
+      todayHTML += `<div class="tp-section-hdr tp-results-hdr">${selLabel} — Results
+        <span class="tp-res-record">${w}W ${resolved.length - w}L</span></div>
+        <div class="tp-surf-block">${renderSurfaceGroups(resolved)}</div>`;
     }
-    if (tomorrowPending.length) {
-      todayHTML += `<div class="ph-sport-hdr ph-pending-hdr">Tomorrow — Pending (${tomorrowPending.length})</div>`;
-      todayHTML += tomorrowPending.map(makeRow).join('');
+  }
+
+  // Summary of other-date pending picks
+  if (otherPending.length) {
+    const otherByDate = new Map();
+    for (const p of otherPending) {
+      const d = p.date || todayStr;
+      otherByDate.set(d, (otherByDate.get(d) || 0) + 1);
     }
-    if (futurePending.length) {
-      todayHTML += `<div class="ph-sport-hdr ph-pending-hdr">Upcoming — Pending (${futurePending.length})</div>`;
-      todayHTML += futurePending.map(makeRow).join('');
-    }
+    const otherSummary = [...otherByDate.entries()]
+      .sort(([a],[b]) => a.localeCompare(b))
+      .map(([d, n]) => `<span class="tp-other-chip">${labelForDate(d)}: ${n}</span>`)
+      .join('');
+    todayHTML += `<div class="tp-other-dates">Other dates: ${otherSummary}</div>`;
   }
 
   if (_loadSeq !== seq) return;

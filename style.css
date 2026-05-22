@@ -1705,6 +1705,61 @@ input { font: inherit; }
 }
 .fav-remove-btn:hover { color: var(--live); }
 
+/* ── TENNIS PICKS — COMPACT SURFACE-GROUPED LAYOUT ── */
+.tp-section-hdr {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px 7px; font-size: .72rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .09em; color: var(--text-2);
+  border-bottom: 1px solid var(--border);
+}
+.tp-section-count { color: var(--accent); }
+.tp-results-hdr   { margin-top: 8px; }
+.tp-res-record    { color: var(--accent); font-size: .78rem; font-weight: 700; letter-spacing: 0; text-transform: none; margin-left: auto; }
+
+.tp-surf-block  { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin: 0 0 4px; }
+.tp-surf-group  {}
+.tp-surf-lbl {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 14px 3px; font-size: .6rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .09em; color: var(--text-muted);
+  background: rgba(255,255,255,.025); border-top: 1px solid rgba(255,255,255,.05);
+}
+.tp-surf-group:first-child .tp-surf-lbl { border-top: none; }
+.tp-surf-n      { font-weight: 500; opacity: .7; }
+.tp-surf-clay   { color: var(--clay); }
+.tp-surf-hard   { color: #42a5f5; }
+.tp-surf-grass  { color: var(--grass); }
+.tp-surf-indoor { color: var(--indoor); }
+
+.tp-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; font-size: .84rem;
+  border-top: 1px solid rgba(255,255,255,.04);
+  transition: background var(--transition);
+}
+.tp-row:hover { background: var(--bg-hover); }
+.tp-row-win   { border-left: 2px solid var(--accent); padding-left: 12px; }
+.tp-row-loss  { opacity: .55; }
+.tp-row-arrow { color: var(--accent); font-size: .78rem; flex-shrink: 0; }
+.tp-row-pick  { font-weight: 700; color: var(--text); min-width: 72px; flex-shrink: 0; }
+.tp-row-vs    { flex: 1; color: var(--text-muted); font-size: .77rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tp-row-meta  { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.tp-conf      { font-size: .8rem; letter-spacing: 2px; }
+.tp-conf-1    { color: var(--text-muted); }
+.tp-conf-2    { color: var(--accent-dim); }
+.tp-conf-3    { color: var(--accent); }
+.tp-ico-win   { color: var(--accent); font-weight: 700; font-size: .8rem; }
+.tp-ico-loss  { color: #ef5350; font-size: .8rem; }
+
+.tp-other-dates {
+  font-size: .72rem; color: var(--text-muted); padding: 9px 14px;
+  border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.tp-other-chip {
+  background: rgba(255,255,255,.06); border-radius: 10px;
+  padding: 2px 8px; font-size: .68rem; color: var(--text-muted);
+}
+
 /* ── TOMORROW'S TENNIS PREVIEW ── */
 .tp-tomorrow-section { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }
 .tp-tmrw-hdr  { padding: 0 2px 10px; display: flex; align-items: baseline; gap: 10px; }
