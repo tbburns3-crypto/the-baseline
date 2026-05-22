@@ -204,8 +204,8 @@ function showPicksHistory() {
     byDay.get(d).push(p);
   }
 
-  const todayUTC = dateStrUTC(0);
-  const ystUTC   = dateStrUTC(-1);
+  const todayUTC = dateStrLocal(0);
+  const ystUTC   = dateStrLocal(-1);
   const fmtDayLabel = d => {
     if (d === todayUTC) return 'Today';
     if (d === ystUTC)   return 'Yesterday';
@@ -616,12 +616,14 @@ async function tennisFetch(method, params = {}) {
 async function loadFixtures(offset = 0) {
   showLoading('matches-area', 'Loading matches…');
   try {
-    const d = dateStrUTC(offset);
+    const d = dateStrLocal(offset); // use user TZ — tennis date bar matches the user's "today"
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
     for (const m of results) S.matches.set(String(m.event_key), m);
     renderMatches(results);
     renderOverview(results);
     renderSidebar(results);
+    // Picks just got recorded — refresh simple view if it's open
+    if (document.getElementById('simple-view')?.classList.contains('sv-active')) renderSimpleView();
   } catch (err) {
     console.error('Fixtures error:', err);
     showError('matches-area', `Could not load matches - ${err.message}`, `loadFixtures(${offset})`);
@@ -1060,7 +1062,7 @@ function tournamentTier(m) {
 
 function inlineTennisPick(m) {
   // Don't generate picks for future-dated or in-progress matches
-  if (m.event_date && m.event_date > dateStrUTC(0)) return '';
+  if (m.event_date && m.event_date > dateStrLocal(0)) return '';
   if (isLive(m.event_status)) return '';
 
   // Skip doubles only — singles rankings are meaningless in doubles
@@ -1524,7 +1526,7 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   else if (taff2 > taff1) { p2Score += Math.min(3, Math.ceil((taff2-taff1)/2)); factors.push({ win: true, label: 'Tournament history', detail: `${l2} specialist here`, side: 2 }); }
 
   // Fatigue: last match was yesterday — possible carry-over fatigue
-  const ystStr = dateStrUTC(-1);
+  const ystStr = dateStrLocal(-1);
   const p1Tired = p1Recent.length > 0 && p1Recent[0].event_date === ystStr;
   const p2Tired = p2Recent.length > 0 && p2Recent[0].event_date === ystStr;
   if (p1Tired && !p2Tired) {
@@ -2019,7 +2021,7 @@ function renderDateBar() {
   document.getElementById('date-tabs-container').innerHTML = offsets.map((off, i) =>
     `<button class="date-tab ${off===S.dateOffset?'active':''}" onclick="pickDate(${off})">
        <span class="date-label">${labels[i]}</span>
-       <span class="date-value">${fmtDateShort(dateStrUTC(off))}</span>
+       <span class="date-value">${fmtDateShort(dateStrLocal(off))}</span>
      </button>`).join('');
 }
 
@@ -3213,7 +3215,7 @@ async function loadTennisPicksPage() {
   area.innerHTML = `<div class="loading-spinner"><div class="spinner"></div><p>Loading picks…</p></div>`;
 
   try {
-    const d = dateStrUTC(S.dateOffset);
+    const d = dateStrLocal(S.dateOffset);
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
     for (const m of results) {
       S.matches.set(String(m.event_key), m);
@@ -3282,7 +3284,7 @@ async function loadTomorrowPreview() {
   const area = document.getElementById('tomorrow-preview-area');
   if (!area) return;
   try {
-    const d = dateStrUTC(1);
+    const d = dateStrLocal(1);
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
 
     // Only ATP/WTA singles with player keys — cap at 10 to limit API calls
@@ -3440,7 +3442,7 @@ function buildTomorrowPickCard(m) {
   else if (taff2t > taff1t) { p2Score += Math.min(3, Math.ceil((taff2t-taff1t)/2)); factors.push({ label:'Tournament history', detail:`${l2} specialist here`, side:2 }); }
 
   // Fatigue: player's last match was TODAY (playing tomorrow after today's match)
-  const todayStr = dateStrUTC(0);
+  const todayStr = dateStrLocal(0);
   const p1Tired = p1Recent.length > 0 && p1Recent[0].event_date === todayStr;
   const p2Tired = p2Recent.length > 0 && p2Recent[0].event_date === todayStr;
   if (p1Tired && !p2Tired) {
@@ -3481,7 +3483,7 @@ function buildTomorrowPickCard(m) {
   }
 
   // Record the pick with full analysis
-  if (pickName && m.event_date && m.event_date > dateStrUTC(0)) {
+  if (pickName && m.event_date && m.event_date >= dateStrLocal(0)) {
     const pickId  = 'tn_' + m.event_key;
     const surfTag = surface ? ` (${surface})` : '';
     const matchup = `${l1} vs ${l2}${surfTag}`;
@@ -6116,6 +6118,27 @@ function svNavigate(delta) {
   renderSimpleView();
 }
 
+// Silently fetch today's tennis matches and record picks — used by the preload
+// so tennis shows on the front page even if the user hasn't visited the Tennis tab.
+async function preloadTennisPicksQuiet() {
+  try {
+    await preloadRankIndex();
+    const d = dateStrLocal(0);
+    const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
+    for (const m of results) {
+      S.matches.set(String(m.event_key), m);
+      inlineTennisPick(m);
+      if (isFinished(m.event_status) && m.event_winner) {
+        let wln = '';
+        if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player  || '');
+        else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
+        else                                          wln = lastName(m.event_winner);
+        if (wln) resolvePick('tn_' + m.event_key, wln);
+      }
+    }
+  } catch {}
+}
+
 // Silently fetch today's games for all sports in the background and record picks
 // into localStorage so renderSimpleView() can show them without the user
 // needing to click through every sport tab manually.
@@ -6204,6 +6227,7 @@ async function preloadPicksForSimpleView() {
 
   try { await loadSoccerScores(); } catch (e) {}
   try { await loadGolfPicksPage(); } catch (e) {}
+  try { await preloadTennisPicksQuiet(); } catch (e) {}
 
   try {
     const { games } = await fetchLotteryGames();
