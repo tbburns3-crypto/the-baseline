@@ -1125,12 +1125,7 @@ function groupRoundLabel(matches) {
 }
 
 function inlineTennisPick(m, dateOverride = null) {
-  const _matchLive = isLive(m.event_status);
-  if (_matchLive) {
-    // If a pick already exists, keep it (it'll show in the Picks list). Don't show inline label.
-    if (getPicks()['tn_' + m.event_key]) return '';
-    // No pick yet — fall through to record one retroactively, then return '' at the end.
-  }
+  if (isLive(m.event_status)) return '';
 
   const today     = dateStrLocal(0);
   const matchDate = m.event_date || '';
@@ -1273,7 +1268,6 @@ function inlineTennisPick(m, dateOverride = null) {
 
   const injTag = (winner === 1 && p2Hurt) || (winner === 2 && p1Hurt) ? ' ⚕' : '';
   recordPick(pickId, pick, matchup, 'tennis', conf, false, pickDate, tier);
-  if (_matchLive) return ''; // pick recorded; don't show inline label on live match row
   return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
@@ -2575,12 +2569,12 @@ function getGameBestPickHTML(espnGameId, g) {
   return '';
 }
 
-// Records pick + resolves if finished. Runs pre-game AND live (never post-game).
+// Records pick + immediately resolves if game is finished. Pre-game only — never mid-game.
 // dateOverride: pass dateStrLocal(1) when pre-loading tomorrow's games so picks get the right date.
 function autoRecordAndResolvePick(g, dateOverride = null) {
   if (!g.awayRec && !g.homeRec) return;
   const { fin, live } = gameRowState(g);
-  if (!fin) {
+  if (!live && !fin) {
     const sc   = parseSeriesContext(g.series);
     // Playoffs: home court worth more (crowd, refs, routines) — bump by extra 2%
     const playoffMult = sc.isPlayoff ? 1.02 : 1.0;
@@ -5611,10 +5605,16 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   // Determine group state BEFORE scoring so we know if pick should be locked
   const statuses     = players.map(p => playerRoundStatus(p, round));
   const groupStarted = statuses.some(s => s === 'live' || s === 'finished');
-  const pickId       = group.time
-    ? `golf_${eventId}_${group.time.replace(/\D/g,'')}`
+  // Use time-only (HHMM) + nine + eventId so pickId is stable even when ESPN shifts
+  // p.teeTime to the next round's date while the current round is still in progress.
+  const normTime = t => { try { const d = new Date(t); if (!isNaN(d)) return d.getUTCHours().toString().padStart(2,'0') + d.getUTCMinutes().toString().padStart(2,'0'); } catch {} return t.replace(/\D/g,'').slice(-6); };
+  const pickId = group.time
+    ? `golf_${eventId}_${normTime(group.time)}_${group.nine || 'front'}`
     : `golf_${eventId}_fb_${players.map(p => p.athlete?.id || '').sort().join('_')}`;
-  const existingPick = getPicks()[pickId];
+  // Also check old full-date format in case picks were stored pre-fix
+  const oldPickId    = group.time ? `golf_${eventId}_${group.time.replace(/\D/g,'')}` : null;
+  const allPicksNow2 = getPicks();
+  const existingPick = allPicksNow2[pickId] || (oldPickId ? allPicksNow2[oldPickId] : null);
 
   const scored = players.map(p => {
     const sa    = getSA(p);
