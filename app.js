@@ -2820,9 +2820,9 @@ function smartWP(recs, isHome, sport) {
 // Confidence level based on blended win probability margin
 function wpToConf(winPct) {
   const margin = Math.abs(winPct - 0.5);
-  if (margin >= 0.14) return 2;
-  if (margin >= 0.08) return 1;
-  return 0;
+  if (margin >= 0.18) return 2;  // 68%+ win probability
+  if (margin >= 0.10) return 1;  // 60%+ win probability
+  return 0;                       // < 60% — too close to call, excluded from ticket
 }
 
 // Rest-days win-probability multiplier. daysRest=1 means B2B (played yesterday).
@@ -3059,7 +3059,7 @@ function buildPickSection(awayName, homeName, opts) {
     return `<div class="gp-pfactor ${cls}"><span class="gp-pf-icon">${icon}</span><span class="gp-pf-label">${esc(f.label)}</span><span class="gp-pf-detail">${f.detail}</span></div>`;
   }).join('');
 
-  const pickedConf = gap < 0.025 ? 1 : gap > 0.14 ? 3 : gap > 0.08 ? 2 : 1;
+  const pickedConf = gap < 0.025 ? 0 : gap > 0.14 ? 3 : gap > 0.08 ? 2 : 1;
   return {
     html: `${seriesHTML}<div class="gp-pick-box">${verdictHTML}<div class="gp-pick-factors">${factorsHTML}</div></div>`,
     team: pickTeam,
@@ -5904,10 +5904,10 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
 
-  // Only record pre-round picks so live groups don't appear in the daily ticket.
-  // The pick card still renders for live groups using the stored pre-round pick.
+  // Record pick regardless of group state — force=false means existing picks are never overwritten.
+  // This ensures tickets show golf picks even when the user first opens the app mid/post-round.
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
-  if (!groupStarted) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+  recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
 
   // Display: if group has started, show the stored pre-round pick at the top
   const storedLastName = (existingPick?.team || '').toLowerCase();
@@ -6980,6 +6980,7 @@ function buildDailyTicketIfNeeded() {
       candidates.push({ id, score, sport: p.sport || 'other', type: 'player',
         pick: p.player, description: statLabel, matchup: p.gameMatchup || '', conf: p.conf || 1 });
     } else if (p.team) {
+      if ((p.conf || 0) < 1) continue; // skip toss-up moneylines from daily ticket
       const sport = p.sport || 'tennis';
       if (sport === 'tennis') {
         const tierBonus = TIER_BONUS[p.tier] ?? -99;
@@ -7331,7 +7332,7 @@ function getPicksForTicket(type, date, allPicks) {
 
   switch (type) {
     case 'mlb_game':
-      return entries.filter(([, p]) => p.sport === 'mlb' && !p.type)
+      return entries.filter(([, p]) => p.sport === 'mlb' && !p.type && (p.conf||0) >= 1)
         .sort(sortConf).slice(0, 10).map(toGame);
     case 'mlb_hits':
     case 'mlb_rbi':
@@ -7350,14 +7351,14 @@ function getPicksForTicket(type, date, allPicks) {
     }
     case 'tennis_main': {
       const main = new Set(['slam','masters','500','250']);
-      return entries.filter(([, p]) => p.sport === 'tennis' && main.has(p.tier))
+      return entries.filter(([, p]) => p.sport === 'tennis' && main.has(p.tier) && (p.conf||0) >= 1)
         .sort(sortConf).slice(0, 10).map(toGame);
     }
     case 'tennis_all':
-      return entries.filter(([, p]) => p.sport === 'tennis')
+      return entries.filter(([, p]) => p.sport === 'tennis' && (p.conf||0) >= 1)
         .sort(sortConf).slice(0, 10).map(toGame);
     case 'golf':
-      return entries.filter(([id, p]) => p.sport === 'golf' && !id.startsWith('_fb_'))
+      return entries.filter(([id, p]) => p.sport === 'golf' && !id.startsWith('_fb_') && (p.conf||0) >= 1)
         .sort(sortConf).slice(0, 10).map(toGame);
     case 'nba':
     case 'wnba':
@@ -7371,7 +7372,7 @@ function getPicksForTicket(type, date, allPicks) {
         nfl:  { 'Passing Yards':'PASS', 'Rushing Yards':'RUSH', 'Receiving Yards':'REC', Points:'PTS' },
       };
       const PROP_ABBR = PA[sp] || {};
-      return entries.filter(([, p]) => p.sport === sp)
+      return entries.filter(([, p]) => p.sport === sp && (p.type === 'player' || (p.conf||0) >= 1))
         .sort((a, b) => {
           const ga = a[1].type === 'player' ? 0 : 1, gb = b[1].type === 'player' ? 0 : 1;
           if (ga !== gb) return gb - ga;
@@ -7472,6 +7473,7 @@ function getMLBPerGameTickets(date, allPicks) {
 
   for (const [id, p] of entries) {
     if (!p.type) {
+      if ((p.conf||0) < 1) continue; // skip toss-up moneylines
       if (!games.has(id)) games.set(id, { gameId: id, matchup: p.matchup||id, legs: [] });
       games.get(id).legs.push({ id, pick: p.team||'', matchup:'', conf: p.conf||1, sport:'mlb', propType:'game', result: p.result, icon:'🏆' });
     } else if (p.type === 'player' && RELEVANT.has(p.prop)) {
@@ -7534,6 +7536,7 @@ function getSportPerGameTickets(date, allPicks, sport) {
 
   for (const [id, p] of entries) {
     if (!p.type) {
+      if ((p.conf||0) < 1) continue; // skip toss-up moneylines
       if (!games.has(id)) games.set(id, { gameId: id, matchup: p.matchup||id, legs: [] });
       games.get(id).legs.push({ id, pick: p.team||'', matchup:'', conf: p.conf||1, sport, propType:'game', result: p.result, icon:'🏆' });
     } else if (p.type === 'player') {
