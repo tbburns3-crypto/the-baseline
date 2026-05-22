@@ -5791,18 +5791,15 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           </div>`;
 
         } else if (tab === 'today') {
-          const todayDateStr = dateStrLocal(); // "YYYY-MM-DD"
           const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
-          // Filter upcoming to only include groups whose tee time is actually today
-          const todayUpcoming = upcomingGroups.filter(g => g.time.substring(0, 10) === todayDateStr);
-          if (!groups.length && !todayUpcoming.length) continue;
-          const preHdr = todayUpcoming.length > 0
-            ? `<div class="golf-group-status-hdr">⏰ Pre-Round — ${todayUpcoming.length} group${todayUpcoming.length !== 1 ? 's' : ''}</div>` : '';
+          if (!groups.length && !upcomingGroups.length) continue;
+          const preHdr = upcomingGroups.length > 0
+            ? `<div class="golf-group-status-hdr">⏰ Pre-Round — ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''}</div>` : '';
           html += `<div class="golf-picks-section">
             <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
             ${groups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
             ${preHdr}
-            ${todayUpcoming.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+            ${upcomingGroups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
           </div>`;
 
         } else if (tab === 'tomorrow') {
