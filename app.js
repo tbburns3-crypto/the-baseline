@@ -6741,7 +6741,7 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
-const _TICKET_KEY = '_baseline_ticket_v7';
+const _TICKET_KEY = '_baseline_ticket_v8';
 
 function getDailyTicket() {
   try {
@@ -6768,7 +6768,7 @@ function buildDailyTicketIfNeeded() {
   const candidates = [];
   for (const [id, p] of Object.entries(allPicks)) {
     if (p.date !== today) continue;
-    if (p.result !== null) continue;  // skip already-finished matches
+    if (id.includes('_fb_')) continue;  // skip malformed fallback golf picks from earlier bug
     let score = (p.conf || 1);
 
     if (p.type === 'player') {
