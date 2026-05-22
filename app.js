@@ -7223,6 +7223,17 @@ async function preloadPicksForSimpleView() {
 
 // ── TYPED TICKET HELPERS ──────────────────────────────────────
 
+function toOULine(sport, prop, raw) {
+  if (!raw || raw <= 0) return null;
+  if (sport === 'nhl') {
+    const p = (prop || '').toLowerCase();
+    // ESPN returns per-game rates for NHL (e.g. 0.41 GPG, 1.2 PPG)
+    if (p.includes('point') && raw >= 1.0) return '1.5';
+    return '0.5'; // Goals/Assists → anytime scorer line
+  }
+  return (Math.floor(raw * 2) / 2 - 0.5).toFixed(1);
+}
+
 function getPicksForTicket(type, date, allPicks) {
   const entries = Object.entries(allPicks).filter(([, p]) => p.date === date);
   const sortConf = (a, b) => (b[1].conf||1) - (a[1].conf||1);
@@ -7286,7 +7297,7 @@ function getPicksForTicket(type, date, allPicks) {
         .map(([id, p]) => {
           if (p.type === 'player') {
             const raw  = parseFloat(p.stat || 0);
-            const line = raw > 0 ? (Math.floor(raw * 2) / 2 - 0.5).toFixed(1) : null;
+            const line = toOULine(sp, p.prop, raw);
             const abbr = PROP_ABBR[p.prop] || p.prop || 'PROP';
             const desc = line !== null ? `OVER ${line} ${abbr}` : `${p.prop}: ${p.stat}`;
             return { id, pick: lastName(p.player||p.team||''), description: desc, matchup: p.gameMatchup||p.matchup||'', conf: p.conf||1, sport: sp, propType:'player', result: p.result };
@@ -7398,7 +7409,7 @@ function getSportPerGameTickets(date, allPicks, sport) {
       const gid = parts[1];
       if (!games.has(gid)) games.set(gid, { gameId: gid, matchup: p.gameMatchup||gid, legs: [] });
       const raw  = parseFloat(p.stat || 0);
-      const line = raw > 0 ? (Math.floor(raw * 2) / 2 - 0.5).toFixed(1) : null;
+      const line = toOULine(sport, p.prop, raw);
       const abbr = abbrs[p.prop] || p.prop || 'PROP';
       const desc = line !== null ? `OVER ${line} ${abbr}` : `${p.prop}: ${p.stat}`;
       games.get(gid).legs.push({
