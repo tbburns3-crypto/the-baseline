@@ -7279,6 +7279,8 @@ function renderTZSelector() {
 
 function init() {
   clearOldPicks();
+  // Patch runs synchronously before any rendering so Jacquet appears immediately
+  patchTicketSwapRiediForJacquet();
   updatePicksDisplay();
   renderTZSelector();
   renderDateBar();
