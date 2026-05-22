@@ -6985,12 +6985,9 @@ function buildDailyTicketIfNeeded() {
   localStorage.setItem(_TICKET_KEY, JSON.stringify({ date: today, legs }));
 }
 
-// Patch: ensure Kyrian Jacquet is on the locked daily ticket.
-// Jacquet was the original pick — Riedi was never supposed to be there.
-// Runs every preload so it self-heals even after rebuilds that excluded Jacquet.
+// Patch: one-time fix for 2026-05-22 only — no longer active.
 function patchTicketSwapRiediForJacquet() {
-  const ticket = getDailyTicket();
-  if (!ticket) return;
+  return; // patch complete — do not modify the locked ticket
 
   // Nothing to do if Jacquet is already on the ticket
   if (ticket.legs.some(l =>
@@ -7309,6 +7306,55 @@ function getPicksForTicket(type, date, allPicks) {
   }
 }
 
+function getGolfSplitTickets(date, allPicks) {
+  const entries = Object.entries(allPicks)
+    .filter(([id, p]) => p.sport === 'golf' && !id.startsWith('_fb_') && p.date === date)
+    .sort((a, b) => (b[1].conf||1) - (a[1].conf||1));
+
+  const toGolfLeg = ([id, p]) => ({
+    id, pick: p.team, matchup: p.matchup, conf: p.conf||1,
+    sport: 'golf', propType: 'game', result: p.result
+  });
+
+  if (!entries.length) return { early: [], late: [], singleTicket: true };
+
+  // Find active override for today
+  const ovEntry = Object.entries(GOLF_PAIRINGS_OVERRIDE).find(([, ov]) => ov.date === date);
+  const [ovEventId, activeOv] = ovEntry || [null, null];
+
+  // Round 4 = everyone plays together — single ticket
+  if (activeOv?.round === 4) {
+    return { early: entries.slice(0, 10).map(toGolfLeg), late: [], singleTicket: true };
+  }
+
+  const totalOvGroups = activeOv?.groups?.length || 0;
+  // earlyCount can be set explicitly in the override; otherwise split half/half
+  const earlyCount = activeOv?.earlyCount ?? (totalOvGroups > 0 ? Math.ceil(totalOvGroups / 2) : null);
+
+  const early = [], late = [];
+  for (const entry of entries) {
+    const [id] = entry;
+    let isEarly = true;
+
+    if (activeOv && ovEventId && id.startsWith(`golf_${ovEventId}_ov`)) {
+      const idx = parseInt(id.slice(`golf_${ovEventId}_ov`.length), 10);
+      isEarly = !isNaN(idx) && earlyCount !== null ? idx < earlyCount : true;
+    } else {
+      // Non-override: parse HHMM from pick ID (UTC)
+      const m = id.match(/_(\d{4})_/);
+      if (m) isEarly = parseInt(m[1], 10) < 1500; // before 15:00 UTC ≈ before 11am ET
+    }
+
+    if (isEarly) { if (early.length < 10) early.push(toGolfLeg(entry)); }
+    else         { if (late.length  < 10) late.push(toGolfLeg(entry)); }
+  }
+
+  // If everything ended up in one bucket, single ticket
+  if (!late.length)  return { early, late: [], singleTicket: true };
+  if (!early.length) return { early: late, late: [], singleTicket: true };
+  return { early, late, singleTicket: false };
+}
+
 function getMLBPerGameTickets(date, allPicks) {
   // Per-game selection: game winner + best hit (both teams) + best RBI + best HR + best K pitcher.
   // Gives 5-6 picks per game: one per category, deduped to the highest-quality option.
@@ -7573,10 +7619,17 @@ function renderTicketsPage() {
   </div>`;
 
   // ── Golf ──
-  const golfLegs = getPicksForTicket('golf', date, allPicks);
+  const { early: golfEarly, late: golfLate, singleTicket: golfSingle } = getGolfSplitTickets(date, allPicks);
+  const golfCards = [];
+  if (golfSingle) {
+    if (golfEarly.length) golfCards.push(renderTicketBlock('⛳ Win Picks', golfEarly, allPicks));
+  } else {
+    if (golfEarly.length) golfCards.push(renderTicketBlock('⛳ Early Tee', golfEarly, allPicks));
+    if (golfLate.length)  golfCards.push(renderTicketBlock('⛳ Late Tee',  golfLate,  allPicks));
+  }
   const golfHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">⛳ Golf</div>
-    ${golfLegs.length ? grid([renderTicketBlock('⛳ Win Picks', golfLegs, allPicks)]) : `<div class="tp-sport-empty">No golf picks yet${off===0?' — visit the Golf tab':''}</div>`}
+    ${golfCards.length ? grid(golfCards) : `<div class="tp-sport-empty">No golf picks yet${off===0?' — visit the Golf tab':''}</div>`}
   </div>`;
 
   // ── NBA ──
