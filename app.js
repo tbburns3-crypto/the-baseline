@@ -62,6 +62,11 @@ let _ticketDateOffset = 0;        // tickets tab date: -1=yesterday, 0=today, 1=
 // Key: "sport:ABBR" (e.g. "nba:BOS"), value: daysRest (1=B2B, 2=short, 3+=normal)
 const _restDaysCache = new Map();
 
+// ── INJURY PENALTY CACHE ─────────────────────────────────────
+// Populated by fetchInjuryPenalties() during preload for NBA/WNBA.
+// Key: "sport:ABBR" (e.g. "nba:GSW"), value: win-probability penalty (0–0.12)
+const _injuryPenalty = new Map();
+
 // ── TENNIS INJURY MAP ────────────────────────────────────────
 // Keyed by lowercase last name → { note, returning, published }
 // Populated from ESPN tennis news headlines on tab open.
@@ -2594,7 +2599,23 @@ function autoRecordAndResolvePick(g, dateOverride = null) {
     const awayWPr  = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport) * momentum.away * awayRM;
     const rawHome  = homeWPr * boost;
     const total    = awayWPr + rawHome;
-    const homeFrac = rawHome / total;
+    let homeFrac   = rawHome / total;
+
+    // Blend with Vegas spread (50/50) — most predictive single signal available
+    const spreadData = parseOddsSpread(g);
+    if (spreadData) {
+      const spreadHomeFrac = spreadData.isHomeFavored ? spreadData.spreadWP : 1 - spreadData.spreadWP;
+      homeFrac = 0.5 * homeFrac + 0.5 * spreadHomeFrac;
+    }
+
+    // Apply injury penalty — teams with confirmed Out players lose win probability
+    const sp = g.sport || '';
+    const homePenalty = _injuryPenalty.get(`${sp}:${(g.homeAbbr||'').toUpperCase()}`) || 0;
+    const awayPenalty = _injuryPenalty.get(`${sp}:${(g.awayAbbr||'').toUpperCase()}`) || 0;
+    if (homePenalty || awayPenalty) {
+      homeFrac = Math.max(0.10, Math.min(0.90, homeFrac - homePenalty + awayPenalty));
+    }
+
     const homePct  = Math.round(homeFrac * 100);
     const short    = (homePct >= 50 ? g.homeTeam : g.awayTeam).split(' ').pop();
     const conf     = wpToConf(homePct >= 50 ? homeFrac : 1 - homeFrac);
@@ -2870,6 +2891,53 @@ async function populateRestDaysCache() {
       } catch (e) {}
     }
   }
+}
+
+// Parse ESPN odds spread string (e.g. "OKC -6.5") into { isHomeFavored, spreadWP }.
+// Returns null if spread is missing, too small, or team can't be identified.
+function parseOddsSpread(g) {
+  const s = String(g.odds?.spread || '').trim();
+  if (!s) return null;
+  const m = s.match(/^([A-Z]{2,5})\s+([-+]?\d+\.?\d*)$/i);
+  if (!m) return null;
+  const tag = m[1].toUpperCase();
+  const pts = parseFloat(m[2]);
+  if (isNaN(pts) || Math.abs(pts) < 1) return null;
+  const homeAbbr  = (g.homeAbbr || '').toUpperCase();
+  const awayAbbr  = (g.awayAbbr || '').toUpperCase();
+  const homeWords = (g.homeTeam || '').toUpperCase().split(/\s+/);
+  const awayWords = (g.awayTeam || '').toUpperCase().split(/\s+/);
+  const isHome = tag === homeAbbr || homeWords.includes(tag);
+  const isAway = !isHome && (tag === awayAbbr || awayWords.includes(tag));
+  if (!isHome && !isAway) return null;
+  // Negative spread → that team is the favorite
+  const isHomeFavored = isHome ? pts < 0 : pts > 0;
+  // 3 pts ≈ 60%, 6 pts ≈ 65%, 10 pts ≈ 72%, 14 pts ≈ 78%
+  const spreadWP = Math.min(0.80, 0.5 + Math.abs(pts) * 0.022);
+  return { isHomeFavored, spreadWP };
+}
+
+// Fetch ESPN injury report for NBA or WNBA and populate _injuryPenalty cache.
+// Only "Out" and "Doubtful" statuses earn a penalty (Questionable/DTD are uncertain).
+async function fetchInjuryPenalties(sport) {
+  const paths = { nba: 'basketball/nba', wnba: 'basketball/wnba' };
+  const path = paths[sport];
+  if (!path) return;
+  try {
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${path}/injuries`);
+    const j   = await res.json();
+    for (const team of (j.injuries || [])) {
+      const abbr = (team.abbreviation || '').toUpperCase();
+      if (!abbr) continue;
+      let penalty = 0;
+      for (const inj of (team.injuries || [])) {
+        const st = (inj.status || '').toLowerCase();
+        if (st === 'out')           penalty += 0.05;
+        else if (st === 'doubtful') penalty += 0.025;
+      }
+      if (penalty > 0) _injuryPenalty.set(`${sport}:${abbr}`, Math.min(0.12, penalty));
+    }
+  } catch {}
 }
 
 function parseWeatherFactor(w, fmt) {
@@ -7142,19 +7210,26 @@ async function preloadPicksForSimpleView() {
     wnba: { path: 'basketball/wnba', cats: ['points', 'rebounds', 'assists'] },
   };
 
-  // Populate rest-days cache for NBA/WNBA/NHL B2B detection before recording picks
+  // Populate rest-days cache and injury reports before recording picks
   try { await populateRestDaysCache(); } catch (e) {}
+  await Promise.allSettled([fetchInjuryPenalties('nba'), fetchInjuryPenalties('wnba')]);
 
   // MLB handled separately below — loadMLBPicksPage records the nuanced team+player picks.
   // Avoid running autoRecordAndResolvePick for MLB here to prevent a stale simple-seed
   // (based on win% alone) from conflicting with the pitcher/form analysis pick.
+  const tomorrow = dateStrLocal(1);
   for (const sport of ['nba', 'nfl', 'nhl', 'wnba']) {
     try {
-      const games = await espnGames(sport, 0);
-      games.forEach(g => autoRecordAndResolvePick(g));
+      const [todayGames, tomorrowGames] = await Promise.all([
+        espnGames(sport, 0),
+        espnGames(sport, 1).catch(() => []),
+      ]);
+      todayGames.forEach(g => autoRecordAndResolvePick(g));
+      tomorrowGames.forEach(g => autoRecordAndResolvePick(g, tomorrow));
+
       const cfg = sportCfg[sport];
       if (cfg) {
-        const upcoming = games.filter(g => !gameRowState(g).fin).slice(0, 4);
+        const upcoming = todayGames.filter(g => !gameRowState(g).fin).slice(0, 4);
         for (const g of upcoming) {
           try {
             const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${cfg.path}/summary?event=${g.id}`);
