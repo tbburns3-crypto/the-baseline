@@ -5295,9 +5295,11 @@ function groupByTeeTime(players, round = 1) {
   const definite = new Map();
   const upcoming = new Map();
 
+  const todayUTC = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD" in UTC
+
   for (const p of players) {
     const holeScores = p.linescores?.[round - 1]?.linescores || [];
-    const t = extractTeeTime(p);
+    let t = extractTeeTime(p);
 
     if (holeScores.length === 0) {
       if (t) {
@@ -5310,9 +5312,19 @@ function groupByTeeTime(players, round = 1) {
     // Use first hole period to determine starting nine (split-tee disambiguation)
     const nine = holeScores[0].period >= 10 ? 'back' : 'front';
 
+    // ESPN updates p.teeTime to the NEXT round's pairings while the current round is
+    // still live. If the tee time's UTC date is past today, discard it — the player
+    // is in the current round and their next-round time is useless for grouping.
+    if (t) {
+      try {
+        const teeUTC = new Date(t).toISOString().slice(0, 10);
+        if (teeUTC > todayUTC) t = '';
+      } catch { t = ''; }
+    }
+
     if (!t) {
-      // Player is actively playing but tee time not in API response.
-      // Slot into fallback groups of up to 3 so the pick card still renders.
+      // No usable tee time — slot into fallback groups of up to 3 by field order
+      // so the pick card still renders even when tee times aren't available.
       let fbGroup;
       for (const g of definite.values()) {
         if (g._fb && g.players.length < 3) { fbGroup = g; break; }
