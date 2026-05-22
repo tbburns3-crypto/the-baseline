@@ -5552,22 +5552,39 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const existingPick = getPicks()[pickId];
 
   const scored = players.map(p => {
-    const sa  = getSA(p);
-    const pos = parseInt(p.order) || 999;
+    const sa    = getSA(p);
+    const owgr  = getOWGR(p);
+    const pos   = parseInt(p.order) || 999;
     const todayNum = getTodayNum(p);
     let score = 0;
     const factors = [];
 
-    // Leaderboard position (pre-round tournament standing — stable)
+    // 1. OWGR world ranking — best global quality signal
+    const owgrPts = owgr > 0 && owgr <= 5 ? 4 : owgr <= 15 ? 3 : owgr <= 40 ? 2 : owgr <= 100 ? 1 : 0;
+    if (owgrPts > 0) { score += owgrPts; factors.push(`W${owgr}`); }
+
+    // 2. Tournament leaderboard position — how they're performing this week
     const posPts = pos <= 3 ? 5 : pos <= 10 ? 4 : pos <= 25 ? 3 : pos <= 50 ? 2 : pos <= 80 ? 1 : 0;
     if (posPts > 0 && pos < 999) { score += posPts; factors.push(`#${pos}`); }
 
-    // Scoring average vs group (season stat — stable)
+    // 3. Season scoring average vs group — long-run quality
     if (sa > 0 && avgSA > 0) {
       const diff = sa - avgSA;
       if (diff < -0.4) { score += 2; factors.push(`${sa.toFixed(1)} avg`); }
       else if (diff < 0) { score += 1; factors.push(`${sa.toFixed(1)} avg`); }
     }
+
+    // 4. Previous rounds in this tournament — recent form this week
+    // Each completed round under par = +1; 2+ under = +1 bonus
+    let wkFormPts = 0;
+    for (let r = 1; r < round; r++) {
+      const rv = p.linescores?.[r - 1]?.displayValue;
+      if (!rv || rv === '-') continue;
+      const rn = rv === 'E' ? 0 : parseInt(rv);
+      if (!isNaN(rn) && rn < 0) wkFormPts += 1;
+    }
+    if (wkFormPts >= 2) { score += 2; factors.push(`${wkFormPts}× under`); }
+    else if (wkFormPts === 1) { score += 1; factors.push('prev. under'); }
 
     // Live round score intentionally excluded — using it shifts the pick to whoever
     // is hot at that moment and causes the displayed pick to change mid-round.
@@ -5708,38 +5725,45 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           </div>`;
 
         } else if (tab === 'today') {
+          const todayDateStr = dateStrLocal(); // "YYYY-MM-DD"
           const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
-          if (!groups.length && !upcomingGroups.length) continue;
-          const preHdr = upcomingGroups.length > 0
-            ? `<div class="golf-group-status-hdr">⏰ Pre-Round — ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''}</div>` : '';
+          // Filter upcoming to only include groups whose tee time is actually today
+          const todayUpcoming = upcomingGroups.filter(g => g.time.substring(0, 10) === todayDateStr);
+          if (!groups.length && !todayUpcoming.length) continue;
+          const preHdr = todayUpcoming.length > 0
+            ? `<div class="golf-group-status-hdr">⏰ Pre-Round — ${todayUpcoming.length} group${todayUpcoming.length !== 1 ? 's' : ''}</div>` : '';
           html += `<div class="golf-picks-section">
             <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
             ${groups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
             ${preHdr}
-            ${upcomingGroups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+            ${todayUpcoming.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
           </div>`;
 
         } else if (tab === 'tomorrow') {
           const nextRound = round + 1;
-          // Root-level teeTime is populated when ESPN releases next-round pairings
+          const tmrwDateStr = dateStr(1); // "YYYY-MM-DD"
+          // Only include teeTime values whose date portion is actually tomorrow.
+          // p.teeTime during an active round is today's time — filtering by date
+          // prevents showing today's groups in the tomorrow tab.
           const teeMap = new Map();
           for (const p of allComp) {
             const t = p.teeTime || '';
             if (!t) continue;
+            if (t.substring(0, 10) !== tmrwDateStr) continue; // skip today's or past tee times
             if (!teeMap.has(t)) teeMap.set(t, { time: t, nine: 'unknown', players: [], upcoming: true });
             teeMap.get(t).players.push(p);
           }
-          let validGroups = [...teeMap.values()]
+          const validGroups = [...teeMap.values()]
             .filter(g => g.players.length >= 2)
             .sort((a, b) => new Date(a.time) - new Date(b.time));
 
-          // Fallback: check round+1 linescores upcoming bucket
           if (!validGroups.length) {
-            const { upcomingGroups } = groupByTeeTime(allComp, nextRound);
-            validGroups = upcomingGroups.filter(g => g.players.length >= 2);
+            html += `<div class="golf-picks-section">
+              <div class="golf-picks-event-hdr golf-tmrw-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${nextRound} · <span class="golf-tmrw-label">Tomorrow</span></div>
+              <div class="empty-state muted" style="padding:12px">Pairings not yet released for Round ${nextRound}.</div>
+            </div>`;
+            continue;
           }
-
-          if (!validGroups.length) continue;
           html += `<div class="golf-picks-section">
             <div class="golf-picks-event-hdr golf-tmrw-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${nextRound} · <span class="golf-tmrw-label">Tomorrow</span></div>
             ${validGroups.map(g => buildGolfGroupPickCard(g, nextRound, false, tour.key, ev.id)).join('')}
