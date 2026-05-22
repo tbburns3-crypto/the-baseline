@@ -1125,7 +1125,12 @@ function groupRoundLabel(matches) {
 }
 
 function inlineTennisPick(m, dateOverride = null) {
-  if (isLive(m.event_status)) return '';
+  const _matchLive = isLive(m.event_status);
+  if (_matchLive) {
+    // If a pick already exists, keep it (it'll show in the Picks list). Don't show inline label.
+    if (getPicks()['tn_' + m.event_key]) return '';
+    // No pick yet — fall through to record one retroactively, then return '' at the end.
+  }
 
   const today     = dateStrLocal(0);
   const matchDate = m.event_date || '';
@@ -1268,6 +1273,7 @@ function inlineTennisPick(m, dateOverride = null) {
 
   const injTag = (winner === 1 && p2Hurt) || (winner === 2 && p1Hurt) ? ' ⚕' : '';
   recordPick(pickId, pick, matchup, 'tennis', conf, false, pickDate, tier);
+  if (_matchLive) return ''; // pick recorded; don't show inline label on live match row
   return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
@@ -2569,12 +2575,12 @@ function getGameBestPickHTML(espnGameId, g) {
   return '';
 }
 
-// Records pick + immediately resolves if game is finished. Pre-game only — never mid-game.
+// Records pick + resolves if finished. Runs pre-game AND live (never post-game).
 // dateOverride: pass dateStrLocal(1) when pre-loading tomorrow's games so picks get the right date.
 function autoRecordAndResolvePick(g, dateOverride = null) {
   if (!g.awayRec && !g.homeRec) return;
   const { fin, live } = gameRowState(g);
-  if (!live && !fin) {
+  if (!fin) {
     const sc   = parseSeriesContext(g.series);
     // Playoffs: home court worth more (crowd, refs, routines) — bump by extra 2%
     const playoffMult = sc.isPlayoff ? 1.02 : 1.0;
@@ -5307,10 +5313,25 @@ function groupByTeeTime(players, round = 1) {
       continue;
     }
 
-    if (!t) continue;
-
     // Use first hole period to determine starting nine (split-tee disambiguation)
     const nine = holeScores[0].period >= 10 ? 'back' : 'front';
+
+    if (!t) {
+      // Player is actively playing but tee time not in API response.
+      // Slot into fallback groups of up to 3 so the pick card still renders.
+      let fbGroup;
+      for (const g of definite.values()) {
+        if (g._fb && g.players.length < 3) { fbGroup = g; break; }
+      }
+      if (!fbGroup) {
+        const fbKey = `_fb${definite.size}`;
+        fbGroup = { time: '', nine, players: [], _fb: true };
+        definite.set(fbKey, fbGroup);
+      }
+      fbGroup.players.push(p);
+      continue;
+    }
+
     const key  = `${t}||${nine}`;
     if (!definite.has(key)) definite.set(key, { time: t, nine, players: [] });
     definite.get(key).players.push(p);
@@ -5590,7 +5611,9 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   // Determine group state BEFORE scoring so we know if pick should be locked
   const statuses     = players.map(p => playerRoundStatus(p, round));
   const groupStarted = statuses.some(s => s === 'live' || s === 'finished');
-  const pickId       = `golf_${eventId}_${group.time.replace(/\D/g,'')}`;
+  const pickId       = group.time
+    ? `golf_${eventId}_${group.time.replace(/\D/g,'')}`
+    : `golf_${eventId}_fb_${players.map(p => p.athlete?.id || '').sort().join('_')}`;
   const existingPick = getPicks()[pickId];
 
   const scored = players.map(p => {
@@ -5670,9 +5693,10 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
 
-  // Pre-game only — only record picks for groups that haven't teed off yet.
+  // Record pick regardless of round status — recordPick is idempotent (won't overwrite existing).
+  // Scoring excludes live round score so picks stay valid once the round starts.
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
-  if (!groupStarted) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+  recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
 
   // Display: if group has started, show the stored pre-round pick at the top
   const storedLastName = (existingPick?.team || '').toLowerCase();
@@ -5738,7 +5762,7 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
 
   const preLabel = groupStarted && existingPick ? ' <span class="golf-pick-pre-label">pre-round</span>' : '';
   return `<div class="golf-pick-card">
-    <div class="golf-pick-time">⏰ ${esc(formatTeeTime(group.time))}</div>
+    <div class="golf-pick-time">⏰ ${group.time ? esc(formatTeeTime(group.time)) : 'In Progress'}</div>
     <div class="golf-pick-hdr"><span>PLAYER</span><span>TOT</span><span>TODAY</span><span>THRU</span><span>FACTORS</span></div>
     ${rows.join('')}
     <div class="golf-pick-verdict-bar">
