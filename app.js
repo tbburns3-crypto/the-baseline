@@ -55,6 +55,7 @@ let _loadSeq = 0;
 let _tpTab          = 'upcoming'; // tennis picks active tab: 'upcoming' | 'results'
 let _golfPicksTab   = 'today';    // golf picks active tab: 'yesterday' | 'today' | 'tomorrow'
 let _svPreloadDone  = false;      // true after preloadPicksForSimpleView completes
+let _ticketDateOffset = 0;        // tickets tab date: -1=yesterday, 0=today, 1=tomorrow
 
 // ── REST DAYS CACHE ──────────────────────────────────────────
 // Populated by populateRestDaysCache() during preload.
@@ -3453,6 +3454,19 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       for (const [b, prop] of [[aHit,'hit'],[hHit,'hit'],[aHR,'hr'],[hHR,'hr'],[aRBI,'rbi'],[hRBI,'rbi'],[aBB,'walk'],[hBB,'walk'],[aSB,'sb'],[hSB,'sb']]) {
         if (b) recordPlayerPick('plr_'+gKey+'_'+b.id+'_'+prop, 'mlb', b.name, prop==='hit'?'Hit':prop==='hr'?'HR':prop==='rbi'?'RBI':prop==='walk'?'Walk':'SB', statStr[prop](b), gameMatchup, gamePk);
       }
+      // Pitcher strikeout picks — record for high-K/9 arms (adjusted for form, rest, bullpen)
+      const recKPick = (pd, pname, rates, side) => {
+        if (!pd?.season) return;
+        const ip = parseFloat(pd.season.inningsPitched || 0);
+        if (ip < 20) return;
+        const baseK9 = (parseInt(pd.season.strikeOuts || 0) / ip) * 9;
+        if (rates.k9 >= 9.0) {
+          recordPlayerPick(`plr_${gKey}_k_${side}`, 'mlb', pname, 'K',
+            `${rates.k9.toFixed(1)}K/9 · ${parseInt(pd.season.strikeOuts||0)}K season`, gameMatchup, gamePk);
+        }
+      };
+      recKPick(awayPD, awayPName, awayRates, 'away');
+      recKPick(homePD, homePName, homeRates, 'home');
     } else {
       resolvePlayerPicksForGame(gKey, gamePk);
     }
@@ -7183,30 +7197,98 @@ async function preloadPicksForSimpleView() {
   if (S.sport === 'tickets') renderTicketsPage();
 }
 
-function renderTicketsPage() {
-  const el = document.getElementById('tickets-area');
-  if (!el) return;
-  const today = dateStrLocal();
-  const ticket = getDailyTicket();
-  const allPicks = getPicks();
+// ── TYPED TICKET HELPERS ──────────────────────────────────────
 
-  if (!ticket) {
-    el.innerHTML = _svPreloadDone
-      ? `<div class="empty-state">Not enough picks today. Visit the Scores tabs to load games first.</div>`
-      : `<div class="loading-spinner"><div class="spinner"></div><p>Building today's ticket…</p></div>`;
-    return;
+function getPicksForTicket(type, date, allPicks) {
+  const entries = Object.entries(allPicks).filter(([, p]) => p.date === date);
+  const sortConf = (a, b) => (b[1].conf||1) - (a[1].conf||1);
+  const numFromStat = (stat, rx) => { const m = (stat||'').match(rx); return m ? parseFloat(m[1]) : 0; };
+  const toGame  = ([id, p]) => ({ id, pick: p.team, matchup: p.matchup, conf: p.conf||1, sport: p.sport, propType: 'game', result: p.result });
+  const toPlr   = (propType) => ([id, p]) => ({
+    id,
+    pick: lastName(p.player || p.team || ''),
+    description: p.stat || '',
+    matchup: p.gameMatchup || p.matchup || '',
+    conf: 2, sport: p.sport, propType, result: p.result
+  });
+  const toNBAPlr = ([id, p]) => p.type === 'player'
+    ? { id, pick: lastName(p.player||p.team||''), description: `${p.prop}: ${p.stat}`, matchup: p.gameMatchup||p.matchup||'', conf: p.conf||1, sport: p.sport, propType: 'player', result: p.result }
+    : toGame([id, p]);
+
+  switch (type) {
+    case 'mlb_game':
+      return entries.filter(([, p]) => p.sport === 'mlb' && !p.type)
+        .sort(sortConf).slice(0, 10).map(toGame);
+
+    case 'mlb_hits':
+      return entries.filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'Hit')
+        .sort((a, b) => numFromStat(b[1].stat, /^(\.?\d+)/) - numFromStat(a[1].stat, /^(\.?\d+)/))
+        .slice(0, 10).map(toPlr('hits'));
+
+    case 'mlb_rbi':
+      return entries.filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'RBI')
+        .sort((a, b) => numFromStat(b[1].stat, /(\d+)RBI/) - numFromStat(a[1].stat, /(\d+)RBI/))
+        .slice(0, 10).map(toPlr('rbi'));
+
+    case 'mlb_hr':
+      return entries.filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'HR')
+        .sort((a, b) => numFromStat(b[1].stat, /(\d+)HR/) - numFromStat(a[1].stat, /(\d+)HR/))
+        .slice(0, 10).map(toPlr('hr'));
+
+    case 'mlb_ks':
+      return entries.filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'K')
+        .sort((a, b) => numFromStat(b[1].stat, /(\d+\.?\d*)K\/9/) - numFromStat(a[1].stat, /(\d+\.?\d*)K\/9/))
+        .slice(0, 10).map(toPlr('ks'));
+
+    case 'tennis_main': {
+      const main = new Set(['slam','masters','500','250']);
+      return entries.filter(([, p]) => p.sport === 'tennis' && main.has(p.tier))
+        .sort(sortConf).slice(0, 10).map(toGame);
+    }
+
+    case 'tennis_all':
+      return entries.filter(([, p]) => p.sport === 'tennis')
+        .sort(sortConf).slice(0, 10).map(toGame);
+
+    case 'golf':
+      return entries.filter(([id, p]) => p.sport === 'golf' && !id.startsWith('_fb_'))
+        .sort(sortConf).slice(0, 10).map(toGame);
+
+    case 'nba':
+    case 'wnba': {
+      const sp = type;
+      const sorted = entries.filter(([, p]) => p.sport === sp)
+        .sort((a, b) => {
+          const ga = a[1].type === 'player' ? 0 : 1, gb = b[1].type === 'player' ? 0 : 1;
+          if (ga !== gb) return gb - ga;
+          return (b[1].conf||1) - (a[1].conf||1);
+        });
+      return sorted.slice(0, 10).map(toNBAPlr);
+    }
+
+    default: return [];
   }
+}
 
-  const ticketRow = (leg, i) => {
+function getLineupPendingMatchups(date, allPicks) {
+  if (date !== dateStrLocal()) return [];
+  return Object.entries(allPicks)
+    .filter(([id, p]) => p.sport === 'mlb' && !p.type && p.date === date &&
+      !Object.keys(allPicks).some(k => k.startsWith(`plr_${id}_`)))
+    .map(([, p]) => p.matchup).filter(Boolean);
+}
+
+function renderTicketBlock(title, legs, allPicks) {
+  const row = (leg, i) => {
     const live   = allPicks[leg.id] || {};
-    const result = live.result;
+    const result = live.result ?? leg.result ?? null;
     const badge  = result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
                  : result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
-    const conf  = Math.min(3, Math.max(1, leg.conf || 1));
-    const dots  = '●'.repeat(conf) + '○'.repeat(3 - conf);
-    const icon  = SPORT_ICONS[leg.sport] || '🏅';
-    const match = (leg.matchup || '').replace(/ @ /g, ' v ');
-    const pickLine = leg.type === 'player'
+    const conf   = Math.min(3, Math.max(1, leg.conf || 1));
+    const dots   = '●'.repeat(conf) + '○'.repeat(3 - conf);
+    const icon   = SPORT_ICONS[leg.sport] || '🏅';
+    const match  = (leg.matchup || '').replace(/ @ /g, ' v ');
+    const pickLine = leg.description
       ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(leg.description)}</span>`
       : `<span class="sv-tk-pick">${esc(leg.pick)}</span>`;
     return `<div class="sv-tk-row${result==='win'?' sv-tk-win':result==='loss'?' sv-tk-loss':''}">
@@ -7219,23 +7301,94 @@ function renderTicketsPage() {
       ${badge}
     </div>`;
   };
+  const wins   = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
+  const losses = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'loss').length;
+  const statusLine = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
+  return `<div class="sv-ticket">
+    <div class="sv-ticket-hdr">${esc(title)} — ${legs.length} Leg${legs.length!==1?'s':''} ${statusLine}</div>
+    <div class="sv-ticket-list">${legs.map(row).join('')}</div>
+  </div>`;
+}
 
-  const legs   = ticket.legs;
-  const wins   = legs.filter(l => allPicks[l.id]?.result === 'win').length;
-  const losses = legs.filter(l => allPicks[l.id]?.result === 'loss').length;
-  const statusLine = (wins || losses)
-    ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
-  const dateLabel = new Date(today + 'T12:00:00').toLocaleDateString('en-US', {
+function renderTicketsPage() {
+  const el = document.getElementById('tickets-area');
+  if (!el) return;
+
+  const off  = _ticketDateOffset;
+  const date = dateStrLocal(off);
+  const allPicks = getPicks();
+
+  const fullDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric'
   });
 
+  const dateNav = `<div class="tp-day-nav">
+    <button class="tp-day-btn${off===-1?' tp-day-active':''}" onclick="_ticketDateOffset=-1;renderTicketsPage()">Yesterday</button>
+    <button class="tp-day-btn${off===0?' tp-day-active':''}" onclick="_ticketDateOffset=0;renderTicketsPage()">Today</button>
+    <button class="tp-day-btn${off===1?' tp-day-active':''}" onclick="_ticketDateOffset=1;renderTicketsPage()">Tomorrow</button>
+  </div>`;
+
+  // ── MLB ──
+  const mlbGame = getPicksForTicket('mlb_game', date, allPicks);
+  const mlbHits = getPicksForTicket('mlb_hits', date, allPicks);
+  const mlbRBI  = getPicksForTicket('mlb_rbi',  date, allPicks);
+  const mlbHR   = getPicksForTicket('mlb_hr',   date, allPicks);
+  const mlbKs   = getPicksForTicket('mlb_ks',   date, allPicks);
+  const pending  = getLineupPendingMatchups(date, allPicks);
+  const mlbAny   = mlbGame.length || mlbHits.length || mlbRBI.length || mlbHR.length || mlbKs.length;
+
+  const pendingNote = pending.length
+    ? `<div class="tp-pending">⏳ Lineup not yet posted for: ${pending.map(m=>esc(m)).join(' · ')}<br><span class="tp-pending-sub">Player prop picks will fill in automatically once lineups release</span></div>`
+    : '';
+
+  const mlbHTML = `<div class="tp-sport-section">
+    <div class="tp-sport-hdr">⚾ MLB</div>
+    ${pendingNote}
+    ${mlbGame.length ? renderTicketBlock('🏆 Best Games',          mlbGame, allPicks) : ''}
+    ${mlbHits.length ? renderTicketBlock('🎯 Hit Leaders',          mlbHits, allPicks) : ''}
+    ${mlbRBI.length  ? renderTicketBlock('⚡ RBI Leaders',          mlbRBI,  allPicks) : ''}
+    ${mlbHR.length   ? renderTicketBlock('💣 HR Threats',           mlbHR,   allPicks) : ''}
+    ${mlbKs.length   ? renderTicketBlock('🔥 Strikeout Artists',    mlbKs,   allPicks) : ''}
+    ${!mlbAny ? `<div class="tp-sport-empty">No MLB picks yet${off===0?' — visit MLB Scores or Picks tabs to load data':''}</div>` : ''}
+  </div>`;
+
+  // ── Tennis ──
+  const tnMain = getPicksForTicket('tennis_main', date, allPicks);
+  const tnAll  = getPicksForTicket('tennis_all',  date, allPicks);
+
+  const tennisHTML = `<div class="tp-sport-section">
+    <div class="tp-sport-hdr">🎾 Tennis</div>
+    ${tnMain.length ? renderTicketBlock('🎾 Main Draws (ATP/WTA Slam · Masters · 500 · 250)', tnMain, allPicks) : ''}
+    ${tnAll.length  ? renderTicketBlock('🎾 All Tournaments', tnAll, allPicks) : ''}
+    ${!tnMain.length && !tnAll.length ? `<div class="tp-sport-empty">No tennis picks yet${off===0?' — visit the Tennis tab to load data':''}</div>` : ''}
+  </div>`;
+
+  // ── Golf ──
+  const golfLegs = getPicksForTicket('golf', date, allPicks);
+  const golfHTML = `<div class="tp-sport-section">
+    <div class="tp-sport-hdr">⛳ Golf</div>
+    ${golfLegs.length ? renderTicketBlock('⛳ Best Win Picks', golfLegs, allPicks) : `<div class="tp-sport-empty">No golf picks yet${off===0?' — visit the Golf tab to load data':''}</div>`}
+  </div>`;
+
+  // ── NBA ──
+  const nbaLegs  = getPicksForTicket('nba',  date, allPicks);
+  const nbaHTML  = `<div class="tp-sport-section">
+    <div class="tp-sport-hdr">🏀 NBA</div>
+    ${nbaLegs.length ? renderTicketBlock('🏀 Best Bets (Games + Player Props)', nbaLegs, allPicks) : `<div class="tp-sport-empty">No NBA picks yet${off===0?' — visit the NBA tab to load data':''}</div>`}
+  </div>`;
+
+  // ── WNBA ──
+  const wnbaLegs = getPicksForTicket('wnba', date, allPicks);
+  const wnbaHTML = `<div class="tp-sport-section">
+    <div class="tp-sport-hdr">🏀 WNBA</div>
+    ${wnbaLegs.length ? renderTicketBlock('🏀 Best Bets (Games + Player Props)', wnbaLegs, allPicks) : `<div class="tp-sport-empty">No WNBA picks yet${off===0?' — visit the WNBA tab to load data':''}</div>`}
+  </div>`;
+
   el.innerHTML = `<div class="tp-page">
-    <div class="tp-date">${dateLabel}</div>
-    <div class="sv-ticket">
-      <div class="sv-ticket-hdr">🎫 Today's Ticket — ${legs.length} Legs ${statusLine}</div>
-      <div class="sv-ticket-list">${legs.map(ticketRow).join('')}</div>
-    </div>
-    ${!_svPreloadDone ? '<div class="tp-loading">Loading latest picks…</div>' : ''}
+    ${dateNav}
+    <div class="tp-full-date">${fullDate}</div>
+    ${off === 0 && !_svPreloadDone ? '<div class="tp-loading">⏳ Loading picks from all sports…</div>' : ''}
+    ${mlbHTML}${tennisHTML}${golfHTML}${nbaHTML}${wnbaHTML}
   </div>`;
 }
 
