@@ -1216,8 +1216,20 @@ function buildMatchRow(m, idSuffix = '') {
     ? `<span class="status fin-status">FIN</span>`
     : `<span class="status time-status">${esc(fmtTime12(m.event_time))}</span>`;
 
+  // Winner detection
+  const p1Won = finished && m.event_winner === 'First Player';
+  const p2Won = finished && m.event_winner === 'Second Player';
+
   const setsHTML = sets.map((s, i) => {
     const cur = live && i === sets.length - 1;
+    if (finished && (p1Won || p2Won)) {
+      const p1SetWon = parseInt(s.p1) > parseInt(s.p2);
+      const p2SetWon = parseInt(s.p2) > parseInt(s.p1);
+      return `<span class="set-score">` +
+        `<span class="${p1Won && p1SetWon ? 'set-win' : 'set-lose'}">${esc(s.p1)}</span><br>` +
+        `<span class="${p2Won && p2SetWon ? 'set-win' : 'set-lose'}">${esc(s.p2)}</span>` +
+        `</span>`;
+    }
     return `<span class="set-score ${cur ? 'current-set' : ''}">${esc(s.p1)}<br>${esc(s.p2)}</span>`;
   }).join('');
 
@@ -1239,6 +1251,15 @@ function buildMatchRow(m, idSuffix = '') {
     const ri = S.rankIndex.get(String(m.second_player_key || ''));
     return ri ? `<span class="player-rank">#${ri.rank}</span>` : '';
   })();
+
+  // Last name only in row — cleaner scanning; full name shown in detail panel
+  const p1Display = lastName(m.event_first_player  || '-');
+  const p2Display = lastName(m.event_second_player || '-');
+
+  // Player row classes — winner bold-green, loser dimmed
+  const p1Cls = p1Won ? 'player p1 match-winner' : p2Won ? 'player p1 match-loser' : `player p1 ${serve==='1'?'serving':''}`;
+  const p2Cls = p2Won ? 'player p2 match-winner' : p1Won ? 'player p2 match-loser' : `player p2 ${serve==='2'?'serving':''}`;
+
 
   const key = esc(m.event_key);
   const pid = idSuffix ? `${key}-${idSuffix}` : key;
@@ -1270,11 +1291,11 @@ function buildMatchRow(m, idSuffix = '') {
          onclick="toggleDetail('${pid}','${key}')">
       <div class="match-status">${statusHTML}</div>
       <div class="match-players">
-        <div class="player p1 ${serve==='1'?'serving':''}">
-          ${p1serve}${s1tag}<span class="player-name">${esc(m.event_first_player||'-')}</span>${injBadge(m.event_first_player)}
+        <div class="${p1Cls}">
+          ${p1serve}${s1tag}<span class="player-name">${esc(p1Display)}</span>${injBadge(m.event_first_player)}
         </div>
-        <div class="player p2 ${serve==='2'?'serving':''}">
-          ${p2serve}${s2tag}<span class="player-name">${esc(m.event_second_player||'-')}</span>${injBadge(m.event_second_player)}
+        <div class="${p2Cls}">
+          ${p2serve}${s2tag}<span class="player-name">${esc(p2Display)}</span>${injBadge(m.event_second_player)}
         </div>
       </div>
       <div class="match-scores">
@@ -1618,9 +1639,12 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup — too close to call${leanHTML}</div>`;
   }
 
+  const pickSide = p1Score > p2Score ? 1 : p2Score > p1Score ? 2 : 0;
   const factorsHTML = factors.map(f => {
-    const cls  = f.win === true ? 'gp-pf-win' : 'gp-pf-tie';
-    const icon = f.win === true ? '↑' : '=';
+    const myFactor = f.side === pickSide;
+    const isTie    = f.side === 0;
+    const cls  = isTie ? 'gp-pf-tie' : myFactor ? 'gp-pf-win' : 'gp-pf-loss';
+    const icon = isTie ? '~' : myFactor ? '✓' : '✗';
     return `<div class="gp-pfactor ${cls}">
       <span class="gp-pf-icon">${icon}</span>
       <span class="gp-pf-label">${f.label}</span>
@@ -1628,9 +1652,8 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     </div>`;
   }).join('');
 
-  const factorNames = factors.map(f => f.label).join(', ');
-  return `<div class="td-section">
-    <div class="td-section-hdr">Match Prediction <span class="td-pick-basis">based on: ${esc(factorNames)}</span></div>
+  return `<div class="td-section td-section-pred">
+    <div class="td-section-hdr">📌 Match Prediction</div>
     <div class="gp-pick-box">${verdictHTML}<div class="gp-pick-factors">${factorsHTML}</div></div>
   </div>`;
 }
@@ -1662,13 +1685,29 @@ function patchSingleRow(row, m) {
   }
 
   // Sets
+  const p1Won = finished && m.event_winner === 'First Player';
+  const p2Won = finished && m.event_winner === 'Second Player';
   const setsArea = row.querySelector('.sets-area');
   if (setsArea) {
     setsArea.innerHTML = sets.map((s, i) => {
       const cur = live && i === sets.length - 1;
+      if (finished && (p1Won || p2Won)) {
+        const p1SetWon = parseInt(s.p1) > parseInt(s.p2);
+        const p2SetWon = parseInt(s.p2) > parseInt(s.p1);
+        return `<span class="set-score">` +
+          `<span class="${p1Won && p1SetWon ? 'set-win' : 'set-lose'}">${esc(s.p1)}</span><br>` +
+          `<span class="${p2Won && p2SetWon ? 'set-win' : 'set-lose'}">${esc(s.p2)}</span>` +
+          `</span>`;
+      }
       return `<span class="set-score ${cur?'current-set':''}">${esc(s.p1)}<br>${esc(s.p2)}</span>`;
     }).join('');
   }
+
+  // Winner/loser player classes
+  const p1El = row.querySelector('.player.p1');
+  const p2El = row.querySelector('.player.p2');
+  if (p1El) { p1El.classList.toggle('match-winner', p1Won); p1El.classList.toggle('match-loser', p2Won); }
+  if (p2El) { p2El.classList.toggle('match-winner', p2Won); p2El.classList.toggle('match-loser', p1Won); }
 
   // Game score
   const scoresDiv = row.querySelector('.match-scores');
@@ -5136,7 +5175,7 @@ function renderGroupedLeaderboard(activeG, upcomingGroups, round) {
     if (k) posCount.set(k, (posCount.get(k) || 0) + 1);
   }
 
-  const makeRow = p => {
+  const makeRow = (p, opts = {}) => {
     const name     = p.athlete?.shortName || p.athlete?.displayName || '-';
     const rawPos   = p.order ? String(p.order) : '-';
     const isTied   = rawPos !== '-' && (posCount.get(rawPos) || 0) > 1;
@@ -5154,14 +5193,24 @@ function renderGroupedLeaderboard(activeG, upcomingGroups, round) {
       : status === 'live'
       ? `<span class="golf-thru-live">● ${holes}</span>`
       : `<span class="golf-thru-pre">—</span>`;
-    return `<div class="golf-player-row">
-      <span class="gc-pos">${esc(posDisp)}</span>
+    const pos3 = parseInt(rawPos); const isTop3 = pos3 >= 1 && pos3 <= 3;
+    const extraCls = (opts.cut ? ' golf-row-cut-player' : '') + (isTop3 ? ' golf-row-top3' : '');
+    return `<div class="golf-player-row${extraCls}">
+      <span class="gc-pos ${isTop3 ? 'gc-pos-top' : ''}">${esc(posDisp)}</span>
       <span class="gc-name">${esc(name)}</span>
       <span class="gc-score ${scoreCls}">${esc(total)}</span>
       <span class="gc-today ${todayCls}">${esc(today)}</span>
       <span class="gc-thru">${thruHTML}</span>
     </div>`;
   };
+
+  // Detect cut: look for players with status indicating missed cut
+  const isCutPlayer = p => {
+    const st = (p.status?.type?.abbreviation || p.status?.type?.name || p.status?.displayValue || '').toUpperCase();
+    return st === 'CUT' || st === 'MC' || st === 'WD' || st === 'DQ';
+  };
+  const cutExists = [...activeG, ...upcomingGroups].some(g => g.players.some(isCutPlayer));
+  let cutShown = false;
 
   let inner = '';
   for (const group of activeG) {
@@ -5174,11 +5223,20 @@ function renderGroupedLeaderboard(activeG, upcomingGroups, round) {
     const sepCls    = groupLive ? 'golf-group-lb-sep golf-group-lb-sep-live'
                     : groupDone ? 'golf-group-lb-sep golf-group-lb-sep-done'
                     :             'golf-group-lb-sep golf-group-lb-sep-pre';
-    inner += `<div class="${sepCls}">${esc(sepLabel)}</div>${players.map(makeRow).join('')}`;
+    inner += `<div class="${sepCls}">${esc(sepLabel)}</div>`;
+    for (const p of players) {
+      const cut = isCutPlayer(p);
+      if (cut && !cutShown) {
+        inner += `<div class="golf-cut-line">✂ Cut Line</div>`;
+        cutShown = true;
+      }
+      inner += makeRow(p, { cut });
+    }
   }
   for (const group of upcomingGroups) {
     const players = [...group.players].sort((a, b) => (+a.order || 9999) - (+b.order || 9999));
-    inner += `<div class="golf-group-lb-sep golf-group-lb-sep-pre">⏰ ${esc(formatTeeTime(group.time))}</div>${players.map(makeRow).join('')}`;
+    inner += `<div class="golf-group-lb-sep golf-group-lb-sep-pre">⏰ ${esc(formatTeeTime(group.time))}</div>`;
+    inner += players.map(p => makeRow(p)).join('');
   }
 
   return `<div class="golf-leaderboard">
@@ -5237,9 +5295,19 @@ async function loadGolfLeaderboard() {
                               .sort((a, b) => new Date(a.time) - new Date(b.time));
         const activeG = [...liveG, ...doneG];
 
+        // Leader score for the header
+        const sortedAll = [...allComp].sort((a, b) => (+a.order||999) - (+b.order||999));
+        const leader = sortedAll[0];
+        const leaderName  = leader?.athlete?.shortName || leader?.athlete?.displayName || '';
+        const leaderScore = leader?.score || 'E';
+        const leaderNum   = leaderScore === 'E' ? 0 : parseInt(leaderScore) || 0;
+        const leaderCls   = leaderNum < 0 ? 'golf-under' : leaderNum > 0 ? 'golf-over' : 'golf-even';
+        const leaderHTML  = leaderName && (isLive || isFinal)
+          ? `<span class="golf-leader-tag"><span class="${leaderCls}">${esc(leaderScore)}</span> ${esc(leaderName.split(' ').pop())}</span>` : '';
+
         html += `<div class="golf-tournament">
           <div class="golf-tourn-header">
-            <div class="golf-tourn-name">${tour.icon} ${esc(ev.name || ev.shortName || tour.label)}</div>
+            <div class="golf-tourn-name">${tour.icon} ${esc(ev.name || ev.shortName || tour.label)} ${leaderHTML}</div>
             <div class="golf-tourn-meta">${statusTxt}${venue ? ` · ${esc(venue)}` : ''}${city ? `, ${esc(city)}` : ''}</div>
           </div>
           ${renderGroupedLeaderboard(activeG, upcomingGroups, round)}
@@ -5291,7 +5359,8 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const players = group.players.slice(0, 3);
   if (players.length < 2) return '';
 
-  const getSA = p => { const s = p.statistics?.find(x => ['SA','AVG','scoringAverage'].includes(x.abbreviation||x.name)); return s ? parseFloat(s.displayValue) || 0 : 0; };
+  const getSA   = p => { const s = p.statistics?.find(x => ['SA','AVG','scoringAverage'].includes(x.abbreviation||x.name)); return s ? parseFloat(s.displayValue) || 0 : 0; };
+  const getOWGR = p => { const s = p.statistics?.find(x => /owgr|world.*rank|ranking/i.test(x.abbreviation||x.name||'')); return s ? parseInt(s.displayValue) || 0 : 0; };
   const getTodayNum = p => { const t = p.linescores?.[round-1]?.displayValue; return t ? (t === 'E' ? 0 : parseInt(t) || 0) : null; };
 
   const avgSA = players.reduce((s,p) => s + (getSA(p)||70), 0) / players.length;
@@ -5382,17 +5451,19 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   }
 
   const rows = displayScored.map(({ p, score, factors, total, totalNum, todayNum }, idx) => {
-    const name = p.athlete?.shortName || p.athlete?.displayName || '-';
+    const name  = p.athlete?.shortName || p.athlete?.displayName || '-';
     const lastName = name.split(' ').pop().toLowerCase();
     const holes = p.linescores?.[round-1]?.linescores?.length || 0;
     const thru  = holes === 18 ? 'F' : holes > 0 ? String(holes) : '-';
     const scoreCls = totalNum < 0 ? 'golf-under' : totalNum > 0 ? 'golf-over' : 'golf-even';
     const todayStr = todayNum !== null ? (todayNum > 0 ? `+${todayNum}` : todayNum === 0 ? 'E' : String(todayNum)) : '-';
     const isPick = idx === 0;
+    const owgr   = getOWGR(p);
+    const owgrTag = owgr > 0 ? `<span class="golf-pick-owgr">W${owgr}</span>` : '';
     const chips  = factors.map(f => `<span class="golf-pick-chip">${esc(f)}</span>`).join('');
     return `<div class="golf-pick-row ${isPick ? 'golf-pick-winner' : ''}">
       ${isPick ? '<span class="golf-pick-arrow">→</span>' : '<span class="golf-pick-arrow"></span>'}
-      <span class="golf-pick-name">${esc(name)}</span>
+      <span class="golf-pick-name">${esc(name)}${owgrTag}</span>
       <span class="golf-pick-score ${scoreCls}">${esc(total)}</span>
       <span class="golf-pick-today">${esc(todayStr)}</span>
       <span class="golf-pick-thru">${esc(thru)}</span>
@@ -5400,12 +5471,15 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
     </div>`;
   });
 
-  const preLabel = groupStarted && existingPick ? '<span class="golf-pick-pre-label">Pre-round pick</span> ' : '';
+  const preLabel = groupStarted && existingPick ? ' <span class="golf-pick-pre-label">pre-round</span>' : '';
   return `<div class="golf-pick-card">
     <div class="golf-pick-time">⏰ ${esc(formatTeeTime(group.time))}</div>
     <div class="golf-pick-hdr"><span>PLAYER</span><span>TOT</span><span>TODAY</span><span>THRU</span><span>FACTORS</span></div>
     ${rows.join('')}
-    <div class="golf-pick-verdict">${preLabel}Pick: <strong>${esc(displayName)}</strong> ${confDots}</div>
+    <div class="golf-pick-verdict-bar">
+      <span class="golf-pick-verdict-name">→ ${esc(displayName)}</span>
+      ${confDots}${preLabel}
+    </div>
   </div>`;
 }
 

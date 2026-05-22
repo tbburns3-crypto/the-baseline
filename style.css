@@ -1589,6 +1589,16 @@ input { font: inherit; }
   border-color: rgba(255,179,0,.3);
 }
 
+/* ── MATCH ROW WINNER / LOSER STYLING ── */
+.player.match-winner .player-name {
+  color: var(--accent); font-weight: 800;
+}
+.player.match-loser  .player-name {
+  color: var(--text-muted); opacity: .65;
+}
+.set-win  { font-weight: 800; color: var(--text); }
+.set-lose { color: var(--text-muted); opacity: .6; }
+
 /* ── TENNIS MATCH DETAIL (rich H2H + prediction) ── */
 .td-loading {
   display: flex; align-items: center; gap: 8px;
@@ -1620,6 +1630,7 @@ input { font: inherit; }
 .td-sets { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .td-section { margin-bottom: 14px; }
 .td-section:last-child { margin-bottom: 0; }
+.td-section-pred { border-left: 3px solid var(--accent); padding-left: 10px; }
 .td-section-hdr {
   font-size: .72rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: .08em; color: var(--accent);
@@ -1783,6 +1794,49 @@ input { font: inherit; }
 .golf-pick-winner .golf-pick-chip { background: rgba(0,230,118,.1); color: var(--accent); }
 .golf-pick-verdict     { margin-top: 7px; font-size: .78rem; color: var(--text-2); border-top: 1px solid var(--border); padding-top: 6px; }
 .golf-pick-verdict strong { color: var(--accent); }
+
+/* ── GOLF PICK VERDICT BAR ── */
+.golf-pick-verdict-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 7px; padding: 6px 10px;
+  background: rgba(0,230,118,.1); border: 1px solid rgba(0,230,118,.25);
+  border-radius: 5px;
+}
+.golf-pick-verdict-name {
+  font-size: .82rem; font-weight: 800; color: var(--accent); flex: 1;
+}
+.golf-pick-pre-label {
+  font-size: .62rem; color: var(--text-muted); font-style: italic;
+}
+
+/* ── GOLF CUT LINE ── */
+.golf-cut-line {
+  padding: 5px 14px; font-size: .65rem; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); border-top: 2px dashed rgba(255,255,255,.2);
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  background: rgba(255,255,255,.02); margin: 2px 0;
+}
+.golf-row-cut-player { opacity: .5; }
+
+/* ── GOLF TOP 3 LEADER ROWS ── */
+.golf-row-top3 { background: rgba(0,230,118,.04); }
+.gc-pos-top    { color: var(--accent); font-weight: 800; }
+
+/* ── GOLF LEADER TAG IN TOURNAMENT HEADER ── */
+.golf-leader-tag {
+  font-size: .72rem; font-weight: 700;
+  background: rgba(255,255,255,.07); border: 1px solid var(--border);
+  border-radius: 4px; padding: 2px 7px; margin-left: 6px;
+  white-space: nowrap; vertical-align: middle;
+}
+
+/* ── GOLF WORLD RANKING TAG ── */
+.golf-pick-owgr {
+  font-size: .6rem; color: var(--text-muted);
+  background: rgba(255,255,255,.05); border-radius: 3px;
+  padding: 1px 4px; margin-left: 4px; vertical-align: middle;
+}
 
 /* ── LOTTERY ── */
 .lottery-section { padding: 12px 12px 24px; max-width: 540px; }
