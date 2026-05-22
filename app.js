@@ -6488,38 +6488,69 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
-let _svDateOffset  = 0;   // 0=today, -1=yesterday, +1=tomorrow
-const _DAILY_TOP_KEY = '_baseline_top';
+const _TICKET_KEY = '_baseline_ticket_v2';
 
-function getLockedTopPicks() {
+function getDailyTicket() {
   try {
-    const s = localStorage.getItem(_DAILY_TOP_KEY);
+    const s = localStorage.getItem(_TICKET_KEY);
     if (!s) return null;
     const obj = JSON.parse(s);
     if (obj.date !== dateStrLocal()) return null;
-    return obj.bySport || null;
+    return obj;
   } catch { return null; }
 }
 
-function lockTopPicks() {
-  if (getLockedTopPicks()) return;
+function buildDailyTicketIfNeeded() {
+  if (getDailyTicket()) return;   // already locked for today — never overwrite
   const today = dateStrLocal();
-  const allPicksMap = getPicks();
-  const gamePicks = Object.entries(allPicksMap)
-    .filter(([, p]) => p.date === today && !p.type && p.team)
-    .sort((a, b) => (b[1].conf || 0) - (a[1].conf || 0));
-  const SPORT_LIMITS = { tennis: 6, mlb: 3, nba: 3, wnba: 2, nfl: 3, nhl: 3, soccer: 3, golf: 6 };
-  const bySport = {};
-  for (const [id, p] of gamePicks) {
-    const s = p.sport || 'tennis';
-    const limit = SPORT_LIMITS[s] || 2;
-    if (!bySport[s]) bySport[s] = [];
-    if (bySport[s].length >= limit) continue;
-    bySport[s].push(id);
+  const allPicks = getPicks();
+
+  const TIER_BONUS  = { slam: 10, masters: 5, '500': 2, '250': -99, chal: -99, itf: -99 };
+  const SPORT_BONUS = { mlb: 3, nba: 3, nhl: 3, soccer: 3, golf: 3, wnba: 2, nfl: 2 };
+
+  const hasSlamPick = Object.values(allPicks).some(p =>
+    p.date === today && !p.type && p.sport === 'tennis' && p.tier === 'slam'
+  );
+
+  const candidates = [];
+  for (const [id, p] of Object.entries(allPicks)) {
+    if (p.date !== today) continue;
+    let score = (p.conf || 1);
+
+    if (p.type === 'player') {
+      score += SPORT_BONUS[p.sport] || 1;
+      candidates.push({ id, score, sport: p.sport || 'other', type: 'player',
+        pick: p.player, description: p.prop, matchup: p.gameMatchup || '', conf: p.conf || 1 });
+    } else if (p.team) {
+      const sport = p.sport || 'tennis';
+      if (sport === 'tennis') {
+        const tierBonus = TIER_BONUS[p.tier] ?? -99;
+        if (hasSlamPick && tierBonus < 0) continue;   // skip non-slam when slams exist
+        score += Math.max(0, tierBonus);
+      } else {
+        score += SPORT_BONUS[sport] || 1;
+      }
+      candidates.push({ id, score, sport, type: 'game',
+        pick: p.team, description: p.matchup || '', matchup: p.matchup || '',
+        conf: p.conf || 1, tier: p.tier });
+    }
   }
-  const totalPicks = Object.values(bySport).reduce((n, a) => n + a.length, 0);
-  if (totalPicks < 2) return;
-  localStorage.setItem(_DAILY_TOP_KEY, JSON.stringify({ date: today, bySport }));
+
+  if (candidates.length < 5) return;   // not enough picks yet — wait for preload
+
+  candidates.sort((a, b) => b.score - a.score);
+  const sportCount = {};
+  const legs = [];
+  for (const c of candidates) {
+    if ((sportCount[c.sport] || 0) >= 2) continue;
+    sportCount[c.sport] = (sportCount[c.sport] || 0) + 1;
+    legs.push(c);
+    if (legs.length >= 10) break;
+  }
+
+  if (legs.length < 5) return;
+
+  localStorage.setItem(_TICKET_KEY, JSON.stringify({ date: today, legs }));
 }
 
 function resetDailyPicks() {
@@ -6527,10 +6558,6 @@ function resetDailyPicks() {
   preloadPicksForSimpleView();
 }
 
-function svNavigate(delta) {
-  _svDateOffset = Math.max(-7, Math.min(1, _svDateOffset + delta));
-  renderSimpleView();
-}
 
 // Silently fetch today's tennis matches and record picks — used by the preload
 // so tennis shows on the front page even if the user hasn't visited the Tennis tab.
@@ -6651,22 +6678,7 @@ async function preloadPicksForSimpleView() {
     if (games.length) _svLotteryHTML = games.map(renderLotteryCard).join('');
   } catch (e) {}
 
-  // Pre-seed tomorrow's picks so the "Tomorrow →" view is ready.
-  // These games are all pre-game; stamp them with tomorrow's date so they show up correctly.
-  const tomorrowDate = dateStrLocal(1);
-  for (const sport of ['nba', 'nfl', 'nhl', 'wnba', 'mlb']) {
-    try {
-      const games = await espnGames(sport, 1);
-      games.forEach(g => autoRecordAndResolvePick(g, tomorrowDate));
-    } catch (e) {}
-  }
-  try {
-    const tennisD = dateStrLocal(1);
-    const results = await tennisFetch('get_fixtures', { date_start: tennisD, date_stop: tennisD });
-    for (const m of results) inlineTennisPick(m, tomorrowDate);
-  } catch (e) {}
-
-  // All sports done — render once.
+  // All sports done — build ticket if enough picks, then render once.
   if (isActive()) renderSimpleView();
 }
 
@@ -6684,182 +6696,57 @@ function hideSimpleView() {
 }
 
 function renderSimpleView() {
-  const targetDate  = dateStrLocal(_svDateOffset);
-  const isToday     = _svDateOffset === 0;
-  const allPicksMap = getPicks();
-
-  // Update date display and headline
-  const dateLabel = _svDateOffset === 0 ? 'Today'
-    : _svDateOffset === -1 ? 'Yesterday'
-    : _svDateOffset ===  1 ? 'Tomorrow'
-    : new Date(targetDate + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' });
+  const el    = document.getElementById('sv-content');
+  const today = dateStrLocal();
 
   document.getElementById('sv-date').textContent =
-    new Date(targetDate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
-
+    new Date(today + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   const headline = document.querySelector('.sv-headline');
-  if (headline) headline.textContent = dateLabel + "'s Picks";
+  if (headline) headline.textContent = "Today's Ticket";
 
-  // Date navigation bar
-  const prevLabel = _svDateOffset <= -2 ? '← Earlier' : '← Yesterday';
-  const nextLabel = _svDateOffset === 0  ? 'Tomorrow →' : 'Today →';
-  const dateNavHTML = `<div class="sv-date-nav">
-    <button class="sv-nav-btn" onclick="svNavigate(-1)">${prevLabel}</button>
-    <span class="sv-nav-label">${dateLabel}</span>
-    <button class="sv-nav-btn" onclick="svNavigate(1)"${_svDateOffset >= 1 ? ' disabled' : ''}>${nextLabel}</button>
-  </div>`;
+  buildDailyTicketIfNeeded();
+  const ticket = getDailyTicket();
 
-  // Player picks for target date, indexed by matchup
-  const plrByMatchup = {};
-  for (const p of Object.values(allPicksMap)) {
-    if (p.type !== 'player' || p.date !== targetDate) continue;
-    const key = (p.gameMatchup || '').toLowerCase().trim();
-    if (!plrByMatchup[key]) plrByMatchup[key] = [];
-    plrByMatchup[key].push(p);
-  }
-
-  const makePlrSection = (matchupKey) => {
-    const plrs = plrByMatchup[matchupKey] || [];
-    if (!plrs.length) return '';
-    const byCat = {};
-    for (const pp of plrs) {
-      const cat = pp.prop || '?';
-      if (!byCat[cat]) byCat[cat] = [];
-      byCat[cat].push(pp);
-    }
-    const rows = Object.entries(byCat).map(([cat, plist]) => {
-      const items = plist.slice(0, 2).map(pp => {
-        const pr = pp.result === 'win'  ? '<span class="sv-plr-r sv-plr-w">W</span>'
-                 : pp.result === 'loss' ? '<span class="sv-plr-r sv-plr-l">L</span>' : '';
-        return `<span class="sv-plr-chip">${esc(pp.player)} <em>${esc(pp.stat)}</em>${pr}</span>`;
-      }).join('');
-      return `<div class="sv-plr-cat"><span class="sv-plr-cat-lbl">${esc(cat)}</span>${items}</div>`;
-    }).join('');
-    return `<div class="sv-plr-section"><div class="sv-plr-hdr">Players to Watch</div>${rows}</div>`;
-  };
-
-  // All game picks for the target date, sorted by conf desc
-  const allGamePicks = Object.values(allPicksMap)
-    .filter(p => p.date === targetDate && !p.type && p.team)
-    .sort((a, b) => (b.conf || 0) - (a.conf || 0));
-
-  if (!allGamePicks.length) {
-    const msg = isToday
-      ? `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Loading today's picks…</div>`
-      : _svDateOffset === 1
-      ? `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Loading tomorrow's picks…</div>`
-      : `<div class="sv-empty">No picks recorded for this date.</div>`;
-    document.getElementById('sv-content').innerHTML = dateNavHTML + msg;
+  if (!ticket) {
+    el.innerHTML = `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Building today's ticket…</div>`;
     return;
   }
 
-  const SPORT_LIMITS = { tennis: 6, mlb: 3, nba: 3, wnba: 2, nfl: 3, nhl: 3, soccer: 3, golf: 6 };
+  const allPicks = getPicks();
 
-  // Build per-sport pick arrays (top picks by conf, capped by SPORT_LIMITS)
-  // Tennis: simple view shows only Grand Slam matches to keep it focused
-  const picksBySport = {};
-  for (const p of allGamePicks) {
-    const s = p.sport || 'tennis';
-    if (s === 'tennis' && p.tier !== 'slam') continue;
-    if (!picksBySport[s]) picksBySport[s] = [];
-    const limit = SPORT_LIMITS[s] || 2;
-    if (picksBySport[s].length < limit) picksBySport[s].push(p);
-  }
-
-  const makePickRow = (p) => {
-    const conf = Math.min(3, Math.max(1, p.conf || 1));
-    const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
-    const badge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
-                : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
-    const matchupShort = (p.matchup || '').replace(/ @ /g, ' v ');
-    const key = (p.matchup || '').toLowerCase().trim();
-    const plrSection = makePlrSection(key);
-    const cls = ['sv-pick-row',
-      p.result === 'win' ? 'sv-row-win' : p.result === 'loss' ? 'sv-row-loss' : '',
-      plrSection ? 'sv-has-plrs' : ''
-    ].filter(Boolean).join(' ');
-    const clickAttr = plrSection ? `onclick="this.classList.toggle('sv-expanded')"` : '';
-    return `<div class="${cls}" ${clickAttr}>
-      <div class="sv-row-main">
-        <span class="sv-row-match">${esc(matchupShort)}</span>
-        <span class="sv-row-arrow">→</span>
-        <span class="sv-row-team">${esc(p.team)}</span>
-        <span class="sv-conf">${dots}</span>
-        ${badge}${plrSection ? '<span class="sv-tap-hint">▾</span>' : ''}
-      </div>
-      ${plrSection}
-    </div>`;
-  };
-
-  const makeSportSection = (sport) => {
-    const picks = picksBySport[sport] || [];
-    if (!picks.length) return '';
-    const icon = SPORT_ICONS[sport] || '🏅';
-    const label = SPORT_LABELS[sport] || sport;
-    return `<div class="sv-sport-section">
-      <div class="sv-sport-hdr">${icon} ${label}</div>
-      <div class="sv-picks-list">${picks.map(makePickRow).join('')}</div>
-    </div>`;
-  };
-
-  // 2-column layout: Tennis + Golf left, team sports right
-  const tennisHTML = makeSportSection('tennis');
-  const golfHTML   = makeSportSection('golf');
-  const leftHTML   = [tennisHTML, golfHTML].filter(Boolean).join('');
-  const TEAM_SPORTS = ['mlb', 'nba', 'wnba', 'nfl', 'nhl', 'soccer'];
-  const otherHTML  = TEAM_SPORTS.map(makeSportSection).filter(Boolean).join('');
-
-  let gridHTML;
-  if (leftHTML && otherHTML) {
-    gridHTML = `<div class="sv-sections-grid">
-      <div class="sv-left-col">${leftHTML}</div>
-      <div class="sv-right-col">${otherHTML}</div>
-    </div>`;
-  } else {
-    gridHTML = `<div class="sv-sections-grid sv-single-col">${leftHTML || otherHTML}</div>`;
-  }
-
-  // Top 10 ticket — max 2 per sport, sorted by conf desc
-  const ticketCounts = {};
-  const top10 = [...allGamePicks]
-    .filter(p => {
-      const s = p.sport || 'tennis';
-      if ((ticketCounts[s] || 0) >= 2) return false;
-      ticketCounts[s] = (ticketCounts[s] || 0) + 1;
-      return true;
-    })
-    .slice(0, 10);
-
-  const ticketRow = (p, i) => {
-    const conf = Math.min(3, Math.max(1, p.conf || 1));
-    const dots = '●'.repeat(conf) + '○'.repeat(3 - conf);
-    const badge = p.result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
-                : p.result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
-    const icon  = SPORT_ICONS[p.sport || 'tennis'] || '🏅';
-    const match = (p.matchup || '').replace(/ @ /g, ' v ');
-    return `<div class="sv-tk-row${p.result==='win'?' sv-tk-win':p.result==='loss'?' sv-tk-loss':''}">
+  const ticketRow = (leg, i) => {
+    const live   = allPicks[leg.id] || {};
+    const result = live.result;
+    const badge  = result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
+                 : result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+    const conf  = Math.min(3, Math.max(1, leg.conf || 1));
+    const dots  = '●'.repeat(conf) + '○'.repeat(3 - conf);
+    const icon  = SPORT_ICONS[leg.sport] || '🏅';
+    const match = (leg.matchup || '').replace(/ @ /g, ' v ');
+    const pickLine = leg.type === 'player'
+      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(leg.description)}</span>`
+      : `<span class="sv-tk-pick">${esc(leg.pick)}</span>`;
+    return `<div class="sv-tk-row${result==='win'?' sv-tk-win':result==='loss'?' sv-tk-loss':''}">
       <span class="sv-tk-num">${i+1}</span>
       <span class="sv-tk-icon">${icon}</span>
       <span class="sv-tk-match">${esc(match)}</span>
       <span class="sv-tk-arrow">→</span>
-      <span class="sv-tk-pick">${esc(p.team)}</span>
+      ${pickLine}
       <span class="sv-tk-conf">${dots}</span>
       ${badge}
     </div>`;
   };
 
-  const ticketLabel = _svDateOffset === 0 ? "Today's Ticket"
-    : _svDateOffset === -1 ? "Yesterday's Ticket"
-    : dateLabel + "'s Ticket";
-  const ticketHTML = top10.length >= 2
-    ? `<div class="sv-ticket"><div class="sv-ticket-hdr">🎫 ${ticketLabel} — Top ${top10.length}</div><div class="sv-ticket-list">${top10.map(ticketRow).join('')}</div></div>`
-    : '';
+  const legs    = ticket.legs;
+  const wins    = legs.filter(l => allPicks[l.id]?.result === 'win').length;
+  const losses  = legs.filter(l => allPicks[l.id]?.result === 'loss').length;
+  const statusLine = (wins || losses)
+    ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
 
-  const lotteryBlock = isToday && _svLotteryHTML
-    ? `<div class="sv-lottery-block"><div class="sv-sport-hdr" style="margin-bottom:6px">🎰 Lottery</div><div class="sv-lottery-cards">${_svLotteryHTML}</div></div>`
-    : '';
-
-  document.getElementById('sv-content').innerHTML = dateNavHTML + gridHTML + ticketHTML + lotteryBlock;
+  el.innerHTML = `<div class="sv-ticket">
+    <div class="sv-ticket-hdr">🎫 Today's Ticket — ${legs.length} Legs ${statusLine}</div>
+    <div class="sv-ticket-list">${legs.map(ticketRow).join('')}</div>
+  </div>`;
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────

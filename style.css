@@ -2047,6 +2047,8 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-tk-arrow { color: var(--text-muted); flex-shrink: 0; }
 .sv-tk-pick { font-weight: 700; flex-shrink: 0; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sv-tk-conf { font-size: .6rem; color: var(--text-muted); letter-spacing: 1px; flex-shrink: 0; }
+.sv-tk-prop { font-size: .62rem; color: var(--text-muted); margin-left: 4px; font-style: italic; flex-shrink: 0; }
+.sv-tk-status { font-size: .65rem; color: var(--text); margin-left: 6px; font-weight: 600; }
 
 /* ── ANIMATIONS ── */
 @keyframes spin { to { transform: rotate(360deg); } }
