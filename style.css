@@ -1764,6 +1764,10 @@ input { font: inherit; }
 /* Simple-view button in topbar */
 #simple-view-btn { background: rgba(0,230,118,.12); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 4px 10px; font-size: .73rem; font-weight: 700; cursor: pointer; letter-spacing: .03em; }
 #simple-view-btn:hover { background: rgba(0,230,118,.22); }
+#tz-selector { display: flex; align-items: center; gap: 2px; }
+.tz-btn { background: none; border: 1px solid rgba(255,255,255,.12); color: var(--text-muted); border-radius: 4px; padding: 2px 7px; font-size: .68rem; font-weight: 600; cursor: pointer; transition: background .12s, color .12s; }
+.tz-btn:hover { background: rgba(255,255,255,.08); color: var(--text); }
+.tz-btn.tz-active { background: rgba(0,230,118,.15); border-color: var(--accent); color: var(--accent); }
 
 /* ── SIMPLE VIEW ── hides everything else via body class ── */
 /* When simple-mode is active, hide all full-app chrome */

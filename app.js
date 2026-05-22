@@ -104,14 +104,14 @@ function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, forc
   const existing = picks[gameId];
   // force = true lets a nuanced pick overwrite a simple W-L seed, but never overwrite a resolved result
   if (existing && (!force || existing.result !== null)) return;
-  picks[gameId] = { team: pickedTeam, date: new Date().toISOString().slice(0,10), result: existing?.result ?? null, matchup, sport, conf };
+  picks[gameId] = { team: pickedTeam, date: dateStrLocal(), result: existing?.result ?? null, matchup, sport, conf };
   savePicks(picks);
 }
 
 function recordPlayerPick(pickKey, sport, playerName, prop, stat, gameMatchup, gamePk) {
   const picks = getPicks();
   if (picks[pickKey]) return;
-  picks[pickKey] = { type: 'player', sport, player: playerName, prop, stat, gameMatchup, gamePk: gamePk || null, date: new Date().toISOString().slice(0,10), result: null };
+  picks[pickKey] = { type: 'player', sport, player: playerName, prop, stat, gameMatchup, gamePk: gamePk || null, date: dateStrLocal(), result: null };
   savePicks(picks);
 }
 
@@ -346,8 +346,7 @@ function updatePicksDisplay() {
 
 function clearOldPicks() {
   const picks  = getPicks();
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-  const cutStr = cutoff.toISOString().slice(0,10);
+  const cutStr = dateStrLocal(-30);
   let changed  = false;
   for (const [k, p] of Object.entries(picks)) {
     if (p.date < cutStr) { delete picks[k]; changed = true; }
@@ -385,14 +384,39 @@ function renderFavoritesView() {
   panel.innerHTML = html || '<div class="empty-state">No favorites yet.</div>';
 }
 
+// ── TIMEZONE SYSTEM ─────────────────────────────────────────
+const _TZ_KEY = '_baseline_tz';
+const TZ_OPTIONS = [
+  { label:'ET', tz:'America/New_York' },
+  { label:'CT', tz:'America/Chicago' },
+  { label:'MT', tz:'America/Denver' },
+  { label:'PT', tz:'America/Los_Angeles' },
+];
+function getUserTZ() { return localStorage.getItem(_TZ_KEY) || 'America/New_York'; }
+function setUserTZ(tz) {
+  localStorage.setItem(_TZ_KEY, tz);
+  document.querySelectorAll('.tz-btn').forEach(b => b.classList.toggle('tz-active', b.dataset.tz === tz));
+  renderSimpleView();
+}
+// Returns YYYY-MM-DD in the user's chosen timezone (default ET)
+function dateStrLocal(offset = 0) {
+  const d = new Date();
+  if (offset) d.setDate(d.getDate() + offset);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: getUserTZ() }).format(d);
+}
+// Format an ISO datetime string into a time string in the user's timezone
+function fmtTimeTZ(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() });
+  } catch {}
+  return iso;
+}
+
 // ── UTILITIES ───────────────────────────────────────────────
 function dateStr(offset = 0) {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  const y  = d.getFullYear();
-  const m  = String(d.getMonth() + 1).padStart(2, '0');
-  const dy = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${dy}`;
+  return dateStrLocal(offset); // use user-chosen TZ for all date math
 }
 // Tennis API uses UTC dates — use this for all tennis fetches and event_date comparisons
 function dateStrUTC(offset = 0) {
@@ -2203,7 +2227,7 @@ async function loadOtherScores(sport) {
     }
     if (_loadSeq !== seq) return;
     renderOtherScores(games, sport, src);
-    const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() });
     setConn('connected', `${sport.toUpperCase()} - updated ${t} · refreshes every 30s`);
   } catch (err) {
     setConn('disconnected', `${sport.toUpperCase()} - update failed, retrying…`);
@@ -2254,8 +2278,11 @@ async function espnGames(sport, dateOffset = 0) {
       awayTeam: away?.team?.shortDisplayName || away?.team?.name || '-',
       homeAbbr: home?.team?.abbreviation || '',
       awayAbbr: away?.team?.abbreviation || '',
-      homeRec: ((home?.records || home?.record || []).find(r => r.type === 'total') || (home?.records || home?.record || [])[0])?.summary || '',
-      awayRec: ((away?.records || away?.record || []).find(r => r.type === 'total') || (away?.records || away?.record || [])[0])?.summary || '',
+      homeRec:  ((home?.records || home?.record || []).find(r => r.type === 'total') || (home?.records || home?.record || [])[0])?.summary || '',
+      awayRec:  ((away?.records || away?.record || []).find(r => r.type === 'total') || (away?.records || away?.record || [])[0])?.summary || '',
+      homeRecs: (() => { const rr = home?.records || home?.record || []; return { total: (rr.find(r=>r.type==='total')||rr[0])?.summary||'', home: rr.find(r=>r.type==='home')?.summary||'', road: rr.find(r=>r.type==='road')?.summary||'', l10: rr.find(r=>r.name==='L10'||r.name==='Last 10')?.summary||'' }; })(),
+      awayRecs: (() => { const rr = away?.records || away?.record || []; return { total: (rr.find(r=>r.type==='total')||rr[0])?.summary||'', home: rr.find(r=>r.type==='home')?.summary||'', road: rr.find(r=>r.type==='road')?.summary||'', l10: rr.find(r=>r.name==='L10'||r.name==='Last 10')?.summary||'' }; })(),
+      gameDate: ev.date || '',
       series: comp.series ? { summary: comp.series.summary || '', title: comp.series.title || '' } : null,
       homeScore: state !== 'pre' ? (home?.score ?? '') : '',
       awayScore: state !== 'pre' ? (away?.score ?? '') : '',
@@ -2380,15 +2407,18 @@ function getGameBestPickHTML(espnGameId, g) {
 function autoRecordAndResolvePick(g) {
   if (!g.awayRec && !g.homeRec) return;
   const { fin, live } = gameRowState(g);
-  // Only make a new prediction if the game hasn't started yet
   if (!live && !fin) {
-    const awayWP  = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
-    const rawHome = homeWP * 1.03, total = awayWP + rawHome;
-    const homePct = Math.round((rawHome / total) * 100);
+    const boost   = HOME_BOOST[g.sport] || 1.025;
+    const homeWPr = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport);
+    const awayWPr = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport);
+    const rawHome = homeWPr * boost;
+    const total   = awayWPr + rawHome;
+    const homeFrac = rawHome / total;
+    const homePct = Math.round(homeFrac * 100);
     const short   = (homePct >= 50 ? g.homeTeam : g.awayTeam).split(' ').pop();
-    recordPick(String(g.id), short, `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '');
+    const conf    = wpToConf(homePct >= 50 ? homeFrac : 1 - homeFrac);
+    recordPick(String(g.id), short, `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '', conf);
   }
-  // Always resolve finished games that already have a pick
   if (fin && g.awayScore !== '' && g.homeScore !== '') {
     const aS = parseFloat(g.awayScore) || 0, hS = parseFloat(g.homeScore) || 0;
     if (aS !== hS) resolvePick(String(g.id), aS > hS ? g.awayTeam.split(' ').pop() : g.homeTeam.split(' ').pop());
@@ -2414,17 +2444,22 @@ function inlineGamePick(g) {
     return `<span class="game-pick-inline pick-locked" title="Pre-game pick (locked)">→ ${esc(stored.team)}</span>`;
   }
 
-  // Pre-game — show win probability
-  const awayWP  = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
-  const rawHome = homeWP * 1.03, total = awayWP + rawHome;
-  const homePct = Math.round((rawHome / total) * 100);
-  const awayPct = 100 - homePct;
-  const margin  = Math.abs(homePct - 50);
-  const favTeam = homePct > awayPct ? g.homeTeam : g.awayTeam;
-  const pct     = Math.max(homePct, awayPct);
-  const short   = favTeam.split(' ').pop();
+  // Pre-game — show smart win probability
+  const boost    = HOME_BOOST[g.sport] || 1.025;
+  const homeWPr  = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport);
+  const awayWPr  = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport);
+  const rawHome  = homeWPr * boost;
+  const total    = awayWPr + rawHome;
+  const homeFrac = rawHome / total;
+  const homePct  = Math.round(homeFrac * 100);
+  const margin   = Math.abs(homePct - 50);
+  const favTeam  = homePct >= 50 ? g.homeTeam : g.awayTeam;
+  const pct      = Math.max(homePct, 100 - homePct);
+  const short    = favTeam.split(' ').pop();
+  const hasL10   = g.homeRecs?.l10 || g.awayRecs?.l10;
+  const tip      = hasL10 ? `L10 form: ${g.homeRecs?.l10||'?'} / ${g.awayRecs?.l10||'?'}` : `${g.awayRec||'?'} vs ${g.homeRec||'?'}`;
   if (margin < 3) return '';
-  return `<span class="game-pick-inline" title="${esc(g.awayRec || '?')} vs ${esc(g.homeRec || '?')}">→ ${esc(short)} ${pct}%</span>`;
+  return `<span class="game-pick-inline" title="${esc(tip)}">→ ${esc(short)} ${pct}%</span>`;
 }
 
 function buildOtherRow(g) {
@@ -2547,6 +2582,29 @@ function parseWinPct(recStr) {
   if (!m) return 0.5;
   const w = +m[1], l = +m[2];
   return (w + l) > 0 ? w / (w + l) : 0.5;
+}
+
+// Per-sport home field advantage multipliers
+const HOME_BOOST = { nba:1.035, wnba:1.025, mlb:1.015, nfl:1.025, nhl:1.020, soccer:1.030 };
+
+// Smarter win probability: blends season record, home/road split, and L10 recent form
+function smartWP(recs, isHome, sport) {
+  const seasonWP = parseWinPct(recs?.total);
+  if (!seasonWP && seasonWP !== 0) return 0.5;
+  const splitRec = isHome ? recs?.home : recs?.road;
+  const splitWP  = parseWinPct(splitRec) || seasonWP;
+  const l10WP    = recs?.l10 ? parseWinPct(recs.l10) : null;
+  // Weights: L10 most predictive, then split, then season
+  if (l10WP !== null && recs?.l10) return 0.35 * seasonWP + 0.35 * splitWP + 0.30 * l10WP;
+  return 0.50 * seasonWP + 0.50 * splitWP;
+}
+
+// Confidence level based on blended win probability margin
+function wpToConf(winPct) {
+  const margin = Math.abs(winPct - 0.5);
+  if (margin >= 0.14) return 2;
+  if (margin >= 0.08) return 1;
+  return 0;
 }
 
 function parseWeatherFactor(w, fmt) {
@@ -4601,7 +4659,7 @@ function renderMLBLineups(games) {
     const homeLineup    = g.lineups?.homePlayers || [];
     const isLiveGame    = g.status?.abstractGameState === 'Live';
     const isFinal       = g.status?.abstractGameState === 'Final';
-    const gameTime      = g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZoneName:'short' }) : '-';
+    const gameTime      = g.gameDate ? new Date(g.gameDate).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ(), timeZoneName:'short' }) : '-';
     const inning        = g.linescore?.currentInning ? `${g.linescore.inningHalf || ''} ${g.linescore.currentInning}` : '';
     const statusBadge   = isLiveGame ? `<span class="live-badge pulse">LIVE ${esc(inning)}</span>`
                         : isFinal   ? `<span class="fin-badge">FINAL</span>`
@@ -4712,7 +4770,7 @@ async function loadSoccerScores() {
       return;
     }
     renderOtherScores(allGames, 'soccer', 'ESPN');
-    const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() });
     setConn('connected', `Soccer - updated ${t} · refreshes every 30s`);
   } catch (err) {
     setConn('disconnected', 'Soccer - update failed');
@@ -4770,7 +4828,7 @@ const GOLF_TOURS = [
 ];
 
 function formatTeeTime(raw) {
-  try { const d = new Date(raw); if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }); } catch {}
+  try { const d = new Date(raw); if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() }); } catch {}
   return String(raw);
 }
 
@@ -5018,7 +5076,7 @@ async function loadGolfLeaderboard() {
     }
     if (_loadSeq !== seq) return;
     area.innerHTML = html || '<div class="empty-state"><p>No active golf tournaments right now.</p><p class="muted">Check back when a PGA/LPGA/DP World Tour event is in progress.</p></div>';
-    const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() });
     setConn('connected', `Golf updated ${t} · refreshes every 30s`);
   } catch (err) {
     setConn('disconnected', 'Golf - update failed');
@@ -5141,7 +5199,7 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
       const ln = (p.athlete?.shortName || p.athlete?.displayName || '').split(' ').pop().toLowerCase();
       return ln === storedLastName;
     });
-    const todayDateStr = new Date().toISOString().slice(0, 10);
+    const todayDateStr = dateStrLocal();
     const allPicksNow = getPicks();
     const thisPick = allPicksNow[pickId];
     if (thisPick && (thisPick.result === null || existingPick.date === todayDateStr)) {
@@ -6004,7 +6062,7 @@ async function loadLottery() {
 
   area.innerHTML = `<div class="lottery-section">${ohioSection}${games.map(renderLotteryCard).join('')}</div>`;
 
-  const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+  const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() });
   setConn('connected', `Lottery updated ${t}`);
 }
 
@@ -6022,14 +6080,14 @@ function getLockedTopPicks() {
     const s = localStorage.getItem(_DAILY_TOP_KEY);
     if (!s) return null;
     const obj = JSON.parse(s);
-    if (obj.date !== new Date().toISOString().slice(0, 10)) return null;
+    if (obj.date !== dateStrLocal()) return null;
     return obj.bySport || null;
   } catch { return null; }
 }
 
 function lockTopPicks() {
   if (getLockedTopPicks()) return;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dateStrLocal();
   const allPicksMap = getPicks();
   const gamePicks = Object.entries(allPicksMap)
     .filter(([, p]) => p.date === today && !p.type && p.team)
@@ -6070,7 +6128,7 @@ async function preloadPicksForSimpleView() {
   // Purge any MLB picks that were seeded by simple win% math (conf=0) and have already
   // been resolved. These are wrong retroactive predictions, not real analysis picks.
   // Analysis picks always have conf >= 1 (from buildPickSection's pickedConf logic).
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dateStrLocal();
   const stalePicks = getPicks();
   let purged = false;
   for (const [id, p] of Object.entries(stalePicks)) {
@@ -6166,11 +6224,11 @@ function showSimpleView() {
 function hideSimpleView() {
   document.body.classList.remove('simple-mode');
   document.getElementById('simple-view').classList.remove('sv-active');
-  localStorage.setItem('sv_dismissed', new Date().toISOString().slice(0, 10));
+  localStorage.setItem('sv_dismissed', dateStrLocal());
 }
 
 function renderSimpleView() {
-  const targetDate  = dateStrUTC(_svDateOffset);
+  const targetDate  = dateStrLocal(_svDateOffset);
   const isToday     = _svDateOffset === 0;
   const allPicksMap = getPicks();
 
@@ -6368,13 +6426,23 @@ document.querySelectorAll('.overview-card').forEach(card => {
 });
 
 // ── INIT ─────────────────────────────────────────────────────
+function renderTZSelector() {
+  const el = document.getElementById('tz-selector');
+  if (!el) return;
+  const cur = getUserTZ();
+  el.innerHTML = TZ_OPTIONS.map(o =>
+    `<button class="tz-btn${o.tz === cur ? ' tz-active' : ''}" data-tz="${o.tz}" onclick="setUserTZ('${o.tz}')">${o.label}</button>`
+  ).join('');
+}
+
 function init() {
   clearOldPicks();
   updatePicksDisplay();
+  renderTZSelector();
   renderDateBar();
   switchSport('tennis'); // always boot tennis — loads data behind the overlay
   const svDismissed = localStorage.getItem('sv_dismissed');
-  if (svDismissed !== new Date().toISOString().slice(0, 10)) {
+  if (svDismissed !== dateStrLocal()) {
     showSimpleView();
   }
 }
