@@ -5675,7 +5675,10 @@ async function loadGolfPicksPage() {
       }
     }
 
-    // ── Tomorrow's pairings (if already posted and different from today's data) ──
+    // ── Tomorrow's pairings (if already posted) ──
+    // Don't use groupByTeeTime for tomorrow — players have today's linescore data which
+    // makes them appear "finished" for the current round. Instead, group directly by the
+    // root-level teeTime field ESPN populates when pairings are released.
     let tmrwHTML = '';
     for (let i = 0; i < GOLF_TOURS.length; i++) {
       if (tmrwResults[i].status !== 'fulfilled') continue;
@@ -5684,13 +5687,25 @@ async function loadGolfPicksPage() {
       for (const ev of (data.events || [])) {
         const comp  = ev.competitions?.[0]; if (!comp) continue;
         const round = comp.status?.period || 1;
+        const nextRound = round + 1;
         const allComp = comp.competitors || [];
-        const { upcomingGroups } = groupByTeeTime(allComp, round);
-        const validGroups = upcomingGroups.filter(g => g.players.length >= 2);
+
+        // Group by root-level teeTime (posted before round starts)
+        const teeMap = new Map();
+        for (const p of allComp) {
+          const t = p.teeTime || p.competitor?.teeTime || '';
+          if (!t) continue;
+          if (!teeMap.has(t)) teeMap.set(t, { time: t, nine: 'unknown', players: [], upcoming: true });
+          teeMap.get(t).players.push(p);
+        }
+        const validGroups = [...teeMap.values()]
+          .filter(g => g.players.length >= 2)
+          .sort((a, b) => new Date(a.time) - new Date(b.time));
+
         if (!validGroups.length) continue;
         tmrwHTML += `<div class="golf-picks-section">
-          <div class="golf-picks-event-hdr golf-tmrw-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} · <span class="golf-tmrw-label">Tomorrow's Groups</span></div>
-          ${validGroups.map(g => buildGolfGroupPickCard(g, round, false, tour.key, ev.id)).join('')}
+          <div class="golf-picks-event-hdr golf-tmrw-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${nextRound} · <span class="golf-tmrw-label">Tomorrow's Groups</span></div>
+          ${validGroups.map(g => buildGolfGroupPickCard(g, nextRound, false, tour.key, ev.id)).join('')}
         </div>`;
       }
     }
@@ -6501,7 +6516,7 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
-const _TICKET_KEY = '_baseline_ticket_v2';
+const _TICKET_KEY = '_baseline_ticket_v3';
 
 function getDailyTicket() {
   try {
@@ -6691,7 +6706,9 @@ async function preloadPicksForSimpleView() {
     if (games.length) _svLotteryHTML = games.map(renderLotteryCard).join('');
   } catch (e) {}
 
-  // All sports done — build ticket if enough picks, then render once.
+  // All sports done — now build the ticket (all picks are in localStorage).
+  // Do this AFTER all sports load so we score from the full candidate pool.
+  buildDailyTicketIfNeeded();
   if (isActive()) renderSimpleView();
 }
 
@@ -6717,7 +6734,6 @@ function renderSimpleView() {
   const headline = document.querySelector('.sv-headline');
   if (headline) headline.textContent = "Today's Ticket";
 
-  buildDailyTicketIfNeeded();
   const ticket = getDailyTicket();
 
   if (!ticket) {
