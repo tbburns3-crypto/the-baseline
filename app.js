@@ -419,12 +419,12 @@ function dateStrLocal(offset = 0) {
   if (offset) d.setDate(d.getDate() + offset);
   return new Intl.DateTimeFormat('en-CA', { timeZone: getUserTZ() }).format(d);
 }
-// Format an ISO datetime string into a time string in the user's timezone
+// Format an ISO datetime string into a time string in the user's timezone (with TZ label)
 function fmtTimeTZ(iso) {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() });
+    if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ(), timeZoneName:'short' });
   } catch {}
   return iso;
 }
@@ -462,6 +462,15 @@ function fmtTime12(t) {
   const [h, m] = t.split(':').map(Number);
   const ampm = h >= 12 ? 'PM' : 'AM';
   return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+// Tennis event_time is "HH:MM" UTC — convert to user's TZ and show the TZ label
+function fmtTennisTime(date, time) {
+  if (!time) return '';
+  try {
+    const d = new Date((date || dateStrLocal()) + 'T' + time + ':00Z');
+    if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ(), timeZoneName:'short' });
+  } catch {}
+  return fmtTime12(time);
 }
 
 function slugify(s) {
@@ -1243,7 +1252,7 @@ function buildMatchRow(m, idSuffix = '') {
     ? `<span class="status live-status">● LIVE</span>`
     : finished
     ? `<span class="status fin-status">FIN</span>`
-    : `<span class="status time-status">${esc(fmtTime12(m.event_time))}</span>`;
+    : `<span class="status time-status">${esc(fmtTennisTime(m.event_date, m.event_time))}</span>`;
 
   // Winner detection
   const p1Won = finished && m.event_winner === 'First Player';
@@ -1710,7 +1719,7 @@ function patchSingleRow(row, m) {
       ? `<span class="status live-status">● LIVE</span>`
       : finished
       ? `<span class="status fin-status">FIN</span>`
-      : `<span class="status time-status">${esc(fmtTime12(m.event_time))}</span>`;
+      : `<span class="status time-status">${esc(fmtTennisTime(m.event_date, m.event_time))}</span>`;
   }
 
   // Sets
@@ -2600,7 +2609,7 @@ function buildOtherRow(g) {
   return `
     <div class="other-match-row ${live?'live':''}" id="og-${esc(g.id)}" onclick="toggleGamePreview('${esc(g.id)}')">
       <div class="other-status" id="og-st-${esc(g.id)}">
-        ${live ? '<span class="live-badge">LIVE</span>' : fin ? '<span class="fin-badge">FIN</span>' : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`}
+        ${live ? '<span class="live-badge">LIVE</span>' : fin ? '<span class="fin-badge">FIN</span>' : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.gameDate ? fmtTimeTZ(g.gameDate) : g.status)}</span>`}
       </div>
       <div class="other-teams">
         <div class="other-team away">${esc(g.awayTeam)}${g.awayRec ? ` <span class="rec-tag">${esc(g.awayRec)}</span>` : ''}</div>
@@ -2650,7 +2659,7 @@ function renderOtherScores(games, sport, src) {
       rowEl.classList.toggle('live', live);
       stEl.innerHTML = live ? '<span class="live-badge">LIVE</span>'
                      : fin  ? '<span class="fin-badge">FIN</span>'
-                     : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.status)}</span>`;
+                     : `<span style="font-size:.78rem;color:var(--text-muted)">${esc(g.gameDate ? fmtTimeTZ(g.gameDate) : g.status)}</span>`;
       scEl.innerHTML = `<div class="other-score">${g.awayScore !== '' ? esc(g.awayScore) : '-'}</div><div class="other-score">${g.homeScore !== '' ? esc(g.homeScore) : '-'}</div>`;
       pdEl.innerHTML = (live && (periodLabel || g.time) ? `<span>${esc(periodLabel)} ${esc(g.time)}</span>` : '') + inlineGamePick(g);
       if (potdEl && g.league === 'MLB') potdEl.innerHTML = getGameBestPickHTML(String(g.id), g);
@@ -3108,7 +3117,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
 
   const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
                     : live ? '<span class="live-badge">LIVE</span>'
-                    : `<span class="pc-time">${esc(espnGame.status)}</span>`;
+                    : `<span class="pc-time">${esc(espnGame.gameDate ? fmtTimeTZ(espnGame.gameDate) : espnGame.status)}</span>`;
 
   // If no MLB schedule data, show minimal card
   if (!mlbGame) {
@@ -3499,6 +3508,7 @@ async function loadTennisPicksPage() {
     const match = matchByKey.get(id);
     return { ...p, _id: id,
       _time:    match?.event_time || '',
+      _date:    match?.event_date || '',
       _tourn:   match?.tournament_name || '',
       _cat:     match ? matchCategory(match.event_type_type || '') : '',
       _tier:    p.tier || (match ? tournamentTier(match) : ''),
@@ -3511,7 +3521,7 @@ async function loadTennisPicksPage() {
     const resultIcon = p.result === null ? ''
       : `<span class="tp-row-icon ${win ? 'tp-ico-win' : 'tp-ico-loss'}">${win ? '✓' : '✗'}</span>`;
     const matchupClean = (p.matchup || p.team).replace(/\s*\(\w+\)$/i, '');
-    const timeStr = p._time ? `<span class="tp-row-time">${esc(fmtTime12(p._time))}</span>` : '';
+    const timeStr = p._time ? `<span class="tp-row-time">${esc(fmtTennisTime(p._date, p._time))}</span>` : '';
     return `<div class="${rowCls}">
       ${timeStr}
       <span class="tp-row-arrow">→</span>
@@ -3866,7 +3876,7 @@ function buildTomorrowPickCard(m) {
       <span class="surface-dot ${scLow}" title="${esc(surface)}"></span>
       <span class="tp-tourney">${esc(m.tournament_name || m.event_type_type || '')}</span>
       ${roundLabel}
-      <span class="tp-match-time">${esc(fmtTime12(m.event_time || ''))}</span>
+      <span class="tp-match-time">${esc(fmtTennisTime(m.event_date, m.event_time || ''))}</span>
     </div>
     <div class="tp-players">
       <span class="tp-p1 ${pickSide===1?'tp-favored':''}">${esc(p1Name)}${seedTag(s1)}${rankTag(r1, s1)}${p1Tired?'<span class="tp-tired-dot" title="Played today">⚡</span>':''}</span>
@@ -3991,7 +4001,7 @@ function buildNBAPicksCard(g, summary) {
 
   const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
                     : live ? '<span class="live-badge">LIVE</span>'
-                    : `<span class="pc-time">${esc(g.status)}</span>`;
+                    : `<span class="pc-time">${esc(g.gameDate ? fmtTimeTZ(g.gameDate) : g.status)}</span>`;
   const oddsLine = g.odds?.spread
     ? `<span class="pc-odds">${esc(g.odds.spread)}${g.odds.overUnder ? ` · O/U ${g.odds.overUnder}` : ''}</span>` : '';
   const recLine = (g.awayRec || g.homeRec)
@@ -4026,7 +4036,7 @@ function buildWinPredCard(g) {
   }
   const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
                     : live ? '<span class="live-badge">LIVE</span>'
-                    : `<span class="pc-time">${esc(g.status)}</span>`;
+                    : `<span class="pc-time">${esc(g.gameDate ? fmtTimeTZ(g.gameDate) : g.status)}</span>`;
   const oddsLine = g.odds?.spread
     ? `<span class="pc-odds">${esc(g.odds.spread)}${g.odds.overUnder ? ` · O/U ${g.odds.overUnder}` : ''}</span>` : '';
   const recLine = (g.awayRec || g.homeRec)
@@ -5176,7 +5186,10 @@ const GOLF_TOURS = [
 ];
 
 function formatTeeTime(raw) {
-  try { const d = new Date(raw); if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() }); } catch {}
+  try {
+    const d = new Date(raw);
+    if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ(), timeZoneName:'short' });
+  } catch {}
   return String(raw);
 }
 
