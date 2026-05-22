@@ -6990,6 +6990,7 @@ function buildDailyTicketIfNeeded() {
       candidates.push({ id, score, sport: p.sport || 'other', type: 'player',
         pick: p.player, description: statLabel, matchup: p.gameMatchup || '', conf: p.conf || 1 });
     } else if (p.team) {
+      if ((p.conf || 0) < 1) continue; // skip toss-up game picks (< 60% confidence)
       const sport = p.sport || 'tennis';
       if (sport === 'tennis') {
         const tierBonus = TIER_BONUS[p.tier] ?? -99;
@@ -7027,69 +7028,6 @@ function buildDailyTicketIfNeeded() {
   _dailyTicketCache = { date: today, legs }; // freeze in memory immediately
 }
 
-// Patch: one-time fix for 2026-05-22 only — no longer active.
-function patchTicketSwapRiediForJacquet() {
-  return; // patch complete — do not modify the locked ticket
-
-  // Nothing to do if Jacquet is already on the ticket
-  if (ticket.legs.some(l =>
-    l.sport === 'tennis' && (l.pick || '').toLowerCase().includes('jacquet')
-  )) return;
-
-  const today = dateStrLocal();
-  // Only run for today — don't patch yesterday's saved ticket
-  if (ticket.date !== today) return;
-
-  const allPicks = getPicks();
-
-  // Try to find Jacquet's stored pick first
-  const jacquetEntry = Object.entries(allPicks).find(([, p]) =>
-    p.sport === 'tennis' && p.date === today &&
-    (p.team || '').toLowerCase().includes('jacquet')
-  );
-
-  let jId, jLeg;
-  if (jacquetEntry) {
-    const [id, jp] = jacquetEntry;
-    jId = id;
-    jLeg = {
-      id: jId, score: 8, sport: 'tennis', type: 'game',
-      pick: jp.team, description: jp.matchup || jp.team || 'K. Jacquet',
-      matchup: jp.matchup || jp.team || 'K. Jacquet',
-      conf: jp.conf || 2, tier: jp.tier || ''
-    };
-  } else {
-    // Hardcoded fallback — Kyrian Jacquet won 2026-05-22
-    jId = 'tennis_jacquet_patch_20260522';
-    jLeg = {
-      id: jId, score: 8, sport: 'tennis', type: 'game',
-      pick: 'K. Jacquet', description: 'K. Jacquet', matchup: 'K. Jacquet',
-      conf: 2, tier: ''
-    };
-    // Ensure a pick entry exists so the W badge shows
-    if (!allPicks[jId]) {
-      allPicks[jId] = {
-        team: 'K. Jacquet', date: today, result: 'win',
-        matchup: 'K. Jacquet', sport: 'tennis', conf: 2, tier: ''
-      };
-      savePicks(allPicks);
-    }
-  }
-
-  // Remove Riedi if present (old rebuild artifact)
-  const riediIdx = ticket.legs.findIndex(l =>
-    l.sport === 'tennis' && (l.pick || '').toLowerCase().includes('riedi')
-  );
-  if (riediIdx !== -1) {
-    ticket.legs[riediIdx] = jLeg;
-  } else {
-    // Insert Jacquet right after Dellien (first tennis leg), or at position 1
-    const dellienIdx = ticket.legs.findIndex(l => l.sport === 'tennis');
-    ticket.legs.splice(dellienIdx !== -1 ? dellienIdx + 1 : 1, 0, jLeg);
-  }
-
-  localStorage.setItem(_TICKET_KEY, JSON.stringify(ticket));
-}
 
 function resetDailyPicks() {
   _svPreloadedAt = 0;
@@ -7249,9 +7187,6 @@ async function preloadPicksForSimpleView() {
   // Fix any stored golf pick matchup strings using the manual override before
   // the ticket reads them — ensures the ticket shows correct 3-ball groupings.
   fixGolfPickMatchupsFromOverride();
-  // Swap Riedi for Kyrian Jacquet on the locked ticket (Riedi was never supposed
-  // to be there — the original ticket had Jacquet).
-  patchTicketSwapRiediForJacquet();
   // All sports done — now build the ticket (all picks are in localStorage).
   // Do this AFTER all sports load so we score from the full candidate pool.
   buildDailyTicketIfNeeded();
@@ -7908,8 +7843,6 @@ function renderTZSelector() {
 
 function init() {
   clearOldPicks();
-  // Patch runs synchronously before any rendering so Jacquet appears immediately
-  try { patchTicketSwapRiediForJacquet(); } catch (e) {}
   updatePicksDisplay();
   renderTZSelector();
   renderDateBar();
