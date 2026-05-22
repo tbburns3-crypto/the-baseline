@@ -990,26 +990,31 @@ const CLAY_COUNTRIES  = new Set(['ESP','ARG','ITA','FRA','CHL','COL','PER','URU'
 const GRASS_COUNTRIES = new Set(['AUS','GBR','USA','GER','CAN','RSA','NZL','SWE']);
 
 // Tournament-specific affinity — last name (lowercase) → partial tournament name → strength (1-4)
-// Active players only — remove when a player retires
+// Updated 2025: reflect current form, post-surgery players, new top-10 entrants
 const TOURNAMENT_AFFINITY = {
   // ATP
-  djokovic:  { 'australian open':4, 'wimbledon':3, 'us open':2, 'paris masters':3 },
-  alcaraz:   { 'roland garros':3, 'wimbledon':3, 'us open':2, 'madrid':2, 'barcelona':2 },
-  sinner:    { 'australian open':4, 'miami':2, 'us open':3 },
-  zverev:    { 'roland garros':3, 'paris masters':3, 'hamburg':2 },
-  tsitsipas: { 'monte carlo':3, 'barcelona':2, 'lyon':2 },
+  djokovic:  { 'australian open':2, 'wimbledon':2, 'us open':2, 'paris masters':2 }, // reduced — post-surgery 2024, less dominant in 2025
+  alcaraz:   { 'roland garros':4, 'french open':4, 'wimbledon':3, 'us open':2, 'madrid':3, 'barcelona':2 },
+  sinner:    { 'australian open':4, 'miami':2, 'us open':3, 'paris masters':2 },
+  zverev:    { 'roland garros':3, 'paris masters':3, 'hamburg':2, 'french open':3 },
+  tsitsipas: { 'monte carlo':2, 'barcelona':2, 'lyon':2 }, // reduced — less consistent 2024-25
   medvedev:  { 'us open':3, 'paris masters':2, 'shanghai':2 },
   ruud:      { 'roland garros':3, 'french open':3, 'rome':2, 'monte carlo':2, 'barcelona':2 },
   rublev:    { 'monte carlo':3, 'hamburg':2, 'madrid':2 },
   fritz:     { 'indian wells':3, 'us open':2 },
+  musetti:   { 'roland garros':2, 'french open':2, 'rome':2, 'monte carlo':2 }, // clay specialist
   // WTA
   swiatek:   { 'roland garros':4, 'french open':4, 'madrid':3, 'rome':3, 'miami':2 },
   sabalenka: { 'australian open':4, 'us open':3, 'madrid':2 },
+  keys:      { 'australian open':3, 'us open':2 }, // AO 2025 winner
   gauff:     { 'us open':3, 'roland garros':2, 'miami':2 },
   rybakina:  { 'wimbledon':3, 'australian open':2, 'dubai':2 },
   paolini:   { 'roland garros':3, 'wimbledon':2, 'dubai':2 },
   pegula:    { 'us open':2, 'miami':2 },
-  jabeur:    { 'wimbledon':3, 'roland garros':2, 'rome':2 },
+  andreeva:  { 'roland garros':2, 'french open':2 }, // rising 2024-25, solid clay results
+  navarro:   { 'wimbledon':2, 'us open':2 }, // rising 2024-25
+  mboko:     { 'canadian open':2 }, // ranked #9 WTA 2025, hard-court specialist
+  jabeur:    { 'wimbledon':2, 'roland garros':2 }, // reduced — injury history 2024
 };
 
 function isGrandSlam(m) {
@@ -2392,7 +2397,24 @@ function autoRecordAndResolvePick(g) {
 
 function inlineGamePick(g) {
   if (!g.awayRec && !g.homeRec) return '';
-  const { fin } = gameRowState(g);
+  const { fin, live } = gameRowState(g);
+  const stored = getPicks()[String(g.id)];
+
+  // Finished game — show W/L result against the stored pre-game pick
+  if (fin) {
+    if (!stored || stored.result === null) return '';
+    return stored.result === 'win'
+      ? `<span class="game-pick-inline pick-win" title="Pick correct">✓ ${esc(stored.team)}</span>`
+      : `<span class="game-pick-inline pick-loss" title="Pick wrong">✗ ${esc(stored.team)}</span>`;
+  }
+
+  // Live game — freeze the pre-game pick, never recalculate mid-game
+  if (live) {
+    if (!stored) return '';
+    return `<span class="game-pick-inline pick-locked" title="Pre-game pick (locked)">→ ${esc(stored.team)}</span>`;
+  }
+
+  // Pre-game — show win probability
   const awayWP  = parseWinPct(g.awayRec), homeWP = parseWinPct(g.homeRec);
   const rawHome = homeWP * 1.03, total = awayWP + rawHome;
   const homePct = Math.round((rawHome / total) * 100);
@@ -2401,13 +2423,6 @@ function inlineGamePick(g) {
   const favTeam = homePct > awayPct ? g.homeTeam : g.awayTeam;
   const pct     = Math.max(homePct, awayPct);
   const short   = favTeam.split(' ').pop();
-  const stored  = getPicks()[String(g.id)];
-  if (fin) {
-    if (!stored || stored.result === null) return '';
-    return stored.result === 'win'
-      ? `<span class="game-pick-inline pick-win" title="Pick correct">✓ ${esc(short)}</span>`
-      : `<span class="game-pick-inline pick-loss" title="Pick wrong">✗ ${esc(short)}</span>`;
-  }
   if (margin < 3) return '';
   return `<span class="game-pick-inline" title="${esc(g.awayRec || '?')} vs ${esc(g.homeRec || '?')}">→ ${esc(short)} ${pct}%</span>`;
 }

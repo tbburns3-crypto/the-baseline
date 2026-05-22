@@ -2066,8 +2066,9 @@ body.simple-mode #app-layout { display: none !important; }
   font-size: .72rem; font-weight: 700; color: var(--accent);
   white-space: nowrap; display: inline-block;
 }
-.game-pick-inline.pick-win  { color: var(--accent); }
-.game-pick-inline.pick-loss { color: #ef5350; }
+.game-pick-inline.pick-win    { color: var(--accent); }
+.game-pick-inline.pick-loss   { color: #ef5350; }
+.game-pick-inline.pick-locked { color: var(--text-muted); opacity: .8; }
 .rec-tag {
   font-size: .68rem; color: var(--text-muted); font-weight: 400;
   white-space: nowrap; margin-left: 4px;
