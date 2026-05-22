@@ -2410,15 +2410,19 @@ function autoRecordAndResolvePick(g) {
   if (!g.awayRec && !g.homeRec) return;
   const { fin, live } = gameRowState(g);
   if (!live && !fin) {
-    const boost   = HOME_BOOST[g.sport] || 1.025;
-    const homeWPr = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport);
-    const awayWPr = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport);
-    const rawHome = homeWPr * boost;
-    const total   = awayWPr + rawHome;
+    const sc   = parseSeriesContext(g.series);
+    // Playoffs: home court worth more (crowd, refs, routines) — bump by extra 2%
+    const playoffMult = sc.isPlayoff ? 1.02 : 1.0;
+    const boost    = (HOME_BOOST[g.sport] || 1.025) * playoffMult;
+    const momentum = seriesMomentumAdj(sc, g.homeTeam, g.homeAbbr, g.awayTeam, g.awayAbbr);
+    const homeWPr  = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport) * momentum.home;
+    const awayWPr  = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport) * momentum.away;
+    const rawHome  = homeWPr * boost;
+    const total    = awayWPr + rawHome;
     const homeFrac = rawHome / total;
-    const homePct = Math.round(homeFrac * 100);
-    const short   = (homePct >= 50 ? g.homeTeam : g.awayTeam).split(' ').pop();
-    const conf    = wpToConf(homePct >= 50 ? homeFrac : 1 - homeFrac);
+    const homePct  = Math.round(homeFrac * 100);
+    const short    = (homePct >= 50 ? g.homeTeam : g.awayTeam).split(' ').pop();
+    const conf     = wpToConf(homePct >= 50 ? homeFrac : 1 - homeFrac);
     recordPick(String(g.id), short, `${g.awayTeam} @ ${g.homeTeam}`, g.sport || '', conf);
   }
   if (fin && g.awayScore !== '' && g.homeScore !== '') {
@@ -2446,10 +2450,13 @@ function inlineGamePick(g) {
     return `<span class="game-pick-inline pick-locked" title="Pre-game pick (locked)">→ ${esc(stored.team)}</span>`;
   }
 
-  // Pre-game — show smart win probability
-  const boost    = HOME_BOOST[g.sport] || 1.025;
-  const homeWPr  = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport);
-  const awayWPr  = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport);
+  // Pre-game — show smart win probability (with playoff context)
+  const sc       = parseSeriesContext(g.series);
+  const playoffMult = sc.isPlayoff ? 1.02 : 1.0;
+  const boost    = (HOME_BOOST[g.sport] || 1.025) * playoffMult;
+  const momentum = seriesMomentumAdj(sc, g.homeTeam, g.homeAbbr, g.awayTeam, g.awayAbbr);
+  const homeWPr  = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport) * momentum.home;
+  const awayWPr  = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport) * momentum.away;
   const rawHome  = homeWPr * boost;
   const total    = awayWPr + rawHome;
   const homeFrac = rawHome / total;
@@ -2459,7 +2466,8 @@ function inlineGamePick(g) {
   const pct      = Math.max(homePct, 100 - homePct);
   const short    = favTeam.split(' ').pop();
   const hasL10   = g.homeRecs?.l10 || g.awayRecs?.l10;
-  const tip      = hasL10 ? `L10 form: ${g.homeRecs?.l10||'?'} / ${g.awayRecs?.l10||'?'}` : `${g.awayRec||'?'} vs ${g.homeRec||'?'}`;
+  const seriesTip = sc.isPlayoff && sc.gameNum ? ` · Game ${sc.gameNum}${sc.leader ? ` (${sc.leader} leads)` : ' (tied)'}` : '';
+  const tip      = (hasL10 ? `L10: ${g.homeRecs?.l10||'?'} / ${g.awayRecs?.l10||'?'}` : `${g.awayRec||'?'} vs ${g.homeRec||'?'}`) + seriesTip;
   if (margin < 3) return '';
   return `<span class="game-pick-inline" title="${esc(tip)}">→ ${esc(short)} ${pct}%</span>`;
 }
@@ -2586,8 +2594,37 @@ function parseWinPct(recStr) {
   return (w + l) > 0 ? w / (w + l) : 0.5;
 }
 
-// Per-sport home field advantage multipliers
+// Per-sport home field advantage multipliers (playoffs boost applied separately)
 const HOME_BOOST = { nba:1.035, wnba:1.025, mlb:1.015, nfl:1.025, nhl:1.020, soccer:1.030 };
+
+// Parse ESPN series summary into structured playoff context
+function parseSeriesContext(series) {
+  if (!series?.summary) return { isPlayoff: false };
+  const s = series.summary;
+  const tiedM = s.match(/Series tied (\d+)-(\d+)/i);
+  const leadM  = s.match(/(.+?)\s+leads\s+series\s+(\d+)-(\d+)/i);
+  if (tiedM) {
+    const each = parseInt(tiedM[1]);
+    return { isPlayoff: true, gameNum: each * 2 + 1, tied: true, leader: null };
+  }
+  if (leadM) {
+    const w = parseInt(leadM[2]), l = parseInt(leadM[3]);
+    return { isPlayoff: true, gameNum: w + l + 1, leader: leadM[1].trim(), wins: w, losses: l, tied: false };
+  }
+  return { isPlayoff: true, gameNum: null, leader: null };
+}
+
+// Determine which team leads the series and return their edge multiplier
+function seriesMomentumAdj(sc, homeTeam, homeAbbr, awayTeam, awayAbbr) {
+  if (!sc.isPlayoff || !sc.leader) return { home: 1.0, away: 1.0 };
+  const ll = sc.leader.toLowerCase();
+  // Match by partial name or abbreviation (ESPN uses city or nickname in series leader)
+  const homeMatch = homeTeam.toLowerCase().split(' ').some(w => ll.includes(w)) ||
+                    homeAbbr.toLowerCase() === ll;
+  return homeMatch
+    ? { home: 1.015, away: 1.0 }   // home team leads series → small momentum edge
+    : { home: 1.0,   away: 1.015 };
+}
 
 // Smarter win probability: blends season record, home/road split, and L10 recent form
 function smartWP(recs, isHome, sport) {
@@ -2671,9 +2708,11 @@ function buildPickSection(awayName, homeName, opts) {
     factors.push({ label: 'Record', detail: `${esc(aShort)} ${awayRec||'-'} · ${esc(hShort)} ${homeRec||'-'}`, winner: w });
   } else { aScore += 0.15; hScore += 0.15; }
 
-  // 2. Home advantage (fixed 4% bump)
-  hScore += 0.04;
-  factors.push({ label: 'Home court', detail: `${esc(hShort)} at home`, winner: 'home' });
+  // 2. Home advantage (4% regular season, 6% playoffs — crowd + routine + refs)
+  const _sc = parseSeriesContext({ summary: seriesSummary });
+  const homeCourtBoost = _sc.isPlayoff ? 0.06 : 0.04;
+  hScore += homeCourtBoost;
+  factors.push({ label: _sc.isPlayoff ? 'Home court (playoffs)' : 'Home court', detail: `${esc(hShort)} at home`, winner: 'home' });
 
   // 3. Recent form - last 5 games (25%)
   if (awayForm?.recentPlayed >= 3 || homeForm?.recentPlayed >= 3) {
@@ -2695,17 +2734,18 @@ function buildPickSection(awayName, homeName, opts) {
     factors.push({ label: `H2H '${String(new Date().getFullYear()).slice(-2)}`, detail: `${esc(aShort)} ${awayH2H}W · ${esc(hShort)} ${homeH2H}W (${h2hTotal} games)`, winner: w });
   } else { aScore += 0.075; hScore += 0.075; }
 
-  // 5. Playoff series
+  // 5. Playoff series momentum + game number context
   if (seriesSummary) {
+    const gameNumLabel = _sc.gameNum ? ` · Game ${_sc.gameNum}` : '';
     const sm = seriesSummary.match(/^(\S+)\s+leads/i);
     if (sm) {
       const leader = sm[1].toUpperCase();
       const matchAway = leader === awayAbbr.toUpperCase() ||
                         awayName.toUpperCase().split(' ').some(w => w.startsWith(leader));
       if (matchAway) aScore += 0.18; else hScore += 0.18;
-      factors.push({ label: 'Series', detail: esc(seriesSummary), winner: matchAway ? 'away' : 'home' });
+      factors.push({ label: `Series${gameNumLabel}`, detail: esc(seriesSummary), winner: matchAway ? 'away' : 'home' });
     } else {
-      factors.push({ label: 'Series', detail: esc(seriesSummary), winner: 'tie' });
+      factors.push({ label: `Series${gameNumLabel}`, detail: esc(seriesSummary), winner: 'tie' });
     }
   }
 
