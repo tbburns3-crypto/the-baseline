@@ -4335,6 +4335,7 @@ async function renderMLBGamePreview(espnGame, panel) {
     const homeBatters = makeBatters(homeLineup, awayHand, homeAbbr);
     const allBatters  = [...awayBatters, ...homeBatters];
 
+    const gameMatchup = `${espnGame.awayTeam} @ ${espnGame.homeTeam}`;
     const pickResult = buildPickSection(awayAbbr, homeAbbr, {
       awayRec: espnGame.awayRec || '', homeRec: espnGame.homeRec || '',
       awayERA: awayPD?.season?.era ?? null, homeERA: homePD?.season?.era ?? null,
@@ -4344,7 +4345,6 @@ async function renderMLBGamePreview(espnGame, panel) {
       sport: 'mlb', weather: mlbGame.weather || null, weatherFmt: 'mlb'
     });
     const pickHTML = pickResult.html;
-    // Force-update with the nuanced multi-factor pick — pre-game only, never live or finished
     const _gs = gameRowState(espnGame);
     if (pickResult.team && !_gs.fin && !_gs.live) {
       recordPick(String(espnGame.id), pickResult.team, gameMatchup, 'mlb', pickResult.conf, true);
@@ -7525,16 +7525,24 @@ function renderTicketsPage() {
   const mlbKs    = getPicksForTicket('mlb_ks',   date, allPicks);
   const pending  = getLineupPendingMatchups(date, allPicks);
 
-  const pendingNote = pending.length
-    ? `<div class="tp-pending">⏳ Lineup pending: ${pending.map(m => esc(m)).join(' · ')}<br><span class="tp-pending-sub">Player prop picks fill in automatically once lineups post — they lock immediately when added</span></div>`
-    : '';
+  // Count distinct games with lineups posted (need ≥3 for a meaningful combined ticket)
+  const mlbGamesWithLineups = new Set(
+    Object.entries(allPicks)
+      .filter(([id, p]) => p.sport === 'mlb' && p.type === 'player' && p.date === date && id.startsWith('plr_'))
+      .map(([id]) => id.split('_')[1])
+  ).size;
+  const showMLBAgg = mlbGamesWithLineups >= 3;
 
-  const mlbAggCards = [
+  const pendingNote = pending.length
+    ? `<div class="tp-pending">⏳ Lineup pending: ${pending.map(m => esc(m)).join(' · ')}<br><span class="tp-pending-sub">Player prop picks fill in automatically once lineups post — they lock immediately when added${!showMLBAgg && mlbGamesWithLineups > 0 ? ` · Combined tickets unlock when 3+ lineups are in (${mlbGamesWithLineups}/3 so far)` : ''}</span></div>`
+    : (!showMLBAgg && mlbGamesWithLineups > 0 ? `<div class="tp-pending">⏳ Combined tickets need 3+ lineups — ${mlbGamesWithLineups}/3 posted so far. Checking automatically.</div>` : '');
+
+  const mlbAggCards = showMLBAgg ? [
     mlbHits.length ? renderTicketBlock('🎯 Hit Leaders', mlbHits, allPicks) : '',
     mlbRBI.length  ? renderTicketBlock('⚡ RBI Leaders', mlbRBI,  allPicks) : '',
     mlbHR.length   ? renderTicketBlock('💣 HR Threats',  mlbHR,   allPicks) : '',
     mlbKs.length   ? renderTicketBlock('🔥 Strikeout Artists', mlbKs, allPicks) : '',
-  ].filter(Boolean);
+  ].filter(Boolean) : [];
 
   const mlbPerGameCards = perGame.map(g => {
     const hasProps = g.legs.some(l => l.propType !== 'game');
