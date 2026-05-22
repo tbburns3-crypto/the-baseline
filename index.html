@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>The Baseline — Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=127">
+  <link rel="stylesheet" href="style.css?v=128">
 </head>
 <body>
 
@@ -43,6 +43,7 @@
       <button class="sport-tab" data-sport="soccer">⚽ Soccer</button>
       <button class="sport-tab" data-sport="golf">⛳ Golf</button>
       <button class="sport-tab" data-sport="lottery">🎰 Lottery</button>
+      <button class="sport-tab" data-sport="tickets">🎫 Tickets</button>
     </nav>
     <div class="topbar-controls">
       <div id="tz-selector" title="Your timezone"></div>
@@ -213,6 +214,13 @@
         </div>
       </section>
 
+      <!-- ── TICKETS ── -->
+      <section id="view-tickets" class="view-panel">
+        <div id="tickets-area">
+          <div class="loading-spinner"><div class="spinner"></div><p>Loading ticket…</p></div>
+        </div>
+      </section>
+
       <!-- ── FAVORITES ── -->
       <section id="view-favorites" class="view-panel">
         <div class="empty-state">No favorites yet.<div class="muted">Tap ★ on any tennis match to save it here.</div></div>
@@ -221,6 +229,6 @@
     </div><!-- /main-content -->
   </div><!-- /app-layout -->
 
-  <script src="app.js?v=127"></script>
+  <script src="app.js?v=128"></script>
 </body>
 </html>

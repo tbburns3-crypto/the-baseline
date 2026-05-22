@@ -2201,9 +2201,10 @@ function stopScoresTimer() {
 }
 
 function loadSportScores(sport) {
-  if (sport === 'soccer')   loadSoccerScores();
+  if (sport === 'soccer')       loadSoccerScores();
   else if (sport === 'golf')    loadGolfLeaderboard();
   else if (sport === 'lottery') loadLottery();
+  else if (sport === 'tickets') renderTicketsPage();
   else loadOtherScores(sport);
 }
 
@@ -2242,7 +2243,7 @@ function switchSport(sport) {
     lineupsTab.style.display  = 'none';
     picksTab.style.display    = '';
     picksTab.textContent = '⛳ Picks';
-  } else if (sport === 'lottery') {
+  } else if (sport === 'lottery' || sport === 'tickets') {
     secTab.style.display    = 'none';
     playersTab.style.display = 'none';
     lineupsTab.style.display = 'none';
@@ -2272,7 +2273,9 @@ function switchSport(sport) {
     loadTennisInjuryNews(); // fire-and-forget: ESPN news injury flags — re-runs picks once loaded
   } else {
     wsDisconnect();
-    setConn('disconnected', `${sport.toUpperCase()} - updating every 30s`);
+    if (sport !== 'tickets') {
+      setConn('disconnected', `${sport.toUpperCase()} - updating every 30s`);
+    }
     loadSportScores(sport);
   }
 }
@@ -2300,10 +2303,13 @@ function switchView(view) {
     }
   } else {
     if (view === 'scores') {
-      const panelId = S.sport === 'golf' ? 'view-golf-leaderboard' : S.sport === 'lottery' ? 'view-lottery' : 'view-other-scores';
+      const panelId = S.sport === 'golf'    ? 'view-golf-leaderboard'
+                    : S.sport === 'lottery' ? 'view-lottery'
+                    : S.sport === 'tickets' ? 'view-tickets'
+                    : 'view-other-scores';
       document.getElementById(panelId).classList.add('active');
       loadSportScores(S.sport);
-      startScoresTimer(S.sport);
+      if (S.sport !== 'tickets') startScoresTimer(S.sport);
     } else if (view === 'lineups') {
       stopScoresTimer();
       document.getElementById('view-mlb-lineups').classList.add('active');
@@ -7174,6 +7180,63 @@ async function preloadPicksForSimpleView() {
   buildDailyTicketIfNeeded();
   _svPreloadDone = true;
   if (isActive()) renderSimpleView();
+  if (S.sport === 'tickets') renderTicketsPage();
+}
+
+function renderTicketsPage() {
+  const el = document.getElementById('tickets-area');
+  if (!el) return;
+  const today = dateStrLocal();
+  const ticket = getDailyTicket();
+  const allPicks = getPicks();
+
+  if (!ticket) {
+    el.innerHTML = _svPreloadDone
+      ? `<div class="empty-state">Not enough picks today. Visit the Scores tabs to load games first.</div>`
+      : `<div class="loading-spinner"><div class="spinner"></div><p>Building today's ticket…</p></div>`;
+    return;
+  }
+
+  const ticketRow = (leg, i) => {
+    const live   = allPicks[leg.id] || {};
+    const result = live.result;
+    const badge  = result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
+                 : result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+    const conf  = Math.min(3, Math.max(1, leg.conf || 1));
+    const dots  = '●'.repeat(conf) + '○'.repeat(3 - conf);
+    const icon  = SPORT_ICONS[leg.sport] || '🏅';
+    const match = (leg.matchup || '').replace(/ @ /g, ' v ');
+    const pickLine = leg.type === 'player'
+      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(leg.description)}</span>`
+      : `<span class="sv-tk-pick">${esc(leg.pick)}</span>`;
+    return `<div class="sv-tk-row${result==='win'?' sv-tk-win':result==='loss'?' sv-tk-loss':''}">
+      <span class="sv-tk-num">${i+1}</span>
+      <span class="sv-tk-icon">${icon}</span>
+      <span class="sv-tk-match">${esc(match)}</span>
+      <span class="sv-tk-arrow">→</span>
+      ${pickLine}
+      <span class="sv-tk-conf">${dots}</span>
+      ${badge}
+    </div>`;
+  };
+
+  const legs   = ticket.legs;
+  const wins   = legs.filter(l => allPicks[l.id]?.result === 'win').length;
+  const losses = legs.filter(l => allPicks[l.id]?.result === 'loss').length;
+  const statusLine = (wins || losses)
+    ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
+  const dateLabel = new Date(today + 'T12:00:00').toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric'
+  });
+
+  el.innerHTML = `<div class="tp-page">
+    <div class="tp-date">${dateLabel}</div>
+    <div class="sv-ticket">
+      <div class="sv-ticket-hdr">🎫 Today's Ticket — ${legs.length} Legs ${statusLine}</div>
+      <div class="sv-ticket-list">${legs.map(ticketRow).join('')}</div>
+    </div>
+    ${!_svPreloadDone ? '<div class="tp-loading">Loading latest picks…</div>' : ''}
+  </div>`;
 }
 
 function showSimpleView() {
