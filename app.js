@@ -107,6 +107,12 @@ function getConfCalibration(sport) {
 function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, force = false, dateOverride = null) {
   const picks = getPicks();
   const existing = picks[gameId];
+  // Silently fix the date if an unresolved pick was stamped with the wrong date
+  if (existing && dateOverride && existing.result === null && existing.date !== dateOverride) {
+    existing.date = dateOverride;
+    savePicks(picks);
+    return;
+  }
   // force = true lets a nuanced pick overwrite a simple W-L seed, but never overwrite a resolved result
   if (existing && (!force || existing.result !== null)) return;
   picks[gameId] = { team: pickedTeam, date: dateOverride || dateStrLocal(), result: existing?.result ?? null, matchup, sport, conf };
@@ -1089,10 +1095,14 @@ function groupRoundLabel(matches) {
 }
 
 function inlineTennisPick(m, dateOverride = null) {
-  // Don't generate picks for in-progress matches.
-  // When dateOverride is set (pre-seeding tomorrow's picks), allow future dates.
-  if (!dateOverride && m.event_date && m.event_date > dateStrLocal(0)) return '';
   if (isLive(m.event_status)) return '';
+
+  const today = dateStrLocal(0);
+  const matchDate = m.event_date || '';
+  // Use match's own date as authoritative stamp; fall back to dateOverride, then today.
+  const pickDate = dateOverride || (matchDate && matchDate >= today ? matchDate : today);
+  // During normal rendering (no dateOverride), skip future-dated matches entirely.
+  if (!dateOverride && pickDate > today) return '';
 
   // Skip doubles only — singles rankings are meaningless in doubles
   const cat = matchCategory(m.event_type || '');
@@ -1136,7 +1146,7 @@ function inlineTennisPick(m, dateOverride = null) {
     if (pick && pick !== '-') {
       // Seed gap confidence: top seed (1-4) vs unseeded or big gap = 2, smaller gap = 1
       const seedConf = injuryForcePick ? 2 : (s1 && s2 && Math.abs(s1 - s2) >= 4) ? 2 : 1;
-      recordPick(pickId, pick, matchup, 'tennis', seedConf, false, dateOverride);
+      recordPick(pickId, pick, matchup, 'tennis', seedConf, false, pickDate);
       return `<span class="match-pick-inline" title="Pick based on seeding${injNote} (click for full H2H analysis)">→ ${esc(pick)}</span>`;
     }
   }
@@ -1145,7 +1155,7 @@ function inlineTennisPick(m, dateOverride = null) {
   if (injuryForcePick) {
     const pick = injuryForcePick === p1Ln ? lastName(m.event_first_player||'') : lastName(m.event_second_player||'');
     if (pick && pick !== '-') {
-      recordPick(pickId, pick, matchup, 'tennis', 2, false, dateOverride);
+      recordPick(pickId, pick, matchup, 'tennis', 2, false, pickDate);
       return `<span class="match-pick-inline match-pick-injury" title="Pick: opponent has recent injury news — ${(p1Hurt ? p1Inj : p2Inj).note}">→ ${esc(pick)} ⚕</span>`;
     }
   }
@@ -1172,7 +1182,7 @@ function inlineTennisPick(m, dateOverride = null) {
         // Ratio confidence: 3x+ gap = 2, injury bonus adds 1
         const ratioConf = (injuryForcePick ? 1 : 0) + (ratio >= 3 ? 2 : 1);
         if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis', Math.min(3, ratioConf), false, dateOverride);
+          recordPick(pickId, pick, matchup, 'tennis', Math.min(3, ratioConf), false, pickDate);
           return `<span class="match-pick-inline" title="Pick: ${pts1} vs ${pts2} ranking pts${injNote2} (click for H2H)">→ ${esc(pick)}</span>`;
         }
       }
@@ -1183,7 +1193,7 @@ function inlineTennisPick(m, dateOverride = null) {
       if (topRank <= 50 && botRank >= 100) {
         const pick = r1.rank < r2.rank ? lastName(m.event_first_player || '') : lastName(m.event_second_player || '');
         if (pick && pick !== '-') {
-          recordPick(pickId, pick, matchup, 'tennis', 1, false, dateOverride);
+          recordPick(pickId, pick, matchup, 'tennis', 1, false, pickDate);
           return `<span class="match-pick-inline" title="Pick: #${r1.rank} vs #${r2.rank} (click for H2H + form analysis)">→ ${esc(pick)} #${topRank}</span>`;
         }
       }
