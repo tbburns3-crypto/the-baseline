@@ -3467,8 +3467,32 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       };
       recKPick(awayPD, awayPName, awayRates, 'away');
       recKPick(homePD, homePName, homeRates, 'home');
+      // Run total O/U — model projection vs official betting line
+      if (oddsInfo?.overUnder && hasLineup && awayValid.length && homeValid.length) {
+        const LEAGUE_OPS = 0.728, LEAGUE_RPG = 4.50;
+        const parkRun    = PARK_RUN[homeAbbr] || 1.0;
+        const avgOPS     = arr => arr.reduce((s, b) => s + parseFloat(b.ops||0), 0) / arr.length;
+        const projR      = (batters, era) => Math.max(0.5, Math.min(13,
+          LEAGUE_RPG * (avgOPS(batters)/LEAGUE_OPS) * (LEAGUE_ERA/Math.max(parseFloat(era)||LEAGUE_ERA,1.5)) * parkRun));
+        const projTotalRuns = (projR(awayValid, homePD?.season?.era) + projR(homeValid, awayPD?.season?.era)).toFixed(1);
+        const ouLine        = parseFloat(oddsInfo.overUnder);
+        const dir           = parseFloat(projTotalRuns) >= ouLine ? 'OVER' : 'UNDER';
+        recordPlayerPick(`runs_${gKey}`, 'mlb', `${dir} ${ouLine}`, 'RunTotal',
+          `proj ${projTotalRuns} runs`, gameMatchup, gamePk);
+      }
     } else {
       resolvePlayerPicksForGame(gKey, gamePk);
+      // Resolve run total pick once game is final
+      const _rtKey = `runs_${gKey}`;
+      const _pks = getPicks(); const _rtp = _pks[_rtKey];
+      if (_rtp && _rtp.result === null) {
+        const _total = parseFloat(espnGame.awayScore||0) + parseFloat(espnGame.homeScore||0);
+        const _m = (_rtp.player||'').match(/^(OVER|UNDER)\s+(\d+\.?\d*)/);
+        if (_m && _total > 0) {
+          _pks[_rtKey].result = (_m[1]==='OVER' ? _total > parseFloat(_m[2]) : _total < parseFloat(_m[2])) ? 'win' : 'loss';
+          savePicks(_pks);
+        }
+      }
     }
 
     // Two rows per category (away top + home top), skip if both absent
@@ -7269,9 +7293,9 @@ function getPicksForTicket(type, date, allPicks) {
 function getMLBPerGameTickets(date, allPicks) {
   // Per-game selection: game winner + best hit (both teams) + best RBI + best HR + best K pitcher.
   // Gives 5-6 picks per game: one per category, deduped to the highest-quality option.
-  const PROP_ICONS = { game:'🏆', Hit:'🎯', RBI:'⚡', HR:'💣', K:'🔥' };
-  const PROP_ORDER = { game:0, Hit:1, RBI:2, HR:3, K:4 };
-  const RELEVANT   = new Set(['Hit','HR','RBI','K']);
+  const PROP_ICONS = { game:'🏆', Hit:'🎯', RBI:'⚡', RunTotal:'📊', K:'🔥' };
+  const PROP_ORDER = { game:0, Hit:1, RBI:2, RunTotal:3, K:4 };
+  const RELEVANT   = new Set(['Hit','RBI','K','RunTotal']);
   const entries    = Object.entries(allPicks).filter(([, p]) => p.sport === 'mlb' && p.date === date);
   const games      = new Map();
 
@@ -7284,7 +7308,8 @@ function getMLBPerGameTickets(date, allPicks) {
       if (parts.length < 2) continue;
       const gid = parts[1];
       if (!games.has(gid)) games.set(gid, { gameId: gid, matchup: p.gameMatchup||gid, legs: [] });
-      games.get(gid).legs.push({ id, pick: lastName(p.player||''), description: `${p.prop}: ${p.stat}`, matchup:'', conf: 2, sport:'mlb', propType: p.prop, result: p.result, icon: PROP_ICONS[p.prop]||'🏅' });
+      const plrName = p.prop === 'RunTotal' ? (p.player||'') : lastName(p.player||'');
+      games.get(gid).legs.push({ id, pick: plrName, description: `${p.prop}: ${p.stat}`, matchup:'', conf: 2, sport:'mlb', propType: p.prop, result: p.result, icon: PROP_ICONS[p.prop]||'🏅' });
     }
   }
 
@@ -7306,15 +7331,14 @@ function getMLBPerGameTickets(date, allPicks) {
     // 2-3. One hit pick per team side (away + home = up to 2)
     (byProp.get('Hit') || []).slice(0, 2).forEach(h => result.push(h));
 
-    // 4. Best RBI man across both teams
-    const bestRBI = sortBy(byProp.get('RBI') || [], /(\d+)RBI/)[0];
-    if (bestRBI) result.push(bestRBI);
+    // 4-5. Both RBI picks (away + home team's best RBI man)
+    (byProp.get('RBI') || []).slice(0, 2).forEach(r => result.push(r));
 
-    // 5. Best HR threat across both teams
-    const bestHR = sortBy(byProp.get('HR') || [], /(\d+)HR/)[0];
-    if (bestHR) result.push(bestHR);
+    // 6. Run total O/U — much more predictable than HR
+    const runTotal = byProp.get('RunTotal')?.[0];
+    if (runTotal) result.push(runTotal);
 
-    // 6. Best K pitcher — only if adjusted K/9 ≥ 8.5
+    // 7. Best K pitcher — only if adjusted K/9 ≥ 8.5 (fills 6th slot when RunTotal unavailable)
     const bestK = sortBy(byProp.get('K') || [], /(\d+\.?\d*)K\/9/)[0];
     if (bestK && numFromDesc(bestK.description, /(\d+\.?\d*)K\/9/) >= 8.5) result.push(bestK);
 
