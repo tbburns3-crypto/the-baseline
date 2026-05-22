@@ -5313,6 +5313,19 @@ function playerRoundStatus(p, round) {
   return 'upcoming';
 }
 
+// Stable pickId for a golf group: uses UTC HHMM + nine so it doesn't change
+// when ESPN overwrites p.teeTime with next-round pairings.
+function normGolfPickId(eventId, teeTime, nine) {
+  try {
+    const d = new Date(teeTime);
+    if (!isNaN(d)) {
+      const hhmm = d.getUTCHours().toString().padStart(2,'0') + d.getUTCMinutes().toString().padStart(2,'0');
+      return `golf_${eventId}_${hhmm}_${nine || 'front'}`;
+    }
+  } catch {}
+  return `golf_${eventId}_${teeTime.replace(/\D/g,'')}_${nine || 'front'}`;
+}
+
 // Returns { groups: [...], upcomingGroups: [...] }
 // groups: players with hole data, keyed by (teeTime + startingNine) for split-tee correctness.
 // upcomingGroups: players yet to tee off, grouped by tee time (starting nine unknown until play).
@@ -5335,21 +5348,7 @@ function groupByTeeTime(players, round = 1) {
     // Use first hole period to determine starting nine (split-tee disambiguation)
     const nine = holeScores[0].period >= 10 ? 'back' : 'front';
 
-    if (!t) {
-      // No usable tee time — slot into fallback groups of up to 3 by field order
-      // so the pick card still renders even when tee times aren't available.
-      let fbGroup;
-      for (const g of definite.values()) {
-        if (g._fb && g.players.length < 3) { fbGroup = g; break; }
-      }
-      if (!fbGroup) {
-        const fbKey = `_fb${definite.size}`;
-        fbGroup = { time: '', nine, players: [], _fb: true };
-        definite.set(fbKey, fbGroup);
-      }
-      fbGroup.players.push(p);
-      continue;
-    }
+    if (!t) continue; // no usable tee time — shown via stored-picks section instead
 
     const key  = `${t}||${nine}`;
     if (!definite.has(key)) definite.set(key, { time: t, nine, players: [] });
@@ -5630,13 +5629,8 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   // Determine group state BEFORE scoring so we know if pick should be locked
   const statuses     = players.map(p => playerRoundStatus(p, round));
   const groupStarted = statuses.some(s => s === 'live' || s === 'finished');
-  // Use time-only (HHMM) + nine + eventId so pickId is stable even when ESPN shifts
-  // p.teeTime to the next round's date while the current round is still in progress.
-  const normTime = t => { try { const d = new Date(t); if (!isNaN(d)) return d.getUTCHours().toString().padStart(2,'0') + d.getUTCMinutes().toString().padStart(2,'0'); } catch {} return t.replace(/\D/g,'').slice(-6); };
-  const pickId = group.time
-    ? `golf_${eventId}_${normTime(group.time)}_${group.nine || 'front'}`
-    : `golf_${eventId}_fb_${players.map(p => p.athlete?.id || '').sort().join('_')}`;
-  // Also check old full-date format in case picks were stored pre-fix
+  const pickId       = normGolfPickId(eventId, group.time, group.nine);
+  // Also check old full-date format in case picks were stored before the normGolfPickId fix
   const oldPickId    = group.time ? `golf_${eventId}_${group.time.replace(/\D/g,'')}` : null;
   const allPicksNow2 = getPicks();
   const existingPick = allPicksNow2[pickId] || (oldPickId ? allPicksNow2[oldPickId] : null);
@@ -5871,14 +5865,46 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
 
         } else if (tab === 'today') {
           const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
-          if (!groups.length && !upcomingGroups.length) continue;
+
+          // Collect pickIds that are already displayed via current groups
+          const shownPickIds = new Set([...groups, ...upcomingGroups].map(g => normGolfPickId(ev.id, g.time, g.nine)));
+
+          // Earlier groups: stored pre-round picks from today whose groups no longer have
+          // valid tee times in the API (ESPN overwrote p.teeTime with next-round pairings).
+          const todayStr2 = dateStrLocal(0);
+          const earlierPicks = Object.entries(getPicks()).filter(([id, p]) =>
+            p.sport === 'golf' && p.date === todayStr2 && p.team &&
+            id.startsWith(`golf_${ev.id}_`) && !shownPickIds.has(id)
+          );
+
+          if (!groups.length && !upcomingGroups.length && !earlierPicks.length) continue;
+
           const preHdr = upcomingGroups.length > 0
             ? `<div class="golf-group-status-hdr">⏰ Pre-Round — ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''}</div>` : '';
+
+          const earlierHTML = earlierPicks.length
+            ? `<div class="golf-group-status-hdr">⏳ Earlier Groups — picks locked pre-round</div>` +
+              earlierPicks.map(([, p]) => {
+                const conf = p.conf || 1;
+                const dots = `<span class="tp-conf tp-conf-${conf}">${'●'.repeat(conf)}${'○'.repeat(3-conf)}</span>`;
+                const result = p.result === 'win' ? ' <span class="pick-win">✓</span>' : p.result === 'loss' ? ' <span class="pick-loss">✗</span>' : '';
+                return `<div class="golf-pick-card golf-pick-card-locked">
+                  <div class="golf-pick-verdict-bar">
+                    <span class="golf-pick-verdict-name">→ ${esc(p.team)}${result}</span>
+                    ${dots}
+                    <span class="golf-pick-pre-label">pre-round</span>
+                  </div>
+                  <div class="golf-pick-matchup-small">${esc(p.matchup || '')}</div>
+                </div>`;
+              }).join('')
+            : '';
+
           html += `<div class="golf-picks-section">
             <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
             ${groups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
             ${preHdr}
             ${upcomingGroups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+            ${earlierHTML}
           </div>`;
 
         } else if (tab === 'tomorrow') {
@@ -6715,7 +6741,7 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
-const _TICKET_KEY = '_baseline_ticket_v5';
+const _TICKET_KEY = '_baseline_ticket_v6';
 
 function getDailyTicket() {
   try {

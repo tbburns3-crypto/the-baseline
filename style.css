@@ -1944,8 +1944,10 @@ input { font: inherit; }
 .lottery-ohio-hdr { font-size: .72rem; font-weight: 700; color: var(--text-muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 10px; }
 .lottery-ohio-link { display: inline-block; background: rgba(255,255,255,.06); border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px; margin: 3px 4px 3px 0; font-size: .8rem; color: var(--text); text-decoration: none; }
 .lottery-ohio-link:hover { background: rgba(0,230,118,.12); border-color: var(--accent); color: var(--accent); }
-/* Golf picks — pre-round lock label */
+/* Golf picks — pre-round lock label + locked earlier-group cards */
 .golf-pick-pre-label { font-size: .65rem; color: var(--text-muted); letter-spacing: .04em; text-transform: uppercase; }
+.golf-pick-card-locked { opacity: .85; }
+.golf-pick-matchup-small { font-size: .68rem; color: var(--text-muted); padding: 2px 8px 6px; }
 /* Simple-view button in topbar */
 #simple-view-btn { background: rgba(0,230,118,.12); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 4px 10px; font-size: .73rem; font-weight: 700; cursor: pointer; letter-spacing: .03em; }
 #simple-view-btn:hover { background: rgba(0,230,118,.22); }
