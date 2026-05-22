@@ -6549,7 +6549,7 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
-const _TICKET_KEY = '_baseline_ticket_v3';
+const _TICKET_KEY = '_baseline_ticket_v4';
 
 function getDailyTicket() {
   try {
@@ -6580,8 +6580,9 @@ function buildDailyTicketIfNeeded() {
 
     if (p.type === 'player') {
       score += SPORT_BONUS[p.sport] || 1;
+      const statLabel = p.stat && p.stat !== '-' ? `${p.prop} — ${p.stat}` : p.prop;
       candidates.push({ id, score, sport: p.sport || 'other', type: 'player',
-        pick: p.player, description: p.prop, matchup: p.gameMatchup || '', conf: p.conf || 1 });
+        pick: p.player, description: statLabel, matchup: p.gameMatchup || '', conf: p.conf || 1 });
     } else if (p.team) {
       const sport = p.sport || 'tennis';
       if (sport === 'tennis') {
