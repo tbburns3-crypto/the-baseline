@@ -6943,13 +6943,18 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
 const _TICKET_KEY = '_baseline_ticket_v10';
+let _dailyTicketCache = null; // in-session lock — once set, never changes within this page load
 
 function getDailyTicket() {
+  const today = dateStrLocal();
+  // Return the in-memory copy if it's already locked for today
+  if (_dailyTicketCache?.date === today) return _dailyTicketCache;
   try {
     const s = localStorage.getItem(_TICKET_KEY);
     if (!s) return null;
     const obj = JSON.parse(s);
-    if (obj.date !== dateStrLocal()) return null;
+    if (obj.date !== today) return null;
+    _dailyTicketCache = obj; // freeze in memory — can't be rebuilt for the rest of this session
     return obj;
   } catch { return null; }
 }
@@ -7143,14 +7148,6 @@ async function preloadTennisPicksQuiet() {
 // into localStorage so renderSimpleView() can show them without the user
 // needing to click through every sport tab manually.
 async function preloadPicksForSimpleView() {
-  // One-time recovery: clear the ticket accidentally rebuilt by the v142 conf-filter bug.
-  // Fires once ever, then _V142_RESET is set so this never runs again.
-  if (!localStorage.getItem('_ticket_reset_v142_done')) {
-    localStorage.setItem('_ticket_reset_v142_done', '1');
-    localStorage.removeItem(_TICKET_KEY);
-    _svPreloadedAt = 0; // force a full preload immediately regardless of throttle
-  }
-
   const now = Date.now();
   if (now - _svPreloadedAt < 20 * 60 * 1000) return;  // re-run at most every 20 min
   _svPreloadedAt = now;
