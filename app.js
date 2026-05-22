@@ -6980,7 +6980,6 @@ function buildDailyTicketIfNeeded() {
       candidates.push({ id, score, sport: p.sport || 'other', type: 'player',
         pick: p.player, description: statLabel, matchup: p.gameMatchup || '', conf: p.conf || 1 });
     } else if (p.team) {
-      if ((p.conf || 0) < 1) continue; // skip toss-up moneylines from daily ticket
       const sport = p.sport || 'tennis';
       if (sport === 'tennis') {
         const tierBonus = TIER_BONUS[p.tier] ?? -99;
