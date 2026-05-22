@@ -5881,7 +5881,7 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const preLabel = groupStarted && existingPick ? ' <span class="golf-pick-pre-label">pre-round</span>' : '';
   return `<div class="golf-pick-card">
     <div class="golf-pick-time">⏰ ${group.time ? esc(formatTeeTime(group.time)) : 'In Progress'}</div>
-    <div class="golf-pick-hdr"><span>PLAYER</span><span>TOT</span><span>TODAY</span><span>THRU</span><span>FACTORS</span></div>
+    <div class="golf-pick-hdr"><span></span><span>PLAYER</span><span>TOT</span><span>TODAY</span><span>THRU</span><span>FACTORS</span></div>
     ${rows.join('')}
     <div class="golf-pick-verdict-bar">
       <span class="golf-pick-verdict-name">→ ${esc(displayName)}</span>
