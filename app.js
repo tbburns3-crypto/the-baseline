@@ -5693,10 +5693,10 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
 
-  // Record pick regardless of round status — recordPick is idempotent (won't overwrite existing).
-  // Scoring excludes live round score so picks stay valid once the round starts.
+  // Only record pre-round picks so live groups don't appear in the daily ticket.
+  // The pick card still renders for live groups using the stored pre-round pick.
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
-  recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+  if (!groupStarted) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
 
   // Display: if group has started, show the stored pre-round pick at the top
   const storedLastName = (existingPick?.team || '').toLowerCase();
@@ -6690,7 +6690,7 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
-const _TICKET_KEY = '_baseline_ticket_v4';
+const _TICKET_KEY = '_baseline_ticket_v5';
 
 function getDailyTicket() {
   try {
