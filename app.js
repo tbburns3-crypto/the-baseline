@@ -2218,6 +2218,7 @@ function switchSport(sport) {
   _loadSeq++;           // invalidate any in-flight loads from the previous sport
   S.sport = sport;
   S.otherDateOffset = 0;
+  try { localStorage.setItem('_baseline_sport', sport); } catch {}
   document.querySelectorAll('.sport-tab').forEach(t => t.classList.toggle('active', t.dataset.sport === sport));
 
   const isTennis = sport === 'tennis';
@@ -6946,7 +6947,8 @@ function init() {
   updatePicksDisplay();
   renderTZSelector();
   renderDateBar();
-  switchSport('tennis'); // always boot tennis — loads data behind the overlay
+  const lastSport = localStorage.getItem('_baseline_sport') || 'tennis';
+  switchSport(lastSport);
   const svDismissed = localStorage.getItem('sv_dismissed');
   if (svDismissed !== dateStrLocal()) {
     showSimpleView();
