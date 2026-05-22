@@ -5254,6 +5254,60 @@ const GOLF_TOURS = [
   { key:'liv',  label:'LIV Golf',      icon:'🏌️' }
 ];
 
+// ── MANUAL PAIRING OVERRIDES ──────────────────────────────────────────────────
+// When ESPN's tee-time grouping produces wrong 3-balls, set correct pairings here.
+// Key = ESPN event ID. Update date/round/groups each round from a screenshot.
+// Entries use last names; for duplicate last names use ESPN short-name format "F. Last".
+// Scores/stats still come from ESPN — only group membership changes.
+const GOLF_PAIRINGS_OVERRIDE = {
+  '401811948': {
+    date: '2026-05-22',
+    round: 2,
+    groups: [
+      ['Meissner','A. Svensson','Wu'],
+      ['Hoey','Smith','Dahmen'],
+      ['Roy','Lower','Piercy'],
+      ['Hirata','Dou','Clanton'],
+      ['Springer','Saddler','Huang'],
+      ['Keefer','Hadwin','Norlander'],
+      ['Streelman','Higgs','Kizzire'],
+      ['T. Kim','Hubbard','Champ'],
+      ['Davis','Hoffman','Wise'],
+      ['Walker','Hossler','Brehm'],
+      ['Ghim','Grillo','Noh'],
+      ['Li','Blanchet','Howell'],
+      ['Kuchar','Highsmith','Mouw'],
+      ['Pavon','Duncan','Griffin'],
+      ['Bezuidenhout','Blair','Phillips'],
+      ['Moore','List','Kanaya'],
+      ['Olesen','McGreevy','Campos'],
+      ['Malnati','Hodges','Martin'],
+      ['Higgo','Thompson','Palmer'],
+      ['Power','Kohles','Byrd'],
+      ['Garnett','Lebioda','Hahn'],
+      ['Hojgaard','Hoge','Lee'],
+      ['Brennan','Yu','Riley'],
+      ['Cole','Whaley','Young'],
+      ['Vilips','Fisk','Schenk'],
+      ['Crowe','Bae','Parry'],
+      ['Brown','Sargent','Stout'],
+      ['Shipley','Goodwin','Tosti'],
+      ['Thorbjornsen','Finau','Vegas'],
+      ['Gordon','Eckroat','Cook'],
+      ['Coody','Schmid','Hisatsune'],
+      ['Montgomery','Sides','Ewart'],
+      ['Neergaard-Petersen','Nyholm','Rozo'],
+      ['Greyserman','Pendrith','Horschel'],
+      ['Suber','J. Kang','Buchanan'],
+      ['J. Svensson','Peterson','Chatfield'],
+      ['Hughes','Rooyen','Streb'],
+      ['Rodgers','Ramey','Gomez'],
+      ['Scheffler','S. Kim','Koepka'],
+      ['Mitchell','Silverman','Laird'],
+    ]
+  }
+};
+
 function formatTeeTime(raw) {
   try {
     const d = new Date(raw);
@@ -5329,13 +5383,58 @@ function normGolfPickId(eventId, teeTime, nine) {
 // Returns { groups: [...], upcomingGroups: [...] }
 // groups: players with hole data, keyed by (teeTime + startingNine) for split-tee correctness.
 // upcomingGroups: players yet to tee off, grouped by tee time (starting nine unknown until play).
-function groupByTeeTime(players, round = 1) {
+// eventId: if GOLF_PAIRINGS_OVERRIDE has an entry for this event+round, use it instead of
+// ESPN tee-time guessing so correct 3-ball pairings are always displayed.
+function groupByTeeTime(players, round = 1, eventId = '') {
+  // ── Manual override path ──────────────────────────────────────────────────
+  const ov = eventId && GOLF_PAIRINGS_OVERRIDE[eventId];
+  if (ov && ov.round === round && ov.date === dateStrLocal(0)) {
+    // Normalize: strip diacritics, replace Scandinavian chars, lowercase
+    const norm = s => s.toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/å/g, 'a');
+
+    // Build lookup keyed by: normalized last name, normalized full name, normalized short name
+    // Short name (e.g. "T. Kim") is the tiebreaker for duplicate last names.
+    const lookup = new Map();
+    for (const p of players) {
+      const full  = norm(p.athlete?.displayName || '');
+      const short = norm(p.athlete?.shortName   || '');
+      const last  = full.split(' ').pop();
+      if (last)  lookup.set(last, p);   // may be overwritten by duplicate — short name wins
+      if (full)  lookup.set(full, p);
+      if (short) lookup.set(short, p);  // "t. kim" beats plain "kim"
+    }
+
+    const groups = [];
+    const upcomingGroups = [];
+    for (const nameList of ov.groups) {
+      const matched = nameList.map(n => lookup.get(norm(n))).filter(Boolean);
+      if (matched.length < 2) continue;
+      // Determine tee time + nine from first matched player that has hole data
+      const withHoles = matched.find(p => (p.linescores?.[round-1]?.linescores?.length || 0) > 0);
+      if (withHoles) {
+        const t = extractTeeTime(withHoles, round) || '';
+        const startHole = withHoles.linescores[round-1].linescores[0]?.period || 1;
+        const nine = startHole >= 10 ? 'back' : 'front';
+        groups.push({ time: t, nine, players: matched });
+      } else {
+        const anyT = matched.map(p => extractTeeTime(p, round)).find(t => t) || '';
+        upcomingGroups.push({ time: anyT, nine: 'unknown', players: matched, upcoming: true });
+      }
+    }
+    groups.sort((a, b) => new Date(a.time) - new Date(b.time));
+    upcomingGroups.sort((a, b) => new Date(a.time) - new Date(b.time));
+    return { groups, upcomingGroups };
+  }
+
+  // ── ESPN tee-time grouping (fallback when no override) ────────────────────
   const definite = new Map();
   const upcoming = new Map();
 
   for (const p of players) {
     const holeScores = p.linescores?.[round - 1]?.linescores || [];
-    const t = extractTeeTime(p, round); // pass round so linescore stats are checked first
+    const t = extractTeeTime(p, round);
 
     if (holeScores.length === 0) {
       if (t) {
@@ -5345,22 +5444,22 @@ function groupByTeeTime(players, round = 1) {
       continue;
     }
 
-    // Use first hole period to determine starting nine (split-tee disambiguation)
-    const nine = holeScores[0].period >= 10 ? 'back' : 'front';
+    const startHole = holeScores[0]?.period || 1;
+    const nine = startHole >= 10 ? 'back' : 'front';
 
-    if (!t) continue; // no usable tee time — shown via stored-picks section instead
+    if (!t) continue;
 
-    const key  = `${t}||${nine}`;
+    const key = `${t}||${startHole}`;
     if (!definite.has(key)) definite.set(key, { time: t, nine, players: [] });
     definite.get(key).players.push(p);
   }
 
   const groups = [...definite.values()]
-    .filter(g => g.players.length >= 1)
+    .filter(g => g.players.length >= 1 && g.players.length <= 3)
     .sort((a, b) => new Date(a.time) - new Date(b.time) || a.nine.localeCompare(b.nine));
 
   const upcomingGroups = [...upcoming.values()]
-    .filter(g => g.players.length >= 1)
+    .filter(g => g.players.length >= 1 && g.players.length <= 3)
     .sort((a, b) => new Date(a.time) - new Date(b.time));
 
   return { groups, upcomingGroups };
@@ -5543,7 +5642,7 @@ async function loadGolfLeaderboard() {
         if (!players.length) continue;
 
         // Groups: players with hole data (split-tee correct); upcoming: grouped by tee time (approx.)
-        const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
+        const { groups, upcomingGroups } = groupByTeeTime(allComp, round, ev.id);
 
         // Live groups first (by best leaderboard position), finished groups at the bottom (by tee time)
         const bestPos = g => Math.min(...g.players.map(p => parseInt(p.order) || 9999));
@@ -5864,7 +5963,7 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           </div>`;
 
         } else if (tab === 'today') {
-          const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
+          const { groups, upcomingGroups } = groupByTeeTime(allComp, round, ev.id);
 
           // Collect pickIds that are already displayed via current groups
           const shownPickIds = new Set([...groups, ...upcomingGroups].map(g => normGolfPickId(ev.id, g.time, g.nine)));
@@ -5874,7 +5973,7 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           const todayStr2 = dateStrLocal(0);
           const earlierPicks = Object.entries(getPicks()).filter(([id, p]) =>
             p.sport === 'golf' && p.date === todayStr2 && p.team &&
-            id.startsWith(`golf_${ev.id}_`) && !shownPickIds.has(id)
+            id.startsWith(`golf_${ev.id}_`) && !id.includes('_fb_') && !shownPickIds.has(id)
           );
 
           if (!groups.length && !upcomingGroups.length && !earlierPicks.length) continue;
@@ -6741,7 +6840,7 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
-const _TICKET_KEY = '_baseline_ticket_v8';
+const _TICKET_KEY = '_baseline_ticket_v10';
 
 function getDailyTicket() {
   try {
@@ -6758,23 +6857,22 @@ function buildDailyTicketIfNeeded() {
   const today = dateStrLocal();
   const allPicks = getPicks();
 
-  const TIER_BONUS  = { slam: 10, masters: 5, '500': 2, '250': -99, chal: -99, itf: -99 };
+  const TIER_BONUS  = { slam: 10, masters: 5, '500': 2, '250': 0, chal: -99, itf: -99 };
   const SPORT_BONUS = { mlb: 3, nba: 3, nhl: 3, soccer: 3, golf: 3, wnba: 2, nfl: 2 };
 
-  const hasSlamPick = Object.values(allPicks).some(p =>
-    p.date === today && !p.type && p.sport === 'tennis' && p.tier === 'slam'
-  );
+  // Clean up malformed _fb_ golf picks from earlier bug before building ticket
+  for (const id of Object.keys(allPicks)) {
+    if (id.includes('_fb_')) delete allPicks[id];
+  }
 
   const candidates = [];
   for (const [id, p] of Object.entries(allPicks)) {
     if (p.date !== today) continue;
-    if (id.includes('_fb_')) continue;  // skip malformed fallback golf picks from earlier bug
+    if (id.includes('_fb_')) continue;
     let score = (p.conf || 1);
 
     if (p.type === 'player') {
       score += SPORT_BONUS[p.sport] || 1;
-      // Format: season totals (whole numbers) get labeled as season leaders to avoid
-      // confusion (e.g. "53 goals" looks like a nightly target, not a season stat).
       const n = parseFloat(p.stat);
       const isSeasonTotal = p.stat && p.stat !== '-' && !p.stat.includes('.') && !isNaN(n) && n > 5;
       const statLabel = p.stat && p.stat !== '-'
@@ -6786,7 +6884,6 @@ function buildDailyTicketIfNeeded() {
       const sport = p.sport || 'tennis';
       if (sport === 'tennis') {
         const tierBonus = TIER_BONUS[p.tier] ?? -99;
-        if (hasSlamPick && tierBonus < 0) continue;   // skip non-slam when slams exist
         score += Math.max(0, tierBonus);
       } else {
         score += SPORT_BONUS[sport] || 1;
@@ -6801,10 +6898,15 @@ function buildDailyTicketIfNeeded() {
 
   candidates.sort((a, b) => b.score - a.score);
   const sportCount = {};
+  let slamTennisCount = 0;
   const legs = [];
   for (const c of candidates) {
     if ((sportCount[c.sport] || 0) >= 2) continue;
+    // Only 1 slam tennis pick allowed — reserves the 2nd tennis slot for a non-slam
+    // (e.g. Kyrian Jacquet) so it isn't crowded out by multiple RG picks.
+    if (c.sport === 'tennis' && c.tier === 'slam' && slamTennisCount >= 1) continue;
     sportCount[c.sport] = (sportCount[c.sport] || 0) + 1;
+    if (c.sport === 'tennis' && c.tier === 'slam') slamTennisCount++;
     legs.push(c);
     if (legs.length >= 10) break;
   }
@@ -6814,9 +6916,64 @@ function buildDailyTicketIfNeeded() {
   localStorage.setItem(_TICKET_KEY, JSON.stringify({ date: today, legs }));
 }
 
+// One-time patch: replace Riedi with Kyrian Jacquet on the locked daily ticket.
+// Riedi ended up there due to a rebuild bug — Jacquet was the original pick.
+function patchTicketSwapRiediForJacquet() {
+  const ticket = getDailyTicket();
+  if (!ticket) return;
+  const idx = ticket.legs.findIndex(l =>
+    l.sport === 'tennis' && (l.pick || '').toLowerCase().includes('riedi')
+  );
+  if (idx === -1) return;
+  const today = dateStrLocal();
+  const allPicks = getPicks();
+  const jacquetEntry = Object.entries(allPicks).find(([, p]) =>
+    p.sport === 'tennis' && p.date === today &&
+    (p.team || '').toLowerCase().includes('jacquet')
+  );
+  if (!jacquetEntry) return;
+  const [jId, jp] = jacquetEntry;
+  ticket.legs[idx] = {
+    id: jId, score: ticket.legs[idx].score, sport: 'tennis', type: 'game',
+    pick: jp.team, description: jp.matchup || '', matchup: jp.matchup || '',
+    conf: jp.conf || 1, tier: jp.tier || ''
+  };
+  localStorage.setItem(_TICKET_KEY, JSON.stringify(ticket));
+}
+
 function resetDailyPicks() {
   _svPreloadedAt = 0;
   preloadPicksForSimpleView();
+}
+
+// When GOLF_PAIRINGS_OVERRIDE is set, fix the matchup strings stored in any existing
+// golf picks whose event+round match the override. This ensures the Today Ticket shows
+// the correct "Player v Player v Player" description, not the ESPN-guessed wrong one.
+function fixGolfPickMatchupsFromOverride() {
+  const today = dateStrLocal(0);
+  for (const [eventId, ov] of Object.entries(GOLF_PAIRINGS_OVERRIDE)) {
+    if (ov.date !== today) continue;
+    const allPicks = getPicks();
+    let changed = false;
+    for (const [id, p] of Object.entries(allPicks)) {
+      if (p.sport !== 'golf' || p.date !== today) continue;
+      if (!id.startsWith(`golf_${eventId}_`)) continue;
+      // Find which override group this pick belongs to by matching pick's team (last name)
+      const pickedLast = (p.team || '').toLowerCase();
+      for (const nameList of ov.groups) {
+        const lasts = nameList.map(n => n.split(' ').pop().toLowerCase().replace(/ø/g,'o').replace(/æ/g,'ae').replace(/å/g,'a'));
+        if (lasts.includes(pickedLast)) {
+          const correctMatchup = nameList.map(n => n.split(' ').pop()).join(' v ');
+          if (p.matchup !== correctMatchup) {
+            p.matchup = correctMatchup;
+            changed = true;
+          }
+          break;
+        }
+      }
+    }
+    if (changed) savePicks(allPicks);
+  }
 }
 
 
@@ -6939,6 +7096,12 @@ async function preloadPicksForSimpleView() {
     if (games.length) _svLotteryHTML = games.map(renderLotteryCard).join('');
   } catch (e) {}
 
+  // Fix any stored golf pick matchup strings using the manual override before
+  // the ticket reads them — ensures the ticket shows correct 3-ball groupings.
+  fixGolfPickMatchupsFromOverride();
+  // Swap Riedi for Kyrian Jacquet on the locked ticket (Riedi was never supposed
+  // to be there — the original ticket had Jacquet).
+  patchTicketSwapRiediForJacquet();
   // All sports done — now build the ticket (all picks are in localStorage).
   // Do this AFTER all sports load so we score from the full candidate pool.
   buildDailyTicketIfNeeded();
