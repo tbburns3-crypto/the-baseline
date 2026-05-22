@@ -108,7 +108,7 @@ function getConfCalibration(sport) {
   return 0;
 }
 
-function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, force = false, dateOverride = null, tier = '') {
+function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, force = false, dateOverride = null, tier = '', meta = {}) {
   const picks = getPicks();
   const existing = picks[gameId];
   // Silently fix the date if an unresolved pick was stamped with the wrong date
@@ -121,6 +121,7 @@ function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, forc
   if (existing && (!force || existing.result !== null)) return;
   const entry = { team: pickedTeam, date: dateOverride || dateStrLocal(), result: existing?.result ?? null, matchup, sport, conf };
   if (tier) entry.tier = tier;
+  if (meta && Object.keys(meta).length) Object.assign(entry, meta);
   picks[gameId] = entry;
   savePicks(picks);
 }
@@ -4376,7 +4377,7 @@ async function renderMLBGamePreview(espnGame, panel) {
     const pickHTML = pickResult.html;
     const _gs = gameRowState(espnGame);
     if (pickResult.team && !_gs.fin && !_gs.live) {
-      recordPick(String(espnGame.id), pickResult.team, gameMatchup, 'mlb', pickResult.conf, true);
+      recordPick(String(espnGame.id), pickResult.team, gameMatchup, 'mlb', pickResult.conf, true, null, '', { gameTime: espnGame.gameDate });
     }
 
     const hrThreats   = [...allBatters].filter(b => b.hr > 0).sort((a, b) => b.hr - a.hr).slice(0, 5);
@@ -4703,7 +4704,7 @@ async function renderESPNGamePreview(game, panel) {
     });
     // Force-update with nuanced pick (form + H2H + series) so simple W-L seed is replaced
     if (pickResult.team && !gameRowState(game).fin) {
-      recordPick(String(game.id), pickResult.team, `${game.awayTeam} @ ${game.homeTeam}`, game.sport || '', pickResult.conf, true);
+      recordPick(String(game.id), pickResult.team, `${game.awayTeam} @ ${game.homeTeam}`, game.sport || '', pickResult.conf, true, null, '', game.sport === 'mlb' ? { gameTime: game.gameDate } : {});
     }
 
     let html = pickResult.html;
@@ -7441,6 +7442,28 @@ function getGolfSplitTickets(date, allPicks) {
   return { early, late, singleTicket: false };
 }
 
+function isEarlyMLBGame(gameTime) {
+  if (!gameTime) return null;
+  try {
+    const hour = parseInt(new Date(gameTime).toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: getUserTZ() }));
+    return hour < 18;
+  } catch { return null; }
+}
+
+function getMLBSplitPerGameTickets(date, allPicks) {
+  const perGame = getMLBPerGameTickets(date, allPicks);
+  const early = [], late = [];
+  for (const g of perGame) {
+    const gamePick = allPicks[g.gameId];
+    const isEarly = isEarlyMLBGame(gamePick?.gameTime);
+    if (isEarly === false) late.push(g);
+    else early.push(g); // null (unknown) goes into early bucket
+  }
+  if (!late.length)  return { early, late: [], singleTicket: true };
+  if (!early.length) return { early: late, late: [], singleTicket: true };
+  return { early, late, singleTicket: false };
+}
+
 function getMLBPerGameTickets(date, allPicks) {
   const PROP_ICONS = { game:'🏆', Hit:'🎯', RBI:'⚡', RunTotal:'📊', K:'🔥' };
   const RELEVANT   = new Set(['Hit','RBI','K','RunTotal']);
@@ -7628,7 +7651,7 @@ function renderTicketsPage() {
   }
 
   // ── MLB ──
-  const perGame  = getMLBPerGameTickets(date, allPicks);
+  const { early: mlbEarly, late: mlbLate, singleTicket: mlbSingle } = getMLBSplitPerGameTickets(date, allPicks);
   const mlbHits  = getPicksForTicket('mlb_hits', date, allPicks);
   const mlbRBI   = getPicksForTicket('mlb_rbi',  date, allPicks);
   const mlbHR    = getPicksForTicket('mlb_hr',   date, allPicks);
@@ -7654,19 +7677,27 @@ function renderTicketsPage() {
     mlbKs.length   ? renderTicketBlock('🔥 Strikeout Artists', mlbKs, allPicks) : '',
   ].filter(Boolean) : [];
 
-  const mlbPerGameCards = perGame.map(g => {
+  const toMLBCard = g => {
     const hasProps = g.legs.some(l => l.propType !== 'game');
     const pendFt   = !hasProps ? `<div class="tp-game-pending">⏳ Lineup not yet posted — props update automatically</div>` : '';
-    const title    = esc(g.matchup.replace(/ @ /g,' v '));
-    return renderTicketBlock(title, g.legs, allPicks, pendFt);
-  });
+    return renderTicketBlock(esc(g.matchup.replace(/ @ /g,' v ')), g.legs, allPicks, pendFt);
+  };
+  const mlbEarlyCards = mlbEarly.map(toMLBCard);
+  const mlbLateCards  = mlbLate.map(toMLBCard);
 
-  const mlbHasAny = perGame.length || mlbAggCards.length;
+  const mlbHasAny = mlbEarly.length || mlbLate.length || mlbAggCards.length;
+  const mlbPerGameSection = mlbSingle
+    ? (mlbEarlyCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(mlbEarlyCards)}` : '')
+    : [
+        mlbEarlyCards.length ? `<div class="tp-sub-hdr">Early Games</div>${grid(mlbEarlyCards)}` : '',
+        mlbLateCards.length  ? `<div class="tp-sub-hdr">Late Games</div>${grid(mlbLateCards)}`  : '',
+      ].join('');
+
   const mlbHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">⚾ MLB</div>
     ${pendingNote}
     ${mlbAggCards.length ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(mlbAggCards)}` : ''}
-    ${mlbPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(mlbPerGameCards)}` : ''}
+    ${mlbPerGameSection}
     ${!mlbHasAny ? `<div class="tp-sport-empty">No MLB picks yet${off===0?' — visit MLB Picks tab to load data':''}</div>` : ''}
   </div>`;
 
