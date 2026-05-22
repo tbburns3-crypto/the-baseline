@@ -5369,7 +5369,10 @@ function playerRoundStatus(p, round) {
 
 // Stable pickId for a golf group: uses UTC HHMM + nine so it doesn't change
 // when ESPN overwrites p.teeTime with next-round pairings.
-function normGolfPickId(eventId, teeTime, nine) {
+// For override groups, overrideIdx is used instead to guarantee uniqueness
+// even when two groups share the same tee time + nine.
+function normGolfPickId(eventId, teeTime, nine, overrideIdx) {
+  if (overrideIdx !== undefined) return `golf_${eventId}_ov${overrideIdx}`;
   try {
     const d = new Date(teeTime);
     if (!isNaN(d)) {
@@ -5408,7 +5411,7 @@ function groupByTeeTime(players, round = 1, eventId = '') {
 
     const groups = [];
     const upcomingGroups = [];
-    for (const nameList of ov.groups) {
+    for (const [ovIdx, nameList] of ov.groups.entries()) {
       const matched = nameList.map(n => lookup.get(norm(n))).filter(Boolean);
       if (matched.length < 2) continue;
       // Determine tee time + nine from first matched player that has hole data
@@ -5417,10 +5420,11 @@ function groupByTeeTime(players, round = 1, eventId = '') {
         const t = extractTeeTime(withHoles, round) || '';
         const startHole = withHoles.linescores[round-1].linescores[0]?.period || 1;
         const nine = startHole >= 10 ? 'back' : 'front';
-        groups.push({ time: t, nine, players: matched });
+        // overrideIdx makes the pickId unique even when two groups share a tee time + nine
+        groups.push({ time: t, nine, players: matched, overrideIdx: ovIdx });
       } else {
         const anyT = matched.map(p => extractTeeTime(p, round)).find(t => t) || '';
-        upcomingGroups.push({ time: anyT, nine: 'unknown', players: matched, upcoming: true });
+        upcomingGroups.push({ time: anyT, nine: 'unknown', players: matched, upcoming: true, overrideIdx: ovIdx });
       }
     }
     groups.sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -5728,11 +5732,24 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   // Determine group state BEFORE scoring so we know if pick should be locked
   const statuses     = players.map(p => playerRoundStatus(p, round));
   const groupStarted = statuses.some(s => s === 'live' || s === 'finished');
-  const pickId       = normGolfPickId(eventId, group.time, group.nine);
-  // Also check old full-date format in case picks were stored before the normGolfPickId fix
-  const oldPickId    = group.time ? `golf_${eventId}_${group.time.replace(/\D/g,'')}` : null;
+  const pickId       = normGolfPickId(eventId, group.time, group.nine, group.overrideIdx);
+  // Fallback IDs for picks recorded before the overrideIdx scheme was added
+  const ttPickId  = normGolfPickId(eventId, group.time, group.nine);
+  const oldPickId = group.time ? `golf_${eventId}_${group.time.replace(/\D/g,'')}` : null;
   const allPicksNow2 = getPicks();
-  const existingPick = allPicksNow2[pickId] || (oldPickId ? allPicksNow2[oldPickId] : null);
+  // Validate any stored pick against the group's players to prevent ID collisions
+  // from two groups that share the same tee time + nine from showing the wrong name.
+  const groupLastNames = players.map(p =>
+    (p.athlete?.shortName || p.athlete?.displayName || '').split(' ').pop().toLowerCase()
+  );
+  const validatePick = p => {
+    if (!p) return null;
+    const s = ((p.team || '') + ' ' + (p.matchup || '')).toLowerCase();
+    return groupLastNames.some(ln => ln && s.includes(ln)) ? p : null;
+  };
+  const existingPick = validatePick(allPicksNow2[pickId])
+    || validatePick(allPicksNow2[ttPickId])
+    || (oldPickId ? validatePick(allPicksNow2[oldPickId]) : null);
 
   const scored = players.map(p => {
     const sa    = getSA(p);
@@ -5966,7 +5983,13 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           const { groups, upcomingGroups } = groupByTeeTime(allComp, round, ev.id);
 
           // Collect pickIds that are already displayed via current groups
-          const shownPickIds = new Set([...groups, ...upcomingGroups].map(g => normGolfPickId(ev.id, g.time, g.nine)));
+          const shownPickIds = new Set([...groups, ...upcomingGroups].flatMap(g => {
+            const ids = [normGolfPickId(ev.id, g.time, g.nine, g.overrideIdx)];
+            // Also mark the tee-time-based ID as shown so old stored picks aren't double-rendered
+            if (g.overrideIdx !== undefined) ids.push(normGolfPickId(ev.id, g.time, g.nine));
+            if (g.time) ids.push(`golf_${ev.id}_${g.time.replace(/\D/g,'')}`);
+            return ids;
+          }));
 
           // Earlier groups: stored pre-round picks from today whose groups no longer have
           // valid tee times in the API (ESPN overwrote p.teeTime with next-round pairings).
