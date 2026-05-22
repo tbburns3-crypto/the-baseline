@@ -7267,15 +7267,18 @@ function getPicksForTicket(type, date, allPicks) {
 }
 
 function getMLBPerGameTickets(date, allPicks) {
-  const PROP_ORDER = { game:0, Hit:1, RBI:2, HR:3, K:4, Walk:5, SB:6 };
-  const PROP_ICONS = { game:'🏆', Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃', K:'🔥' };
+  // Only game winner, quality hit (avg ≥ .265), elite K arm (K/9 ≥ 10.0).
+  // HR/RBI/Walk/SB omitted — too unlikely to anchor a focused ticket.
+  const PROP_ORDER = { game:0, Hit:1, K:2 };
+  const PROP_ICONS = { game:'🏆', Hit:'🎯', K:'🔥' };
   const entries = Object.entries(allPicks).filter(([, p]) => p.sport === 'mlb' && p.date === date);
   const games = new Map();
+
   for (const [id, p] of entries) {
     if (!p.type) {
       if (!games.has(id)) games.set(id, { gameId: id, matchup: p.matchup||id, legs: [] });
       games.get(id).legs.push({ id, pick: p.team||'', matchup:'', conf: p.conf||1, sport:'mlb', propType:'game', result: p.result, icon:'🏆' });
-    } else if (p.type === 'player') {
+    } else if (p.type === 'player' && (p.prop === 'Hit' || p.prop === 'K')) {
       const parts = id.split('_');
       if (parts.length < 2) continue;
       const gid = parts[1];
@@ -7283,9 +7286,30 @@ function getMLBPerGameTickets(date, allPicks) {
       games.get(gid).legs.push({ id, pick: lastName(p.player||''), description: `${p.prop}: ${p.stat}`, matchup:'', conf: 2, sport:'mlb', propType: p.prop, result: p.result, icon: PROP_ICONS[p.prop]||'🏅' });
     }
   }
+
   return [...games.values()]
     .filter(g => g.legs.length > 0)
-    .map(g => ({ ...g, legs: [...g.legs].sort((a, b) => (PROP_ORDER[a.propType]||9) - (PROP_ORDER[b.propType]||9)) }))
+    .map(g => {
+      const qualified = [];
+      for (const leg of g.legs) {
+        if (leg.propType === 'game') {
+          qualified.push(leg);
+        } else if (leg.propType === 'Hit') {
+          // Only batters with a platoon-adjusted avg ≥ .265
+          const avg = parseFloat((leg.description || '').match(/^Hit:\s*(\.?\d+)/)?.[1] || 0);
+          if (avg >= 0.265) qualified.push(leg);
+        } else if (leg.propType === 'K') {
+          // Only elite K arms with adjusted K/9 ≥ 10.0
+          const k9 = parseFloat((leg.description || '').match(/(\d+\.?\d*)K\/9/)?.[1] || 0);
+          if (k9 >= 10.0) qualified.push(leg);
+        }
+      }
+      const legs = qualified
+        .sort((a, b) => (PROP_ORDER[a.propType]||9) - (PROP_ORDER[b.propType]||9))
+        .slice(0, 3);
+      return { ...g, legs };
+    })
+    .filter(g => g.legs.length > 0)
     .sort((a, b) => a.matchup.localeCompare(b.matchup));
 }
 
