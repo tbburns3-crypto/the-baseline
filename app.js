@@ -7265,9 +7265,17 @@ function getPicksForTicket(type, date, allPicks) {
       return entries.filter(([id, p]) => p.sport === 'golf' && !id.startsWith('_fb_'))
         .sort(sortConf).slice(0, 10).map(toGame);
     case 'nba':
-    case 'wnba': {
+    case 'wnba':
+    case 'nhl':
+    case 'nfl': {
       const sp = type;
-      const PROP_ABBR = { Points:'PTS', Rebounds:'REB', Assists:'AST', Goals:'G', 'Goals+Assists':'GA' };
+      const PA = {
+        nba:  { Points:'PTS', Rebounds:'REB', Assists:'AST', 'Goals+Assists':'GA' },
+        wnba: { Points:'PTS', Rebounds:'REB', Assists:'AST' },
+        nhl:  { Goals:'G', Assists:'A', Points:'PTS', 'Goals+Assists':'GA' },
+        nfl:  { 'Passing Yards':'PASS', 'Rushing Yards':'RUSH', 'Receiving Yards':'REC', Points:'PTS' },
+      };
+      const PROP_ABBR = PA[sp] || {};
       return entries.filter(([, p]) => p.sport === sp)
         .sort((a, b) => {
           const ga = a[1].type === 'player' ? 0 : 1, gb = b[1].type === 'player' ? 0 : 1;
@@ -7344,6 +7352,80 @@ function getMLBPerGameTickets(date, allPicks) {
 
     return result
       .sort((a, b) => (PROP_ORDER[a.propType]||9) - (PROP_ORDER[b.propType]||9))
+      .slice(0, 6);
+  };
+
+  return [...games.values()]
+    .filter(g => g.legs.length > 0)
+    .map(g => ({ ...g, legs: selectBest(g.legs) }))
+    .filter(g => g.legs.length > 0)
+    .sort((a, b) => a.matchup.localeCompare(b.matchup));
+}
+
+function getSportPerGameTickets(date, allPicks, sport) {
+  const ICONS = {
+    nba:  { game:'🏆', Points:'🏀', Rebounds:'💪', Assists:'🎯' },
+    wnba: { game:'🏆', Points:'🏀', Rebounds:'💪', Assists:'🎯' },
+    nhl:  { game:'🏆', Goals:'🥅', Assists:'🎯', Points:'⭐', 'Goals+Assists':'⭐' },
+    nfl:  { game:'🏆', 'Passing Yards':'🏈', 'Rushing Yards':'🏃', 'Receiving Yards':'📡', Points:'🏆' },
+  };
+  const ABBRS = {
+    nba:  { Points:'PTS', Rebounds:'REB', Assists:'AST' },
+    wnba: { Points:'PTS', Rebounds:'REB', Assists:'AST' },
+    nhl:  { Goals:'G', Assists:'A', Points:'PTS', 'Goals+Assists':'GA' },
+    nfl:  { 'Passing Yards':'PASS', 'Rushing Yards':'RUSH', 'Receiving Yards':'REC', Points:'PTS' },
+  };
+  const ORDER = {
+    nba:  { game:0, Points:1, Rebounds:2, Assists:3 },
+    wnba: { game:0, Points:1, Rebounds:2, Assists:3 },
+    nhl:  { game:0, Goals:1, Assists:2, Points:3, 'Goals+Assists':3 },
+    nfl:  { game:0, Points:1, 'Passing Yards':2, 'Rushing Yards':3, 'Receiving Yards':4 },
+  };
+  const icons   = ICONS[sport]  || {};
+  const abbrs   = ABBRS[sport]  || {};
+  const propOrd = ORDER[sport]  || {};
+
+  const entries = Object.entries(allPicks).filter(([, p]) => p.sport === sport && p.date === date);
+  const games   = new Map();
+
+  for (const [id, p] of entries) {
+    if (!p.type) {
+      if (!games.has(id)) games.set(id, { gameId: id, matchup: p.matchup||id, legs: [] });
+      games.get(id).legs.push({ id, pick: p.team||'', matchup:'', conf: p.conf||1, sport, propType:'game', result: p.result, icon:'🏆' });
+    } else if (p.type === 'player') {
+      const parts = id.split('_');
+      if (parts.length < 2) continue;
+      const gid = parts[1];
+      if (!games.has(gid)) games.set(gid, { gameId: gid, matchup: p.gameMatchup||gid, legs: [] });
+      const raw  = parseFloat(p.stat || 0);
+      const line = raw > 0 ? (Math.floor(raw * 2) / 2 - 0.5).toFixed(1) : null;
+      const abbr = abbrs[p.prop] || p.prop || 'PROP';
+      const desc = line !== null ? `OVER ${line} ${abbr}` : `${p.prop}: ${p.stat}`;
+      games.get(gid).legs.push({
+        id, pick: lastName(p.player||''), description: desc,
+        matchup:'', conf: p.conf||1, sport,
+        propType: p.prop, result: p.result,
+        icon: icons[p.prop] || '🏅',
+      });
+    }
+  }
+
+  const selectBest = (legs) => {
+    const byProp = new Map();
+    for (const leg of legs) {
+      if (!byProp.has(leg.propType)) byProp.set(leg.propType, []);
+      byProp.get(leg.propType).push(leg);
+    }
+    const result = [];
+    const gamePick = byProp.get('game')?.[0];
+    if (gamePick) result.push(gamePick);
+    for (const [propType, propLegs] of byProp) {
+      if (propType === 'game') continue;
+      const best = [...propLegs].sort((a, b) => (b.conf||1) - (a.conf||1))[0];
+      if (best) result.push(best);
+    }
+    return result
+      .sort((a, b) => (propOrd[a.propType]||9) - (propOrd[b.propType]||9))
       .slice(0, 6);
   };
 
@@ -7479,17 +7561,55 @@ function renderTicketsPage() {
   </div>`;
 
   // ── NBA ──
-  const nbaLegs = getPicksForTicket('nba', date, allPicks);
+  const nbaLegs         = getPicksForTicket('nba', date, allPicks);
+  const nbaPerGame      = getSportPerGameTickets(date, allPicks, 'nba');
+  const nbaAggCards     = nbaLegs.length ? [renderTicketBlock('🏀 Best Bets', nbaLegs, allPicks)] : [];
+  const nbaPerGameCards = nbaPerGame.map(g => renderTicketBlock(esc(g.matchup.replace(/ @ /g,' v ')), g.legs, allPicks));
+  const nbaHasAny       = nbaAggCards.length || nbaPerGameCards.length;
   const nbaHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">🏀 NBA</div>
-    ${nbaLegs.length ? grid([renderTicketBlock('🏀 Best Bets', nbaLegs, allPicks)]) : `<div class="tp-sport-empty">No NBA picks yet${off===0?' — visit the NBA tab':''}</div>`}
+    ${nbaAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nbaAggCards)}` : ''}
+    ${nbaPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nbaPerGameCards)}` : ''}
+    ${!nbaHasAny ? `<div class="tp-sport-empty">No NBA picks yet${off===0?' — visit the NBA tab':''}</div>` : ''}
   </div>`;
 
   // ── WNBA ──
-  const wnbaLegs = getPicksForTicket('wnba', date, allPicks);
+  const wnbaLegs         = getPicksForTicket('wnba', date, allPicks);
+  const wnbaPerGame      = getSportPerGameTickets(date, allPicks, 'wnba');
+  const wnbaAggCards     = wnbaLegs.length ? [renderTicketBlock('🏀 Best Bets', wnbaLegs, allPicks)] : [];
+  const wnbaPerGameCards = wnbaPerGame.map(g => renderTicketBlock(esc(g.matchup.replace(/ @ /g,' v ')), g.legs, allPicks));
+  const wnbaHasAny       = wnbaAggCards.length || wnbaPerGameCards.length;
   const wnbaHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">🏀 WNBA</div>
-    ${wnbaLegs.length ? grid([renderTicketBlock('🏀 Best Bets', wnbaLegs, allPicks)]) : `<div class="tp-sport-empty">No WNBA picks yet${off===0?' — visit the WNBA tab':''}</div>`}
+    ${wnbaAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(wnbaAggCards)}` : ''}
+    ${wnbaPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(wnbaPerGameCards)}` : ''}
+    ${!wnbaHasAny ? `<div class="tp-sport-empty">No WNBA picks yet${off===0?' — visit the WNBA tab':''}</div>` : ''}
+  </div>`;
+
+  // ── NHL ──
+  const nhlLegs         = getPicksForTicket('nhl', date, allPicks);
+  const nhlPerGame      = getSportPerGameTickets(date, allPicks, 'nhl');
+  const nhlAggCards     = nhlLegs.length ? [renderTicketBlock('🏒 Best Bets', nhlLegs, allPicks)] : [];
+  const nhlPerGameCards = nhlPerGame.map(g => renderTicketBlock(esc(g.matchup.replace(/ @ /g,' v ')), g.legs, allPicks));
+  const nhlHasAny       = nhlAggCards.length || nhlPerGameCards.length;
+  const nhlHTML = `<div class="tp-sport-section">
+    <div class="tp-sport-hdr">🏒 NHL</div>
+    ${nhlAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nhlAggCards)}` : ''}
+    ${nhlPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nhlPerGameCards)}` : ''}
+    ${!nhlHasAny ? `<div class="tp-sport-empty">No NHL picks yet${off===0?' — visit the NHL tab':''}</div>` : ''}
+  </div>`;
+
+  // ── NFL ──
+  const nflLegs         = getPicksForTicket('nfl', date, allPicks);
+  const nflPerGame      = getSportPerGameTickets(date, allPicks, 'nfl');
+  const nflAggCards     = nflLegs.length ? [renderTicketBlock('🏈 Best Bets', nflLegs, allPicks)] : [];
+  const nflPerGameCards = nflPerGame.map(g => renderTicketBlock(esc(g.matchup.replace(/ @ /g,' v ')), g.legs, allPicks));
+  const nflHasAny       = nflAggCards.length || nflPerGameCards.length;
+  const nflHTML = `<div class="tp-sport-section">
+    <div class="tp-sport-hdr">🏈 NFL</div>
+    ${nflAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nflAggCards)}` : ''}
+    ${nflPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nflPerGameCards)}` : ''}
+    ${!nflHasAny ? `<div class="tp-sport-empty">No NFL picks yet${off===0?' — NFL season runs Sep–Feb':''}</div>` : ''}
   </div>`;
 
   el.innerHTML = `<div class="tp-page">
@@ -7497,7 +7617,7 @@ function renderTicketsPage() {
     <div class="tp-full-date">${fullDate}</div>
     ${off === 0 && !_svPreloadDone ? '<div class="tp-loading">⏳ Loading picks from all sports…</div>' : ''}
     ${todayPicksHTML}
-    ${mlbHTML}${tennisHTML}${golfHTML}${nbaHTML}${wnbaHTML}
+    ${mlbHTML}${tennisHTML}${golfHTML}${nbaHTML}${wnbaHTML}${nhlHTML}${nflHTML}
   </div>`;
 }
 
