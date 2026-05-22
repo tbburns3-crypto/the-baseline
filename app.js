@@ -3440,9 +3440,38 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
 
     const avg_    = b => _fmtAvg(b?.platAvg || b?.avg) || '-';
     const statStr = {
-      hit:  b => b ? `${avg_(b)} vs ${b.oppHand||'?'}HP` : '',
-      hr:   b => b ? `${b.hr||0}HR · ${avg_(b)} vs ${b.oppHand||'?'}HP` : '',
-      rbi:  b => b ? `${b.rbi||0}RBI · #${b.pos}` : '',
+      hit: b => {
+        if (!b) return '';
+        const oppPD = b.team === awayAbbr ? homePD : awayPD;
+        const pitERA = parseFloat(oppPD?.season?.era || 4.5);
+        const ph = (PARK_HIT[homeAbbr] || 1.0) >= 1.02;
+        let s = `${avg_(b)} vs ${b.oppHand||'?'}HP`;
+        if (b.babip !== null && b.babip < 0.270) s += '·due';   // BABIP regression incoming
+        if (pitERA > 4.8) s += '·pitH↑';                        // pitcher allows hits above avg
+        if (ph) s += '·park↑';                                   // hit-friendly park
+        return s;
+      },
+      hr: b => {
+        if (!b) return '';
+        const vs    = vsMap.get(b.id);
+        const vsHR  = (vs && parseInt(vs.atBats||0) >= 5) ? parseInt(vs.homeRuns||0) : 0;
+        const oppR  = b.team === awayAbbr ? homeRates : awayRates; // away batter faces home pitcher
+        const phHR  = parkHR >= 1.05;
+        let s = `${b.hr||0}HR · ${avg_(b)} vs ${b.oppHand||'?'}HP`;
+        if (vsHR > 0)              s += `·${vsHR}vsHR`;   // career HR vs this exact pitcher
+        if ((oppR?.hr9||0) > 1.25) s += '·pitHR↑';        // pitcher allows HRs above avg
+        if (phHR)                  s += '·parkHR↑';        // HR-friendly park
+        if (b.favorable)           s += '·plat';            // platoon power advantage
+        return s;
+      },
+      rbi: b => {
+        if (!b) return '';
+        const oppPD = b.team === awayAbbr ? homePD : awayPD;
+        const pitERA = parseFloat(oppPD?.season?.era || 4.5);
+        let s = `${b.rbi||0}RBI · #${b.pos}`;
+        if (pitERA > 4.8) s += '·pitR↑';  // high ERA pitcher = more runners scoring
+        return s;
+      },
       walk: b => b ? `${b.bb||0}BB · ${b.obp||'-'}OBP` : '',
       sb:   b => b ? `${b.sb}SB` : '',
     };
@@ -7220,6 +7249,64 @@ async function preloadPicksForSimpleView() {
 
 // ── TYPED TICKET HELPERS ──────────────────────────────────────
 
+// Merit score for an MLB player pick — used by both per-game and combined tickets.
+// Parses the encoded stat string (set at pick-record time) for matchup context.
+// Returns -1 to exclude a pick below quality threshold; higher = better.
+function mlbPickMerit(propType, stat, pick) {
+  const s = (stat || '').replace(/^[^:]+:\s*/, ''); // strip "Hit: " prefix if present
+
+  if (propType === 'Hit') {
+    const avg = parseFloat(s.match(/^(0?\.\d+)/)?.[1] || '0');
+    if (avg < 0.245) return -1;
+    let score = avg * 1000;
+    if (s.includes(' vs '))  score += 15;  // has platoon context
+    if (s.includes('due'))   score += 35;  // BABIP below avg — hits are coming
+    if (s.includes('pitH↑')) score += 22;  // pitcher allows hits above average ERA
+    if (s.includes('park↑')) score += 10;  // hit-friendly park
+    return score;
+  }
+
+  if (propType === 'HR') {
+    const hr   = parseFloat(s.match(/^(\d+)HR/)?.[1] || '0');
+    const vsHR = parseFloat(s.match(/(\d+)vsHR/)?.[1] || '0');
+    // vs-pitcher HR history is the most powerful HR signal — lower the season-HR floor when present
+    const minHR = vsHR >= 2 ? 3 : vsHR >= 1 ? 5 : 8;
+    if (hr < minHR) return -1;
+    let score = hr * 6;
+    score += vsHR * 28;                     // career HR vs this exact pitcher dominates
+    if (s.includes('pitHR↑'))  score += 22; // adjusted pitcher HR/9 > 1.25
+    if (s.includes('parkHR↑')) score += 12; // HR-friendly park (1.05+)
+    if (s.includes('plat'))    score += 15; // platoon power advantage
+    return score;
+  }
+
+  if (propType === 'RBI') {
+    const rbi = parseFloat(s.match(/^(\d+)RBI/)?.[1] || '0');
+    const pos = parseFloat(s.match(/#(\d+)/)?.[1] || '9');
+    if (rbi < 18) return -1;
+    const posBonus = Math.max(0, (6 - Math.min(pos, 7))) * 10; // #3 = +30, #4 = +20, #5 = +10
+    let score = rbi * 1.8 + posBonus;
+    if (s.includes('pitR↑')) score += 20;  // high ERA pitcher means more runs/RBIs
+    return score;
+  }
+
+  if (propType === 'K') {
+    const k9 = parseFloat(s.match(/(\d+\.?\d*)K\/9/)?.[1] || '0');
+    if (k9 < 8.5) return -1;
+    return (k9 - 8.0) * 35; // 9.0 → 35, 9.5 → 52, 10.0 → 70
+  }
+
+  if (propType === 'RunTotal') {
+    const proj = parseFloat(s.match(/proj\s+([\d.]+)/)?.[1] || '0');
+    const line = parseFloat((pick || '').match(/([\d.]+)/)?.[1] || '0');
+    const dev  = (proj > 0 && line > 0) ? Math.abs(proj - line) : 0;
+    if (dev < 0.2) return 8;
+    return Math.min(dev * 55, 90);
+  }
+
+  return 0;
+}
+
 function toOULine(sport, prop, raw) {
   if (!raw || raw <= 0) return null;
   if (sport === 'nhl') {
@@ -7245,63 +7332,20 @@ function getPicksForTicket(type, date, allPicks) {
     case 'mlb_game':
       return entries.filter(([, p]) => p.sport === 'mlb' && !p.type)
         .sort(sortConf).slice(0, 10).map(toGame);
-    case 'mlb_hits': {
-      // Score: platoon-adjusted avg × 1000 + bonus for having platoon data. Min .245 avg.
-      return entries
-        .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'Hit')
-        .map(([id, p]) => {
-          const avg = parseFloat((p.stat || '').match(/^(0?\.\d+)/)?.[1] || '0');
-          const merit = avg >= 0.245 ? avg * 1000 + ((p.stat||'').includes(' vs ') ? 15 : 0) : -1;
-          return { id, p, merit };
-        })
-        .filter(x => x.merit > 0)
-        .sort((a, b) => b.merit - a.merit)
-        .slice(0, 10)
-        .map(({ id, p }) => toPlr('hits')([id, p]));
-    }
-    case 'mlb_rbi': {
-      // Score: RBI × 1.8 + lineup-position bonus (#3 = +30, #4 = +20, #5 = +10). Min 18 RBI.
-      return entries
-        .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'RBI')
-        .map(([id, p]) => {
-          const rbi = parseFloat((p.stat || '').match(/^(\d+)RBI/)?.[1] || '0');
-          const pos = parseFloat((p.stat || '').match(/#(\d+)/)?.[1] || '9');
-          const posBonus = Math.max(0, (6 - Math.min(pos, 7))) * 10;
-          const merit = rbi >= 18 ? rbi * 1.8 + posBonus : -1;
-          return { id, p, merit };
-        })
-        .filter(x => x.merit > 0)
-        .sort((a, b) => b.merit - a.merit)
-        .slice(0, 10)
-        .map(({ id, p }) => toPlr('rbi')([id, p]));
-    }
-    case 'mlb_hr': {
-      // Score: HR count × 8. Min 8 HR — below that isn't a meaningful power threat.
-      return entries
-        .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'HR')
-        .map(([id, p]) => {
-          const hr = parseFloat((p.stat || '').match(/^(\d+)HR/)?.[1] || '0');
-          const merit = hr >= 8 ? hr * 8 : -1;
-          return { id, p, merit };
-        })
-        .filter(x => x.merit > 0)
-        .sort((a, b) => b.merit - a.merit)
-        .slice(0, 10)
-        .map(({ id, p }) => toPlr('hr')([id, p]));
-    }
+    case 'mlb_hits':
+    case 'mlb_rbi':
+    case 'mlb_hr':
     case 'mlb_ks': {
-      // Score: (K/9 − 8.0) × 35. Min 8.5 K/9 — below that the K prop is marginal.
+      const propMap = { mlb_hits:'Hit', mlb_rbi:'RBI', mlb_hr:'HR', mlb_ks:'K' };
+      const plrMap  = { mlb_hits:'hits', mlb_rbi:'rbi', mlb_hr:'hr', mlb_ks:'ks' };
+      const prop = propMap[type], plrKey = plrMap[type];
       return entries
-        .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'K')
-        .map(([id, p]) => {
-          const k9 = parseFloat((p.stat || '').match(/(\d+\.?\d*)K\/9/)?.[1] || '0');
-          const merit = k9 >= 8.5 ? (k9 - 8.0) * 35 : -1;
-          return { id, p, merit };
-        })
+        .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === prop)
+        .map(([id, p]) => ({ id, p, merit: mlbPickMerit(prop, p.stat, p.player) }))
         .filter(x => x.merit > 0)
         .sort((a, b) => b.merit - a.merit)
         .slice(0, 10)
-        .map(({ id, p }) => toPlr('ks')([id, p]));
+        .map(({ id, p }) => toPlr(plrKey)([id, p]));
     }
     case 'tennis_main': {
       const main = new Set(['slam','masters','500','250']);
@@ -7417,66 +7461,18 @@ function getMLBPerGameTickets(date, allPicks) {
     }
   }
 
-  // Score each pick on real quality metrics parsed from stored stat strings.
-  // No fixed prop quotas — the best picks for THIS game win spots regardless of type.
-  const pickMerit = (leg) => {
-    if (leg.propType === 'game') return 1000;
-    const stat = (leg.description || '').replace(/^[^:]+:\s*/, ''); // strip "Hit: " prefix
-    const pt   = leg.propType;
-
-    if (pt === 'Hit') {
-      // stat like ".295 vs RHP" — platoon avg is even better signal than season avg
-      const m = stat.match(/^(0?\.\d+)/);
-      const avg = m ? parseFloat(m[1]) : 0;
-      if (avg < 0.245) return -1;  // not worth backing
-      let score = avg * 1000;      // .310 → 310, .275 → 275
-      // Platoon advantage already baked into the displayed avg — if stat says "vs RHP/LHP" it used platoon split
-      if (stat.includes(' vs ')) score += 15;
-      return score;
-    }
-
-    if (pt === 'RBI') {
-      // stat like "45RBI · #4"
-      const rbi = parseFloat(stat.match(/^(\d+)RBI/)?.[1] || '0');
-      const pos = parseFloat(stat.match(/#(\d+)/)?.[1] || '9');
-      if (rbi < 18) return -1;  // too early in season or too weak a producer
-      const posBonus = Math.max(0, (6 - Math.min(pos, 7))) * 10; // #3 = +30, #4 = +20, #5 = +10
-      return rbi * 1.8 + posBonus; // 45 RBI #4 → 81 + 20 = 101
-    }
-
-    if (pt === 'K') {
-      // stat like "9.2K/9 · 67K season"
-      const k9 = parseFloat(stat.match(/(\d+\.?\d*)K\/9/)?.[1] || '0');
-      if (k9 < 8.5) return -1;
-      return (k9 - 8.0) * 35; // 9.0 → 35, 10.0 → 70, 9.5 → 52
-    }
-
-    if (pt === 'RunTotal') {
-      // pick = "OVER 8.5", stat = "proj 8.3 runs"
-      const proj = parseFloat(stat.match(/proj\s+([\d.]+)/)?.[1] || '0');
-      const line = parseFloat((leg.pick || '').match(/([\d.]+)/)?.[1] || '0');
-      const dev  = (proj > 0 && line > 0) ? Math.abs(proj - line) : 0;
-      if (dev < 0.2) return 8;   // model basically agrees with the line — weak edge
-      return Math.min(dev * 55, 90); // 0.5 off = 27, 1.0 = 55, 1.5 = 82 (cap at 90)
-    }
-
-    return 0;
-  };
-
   const selectBest = (legs) => {
     const gamePick = legs.find(l => l.propType === 'game');
     const props = legs
       .filter(l => l.propType !== 'game')
-      .map(l => ({ ...l, _merit: pickMerit(l) }))
+      .map(l => ({ ...l, _merit: l.propType === 'game' ? 1000 : mlbPickMerit(l.propType, l.description, l.pick) }))
       .filter(l => l._merit >= 0)
       .sort((a, b) => b._merit - a._merit);
 
-    // Only include picks with real conviction (merit > 0)
     const selected = props.filter(l => l._merit > 0);
-
     return [
       ...(gamePick ? [gamePick] : []),
-      ...selected.slice(0, 7),  // up to 7 props — could be 4 hits if they're all excellent
+      ...selected.slice(0, 7),
     ].slice(0, 8);
   };
 
