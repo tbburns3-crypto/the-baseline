@@ -52,6 +52,8 @@ const _detailLoaded = new Set();
 // Incremented on every switchSport call. Async loaders capture the value at start
 // and bail before writing to the DOM if the sport has since changed.
 let _loadSeq = 0;
+let _tpTab        = 'upcoming'; // tennis picks active tab: 'upcoming' | 'results'
+let _golfPicksTab = 'today';    // golf picks active tab: 'yesterday' | 'today' | 'tomorrow'
 
 // ── REST DAYS CACHE ──────────────────────────────────────────
 // Populated by populateRestDaysCache() during preload.
@@ -463,13 +465,8 @@ function fmtTime12(t) {
   const ampm = h >= 12 ? 'PM' : 'AM';
   return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
-// Tennis event_time is "HH:MM" UTC — convert to user's TZ and show the TZ label
+// Tennis event_time is "HH:MM" in the venue's local time — display as-is in 12h format
 function fmtTennisTime(date, time) {
-  if (!time) return '';
-  try {
-    const d = new Date((date || dateStrLocal()) + 'T' + time + ':00Z');
-    if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ(), timeZoneName:'short' });
-  } catch {}
   return fmtTime12(time);
 }
 
@@ -3445,6 +3442,13 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   </div>`;
 }
 
+function tpSwitchTab(tab) {
+  _tpTab = tab;
+  document.querySelectorAll('.tp-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('tp-panel-upcoming').style.display = tab === 'upcoming' ? '' : 'none';
+  document.getElementById('tp-panel-results').style.display  = tab === 'results'  ? '' : 'none';
+}
+
 // ── TENNIS PICKS PAGE ────────────────────────────────────────
 async function loadTennisPicksPage() {
   const seq  = _loadSeq;
@@ -3534,7 +3538,8 @@ async function loadTennisPicksPage() {
   const CAT_LABEL = { atp:'ATP', wta:'WTA', 'challenger-m':'Challenger M', 'challenger-w':'Challenger W', 'itf-m':'ITF Men', 'itf-w':'ITF Women' };
 
   // Group picks by tournament, sort each group by scheduled time
-  const renderTournamentGroups = picks => {
+  // rowFn: optional custom row renderer (defaults to makeRow)
+  const renderTournamentGroups = (picks, rowFn = makeRow) => {
     const byTourn = new Map();
     for (const p of picks) {
       const key = p._tourn || 'Other';
@@ -3558,7 +3563,7 @@ async function loadTennisPicksPage() {
           ${tierBadge}
           ${catLabel ? `<span class="tp-tourn-cat">${esc(catLabel)}</span>` : ''}
         </div>
-        ${rows.map(makeRow).join('')}
+        ${rows.map(rowFn).join('')}
       </div>`;
     }).join('');
   };
@@ -3566,47 +3571,67 @@ async function loadTennisPicksPage() {
   // Enrich all picks with match metadata
   const allPicksEntries = Object.entries(getPicks()).filter(([, p]) => (p.sport || 'tennis') === 'tennis');
   const allTennisPicks  = allPicksEntries.map(([k, p]) => enrich(p, k));
-  const datePicks    = allTennisPicks.filter(p => (p.date || todayStr) === selectedDate);
-  const pending      = datePicks.filter(p => p.result === null);
-  const resolved     = datePicks.filter(p => p.result !== null);
-  const otherPending = allTennisPicks.filter(p => p.result === null && (p.date || todayStr) !== selectedDate);
+  // Split ALL tennis picks into upcoming (pending) and results (resolved)
+  const upcomingPicks = allTennisPicks
+    .filter(p => p.result === null)
+    .sort((a, b) => (a.date || todayStr).localeCompare(b.date || todayStr) || (a._time || '99:99').localeCompare(b._time || '99:99'));
 
-  let todayHTML = '';
-  if (!allTennisPicks.length) {
-    todayHTML = '<div class="empty-state muted">No picks yet — browse the Scores tab to generate picks.</div>';
-  } else if (!datePicks.length) {
-    todayHTML = `<div class="empty-state muted">No picks for ${selLabel}.<br>Select another date or visit the Scores tab first.</div>`;
-  } else {
-    if (pending.length) {
-      todayHTML += `<div class="tp-section-hdr">${selLabel} — Pending <span class="tp-section-count">${pending.length}</span></div>
-        <div class="tp-tourn-list">${renderTournamentGroups(pending)}</div>`;
-    }
-    if (resolved.length) {
-      const w = resolved.filter(p => p.result === 'win').length;
-      todayHTML += `<div class="tp-section-hdr tp-results-hdr">${selLabel} — Results
-        <span class="tp-res-record">${w}W ${resolved.length - w}L</span></div>
-        <div class="tp-tourn-list">${renderTournamentGroups(resolved)}</div>`;
-    }
-  }
+  const resolvedPicks = allTennisPicks
+    .filter(p => p.result !== null)
+    .sort((a, b) => (b.date || todayStr).localeCompare(a.date || todayStr) || (a._time || '99:99').localeCompare(b._time || '99:99'));
 
-  // Compact summary of other-date pending picks
-  if (otherPending.length) {
-    const otherByDate = new Map();
-    for (const p of otherPending) {
-      const d = p.date || todayStr;
-      otherByDate.set(d, (otherByDate.get(d) || 0) + 1);
-    }
-    const chips = [...otherByDate.entries()]
-      .sort(([a],[b]) => a.localeCompare(b))
-      .map(([d, n]) => `<span class="tp-other-chip">${labelForDate(d)}: ${n}</span>`)
-      .join('');
-    todayHTML += `<div class="tp-other-dates">Other dates: ${chips}</div>`;
+  // Row builder that adds a date badge when the pick is not for today
+  const makeRowWithBadge = p => {
+    const win = p.result === 'win';
+    const rowCls = p.result === null ? 'tp-row' : win ? 'tp-row tp-row-win' : 'tp-row tp-row-loss';
+    const resultIcon = p.result === null ? ''
+      : `<span class="tp-row-icon ${win ? 'tp-ico-win' : 'tp-ico-loss'}">${win ? '✓' : '✗'}</span>`;
+    const matchupClean = (p.matchup || p.team).replace(/\s*\(\w+\)$/i, '');
+    const timeStr = p._time ? `<span class="tp-row-time">${esc(fmtTennisTime(p._date, p._time))}</span>` : '';
+    const dateBadge = p.date && p.date !== todayStr
+      ? `<span class="tp-date-badge">${esc(labelForDate(p.date))}</span>` : '';
+    return `<div class="${rowCls}">
+      ${dateBadge}${timeStr}
+      <span class="tp-row-arrow">→</span>
+      <span class="tp-row-pick">${esc(p.team)}</span>
+      <span class="tp-row-vs">${esc(matchupClean)}</span>
+      <span class="tp-row-meta">${confDots(p.conf)}${resultIcon}</span>
+    </div>`;
+  };
+  const renderGroupsWithBadge = picks => renderTournamentGroups(picks, makeRowWithBadge);
+
+  // Upcoming tab: all pending grouped by tournament
+  const upcomingHTML = upcomingPicks.length
+    ? `<div class="tp-tourn-list">${renderGroupsWithBadge(upcomingPicks)}</div>`
+    : '<div class="empty-state muted">No upcoming picks yet — visit Scores tab to generate.</div>';
+
+  // Results tab: grouped by date (most recent first), within each date by tournament
+  const resolvedByDate = new Map();
+  for (const p of resolvedPicks) {
+    const d = p.date || todayStr;
+    if (!resolvedByDate.has(d)) resolvedByDate.set(d, []);
+    resolvedByDate.get(d).push(p);
   }
+  const resultsHTML = resolvedPicks.length
+    ? [...resolvedByDate.entries()]
+        .sort(([a],[b]) => b.localeCompare(a))
+        .map(([d, picks]) => {
+          const w = picks.filter(p => p.result === 'win').length;
+          return `<div class="tp-section-hdr">${esc(labelForDate(d))} <span class="tp-res-record">${w}W ${picks.length - w}L</span></div>
+            <div class="tp-tourn-list">${renderTournamentGroups(picks)}</div>`;
+        }).join('')
+    : '<div class="empty-state muted">No results yet.</div>';
 
   if (_loadSeq !== seq) return;
+  const tab = _tpTab;
   area.innerHTML = `
     <div class="pc-data-note">Picks use seedings · rankings · H2H · surface form · fatigue · round weighting</div>
-    <div class="ph-list">${todayHTML}</div>
+    <div class="picks-tab-bar">
+      <button class="tp-tab${tab==='upcoming'?' active':''}" data-tab="upcoming" onclick="tpSwitchTab('upcoming')">📅 Upcoming (${upcomingPicks.length})</button>
+      <button class="tp-tab${tab==='results'?' active':''}" data-tab="results" onclick="tpSwitchTab('results')">✓ Results (${resolvedPicks.length})</button>
+    </div>
+    <div id="tp-panel-upcoming" style="${tab!=='upcoming'?'display:none':''}"><div class="ph-list">${upcomingHTML}</div></div>
+    <div id="tp-panel-results"  style="${tab!=='results' ?'display:none':''}"><div class="ph-list">${resultsHTML}</div></div>
     <div class="tp-tomorrow-section">
       <div class="tp-tmrw-hdr">
         <span class="tp-tmrw-title">Tomorrow's Preview</span>
@@ -3616,7 +3641,6 @@ async function loadTennisPicksPage() {
     </div>`;
   updatePicksDisplay();
 
-  // Load tomorrow's H2H analysis in the background
   loadTomorrowPreview();
 }
 
@@ -5633,93 +5657,121 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   </div>`;
 }
 
-async function loadGolfPicksPage() {
+async function loadGolfPicksPage(tab = _golfPicksTab) {
+  _golfPicksTab = tab;
   const seq  = _loadSeq;
   const area = document.getElementById('mlb-picks-area');
-  area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf groups…</p></div>';
+
+  const tabBar = `<div class="picks-tab-bar">
+    <button class="golf-tab${tab==='yesterday'?' active':''}" onclick="loadGolfPicksPage('yesterday')">Yesterday</button>
+    <button class="golf-tab${tab==='today'   ?' active':''}" onclick="loadGolfPicksPage('today')">Today</button>
+    <button class="golf-tab${tab==='tomorrow'?' active':''}" onclick="loadGolfPicksPage('tomorrow')">Tomorrow</button>
+  </div>`;
+  area.innerHTML = tabBar + '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf groups…</p></div>';
+
   try {
-    const tmrwDate = dateStr(1).replace(/-/g, '');
-    // Fetch today's scoreboard + tomorrow's (for pre-posted pairings) in parallel
-    const [todayResults, tmrwResults] = await Promise.all([
-      Promise.allSettled(GOLF_TOURS.map(t =>
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard`).then(r => r.json())
-      )),
-      Promise.allSettled(GOLF_TOURS.map(t =>
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard?dates=${tmrwDate}`).then(r => r.json())
-      ))
-    ]);
-
     let html = '';
+    const note = '<div class="pc-data-note">3-ball picks · world ranking · scoring avg · tournament position</div>';
 
-    // ── Today / current round ──
-    for (let i = 0; i < GOLF_TOURS.length; i++) {
-      if (todayResults[i].status !== 'fulfilled') continue;
-      const data = todayResults[i].value;
-      const tour = GOLF_TOURS[i];
-      for (const ev of (data.events || [])) {
-        const comp  = ev.competitions?.[0]; if (!comp) continue;
-        const state = comp.status?.type?.state || '';
-        const round = comp.status?.period || 1;
-        const isLive = state === 'in';
-        const allComp = comp.competitors || [];
-        const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
-        if (!groups.length && !upcomingGroups.length) continue;
-        const preHdr = upcomingGroups.length > 0
-          ? `<div class="golf-group-status-hdr">⏰ Pre-Round — ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''} · approx. pairings</div>` : '';
-        html += `<div class="golf-picks-section">
-          <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
-          ${groups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
-          ${preHdr}
-          ${upcomingGroups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
-        </div>`;
-      }
-    }
-
-    // ── Tomorrow's pairings (if already posted) ──
-    // Don't use groupByTeeTime for tomorrow — players have today's linescore data which
-    // makes them appear "finished" for the current round. Instead, group directly by the
-    // root-level teeTime field ESPN populates when pairings are released.
-    let tmrwHTML = '';
-    for (let i = 0; i < GOLF_TOURS.length; i++) {
-      if (tmrwResults[i].status !== 'fulfilled') continue;
-      const data = tmrwResults[i].value;
-      const tour = GOLF_TOURS[i];
-      for (const ev of (data.events || [])) {
-        const comp  = ev.competitions?.[0]; if (!comp) continue;
-        const round = comp.status?.period || 1;
-        const nextRound = round + 1;
-        const allComp = comp.competitors || [];
-
-        // Group by root-level teeTime (posted before round starts)
-        const teeMap = new Map();
-        for (const p of allComp) {
-          const t = p.teeTime || p.competitor?.teeTime || '';
-          if (!t) continue;
-          if (!teeMap.has(t)) teeMap.set(t, { time: t, nine: 'unknown', players: [], upcoming: true });
-          teeMap.get(t).players.push(p);
+    if (tab === 'yesterday') {
+      const yDate = dateStr(-1).replace(/-/g, '');
+      const results = await Promise.allSettled(GOLF_TOURS.map(t =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard?dates=${yDate}`).then(r => r.json())
+      ));
+      for (let i = 0; i < GOLF_TOURS.length; i++) {
+        if (results[i].status !== 'fulfilled') continue;
+        const data = results[i].value;
+        const tour = GOLF_TOURS[i];
+        for (const ev of (data.events || [])) {
+          const comp = ev.competitions?.[0]; if (!comp) continue;
+          const round = comp.status?.period || 1;
+          const allComp = comp.competitors || [];
+          const { groups } = groupByTeeTime(allComp, round);
+          if (!groups.length) continue;
+          html += `<div class="golf-picks-section">
+            <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} · <span class="golf-tmrw-label">Yesterday</span></div>
+            ${groups.map(g => buildGolfGroupPickCard(g, round, false, tour.key, ev.id)).join('')}
+          </div>`;
         }
-        const validGroups = [...teeMap.values()]
-          .filter(g => g.players.length >= 2)
-          .sort((a, b) => new Date(a.time) - new Date(b.time));
-
-        if (!validGroups.length) continue;
-        tmrwHTML += `<div class="golf-picks-section">
-          <div class="golf-picks-event-hdr golf-tmrw-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${nextRound} · <span class="golf-tmrw-label">Tomorrow's Groups</span></div>
-          ${validGroups.map(g => buildGolfGroupPickCard(g, nextRound, false, tour.key, ev.id)).join('')}
-        </div>`;
       }
-    }
 
-    if (tmrwHTML) {
-      html += `<div class="golf-tmrw-section"><div class="golf-tmrw-divider">Tomorrow's Tee Times</div>${tmrwHTML}</div>`;
+    } else if (tab === 'today') {
+      const results = await Promise.allSettled(GOLF_TOURS.map(t =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard`).then(r => r.json())
+      ));
+      for (let i = 0; i < GOLF_TOURS.length; i++) {
+        if (results[i].status !== 'fulfilled') continue;
+        const data = results[i].value;
+        const tour = GOLF_TOURS[i];
+        for (const ev of (data.events || [])) {
+          const comp   = ev.competitions?.[0]; if (!comp) continue;
+          const state  = comp.status?.type?.state || '';
+          const round  = comp.status?.period || 1;
+          const isLive = state === 'in';
+          const allComp = comp.competitors || [];
+          const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
+          if (!groups.length && !upcomingGroups.length) continue;
+          const preHdr = upcomingGroups.length > 0
+            ? `<div class="golf-group-status-hdr">⏰ Pre-Round — ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''}</div>` : '';
+          html += `<div class="golf-picks-section">
+            <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
+            ${groups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+            ${preHdr}
+            ${upcomingGroups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+          </div>`;
+        }
+      }
+
+    } else if (tab === 'tomorrow') {
+      const tmrwDate = dateStr(1).replace(/-/g, '');
+      const results = await Promise.allSettled(GOLF_TOURS.map(t =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard?dates=${tmrwDate}`).then(r => r.json())
+      ));
+      for (let i = 0; i < GOLF_TOURS.length; i++) {
+        if (results[i].status !== 'fulfilled') continue;
+        const data = results[i].value;
+        const tour = GOLF_TOURS[i];
+        for (const ev of (data.events || [])) {
+          const comp    = ev.competitions?.[0]; if (!comp) continue;
+          const round   = comp.status?.period || 1;
+          const allComp = comp.competitors || [];
+
+          // Try root-level teeTime first (ESPN posts this when pairings are released)
+          const teeMap = new Map();
+          for (const p of allComp) {
+            const t = p.teeTime || '';
+            if (!t) continue;
+            if (!teeMap.has(t)) teeMap.set(t, { time: t, nine: 'unknown', players: [], upcoming: true });
+            teeMap.get(t).players.push(p);
+          }
+          let validGroups = [...teeMap.values()]
+            .filter(g => g.players.length >= 2)
+            .sort((a, b) => new Date(a.time) - new Date(b.time));
+
+          // Fallback: try round+1 via groupByTeeTime (linescores approach)
+          if (!validGroups.length) {
+            for (let r = round + 1; r >= 1; r--) {
+              const { upcomingGroups } = groupByTeeTime(allComp, r);
+              const vg = upcomingGroups.filter(g => g.players.length >= 2);
+              if (vg.length) { validGroups = vg; break; }
+            }
+          }
+
+          if (!validGroups.length) continue;
+          const nextRound = round + 1;
+          html += `<div class="golf-picks-section">
+            <div class="golf-picks-event-hdr golf-tmrw-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${nextRound} · <span class="golf-tmrw-label">Tomorrow</span></div>
+            ${validGroups.map(g => buildGolfGroupPickCard(g, nextRound, false, tour.key, ev.id)).join('')}
+          </div>`;
+        }
+      }
     }
 
     if (_loadSeq !== seq) return;
-    const note = '<div class="pc-data-note">3-ball picks · world ranking · scoring avg · tournament position · round score</div>';
-    area.innerHTML = note + (html || '<div class="empty-state"><p>No active golf groups available.</p><p class="muted">Picks appear when a tournament is in progress or tee times are posted.</p></div>');
+    area.innerHTML = tabBar + note + (html || `<div class="empty-state"><p>No golf groups for ${tab}.</p><p class="muted">Picks appear when a tournament is in progress or tee times are posted.</p></div>`);
     updatePicksDisplay();
   } catch (err) {
-    area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load golf picks: ${esc(err.message)}</p></div>`;
+    area.innerHTML = tabBar + `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load golf: ${esc(err.message)}</p></div>`;
   }
 }
 

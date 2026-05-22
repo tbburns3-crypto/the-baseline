@@ -1705,6 +1705,19 @@ input { font: inherit; }
 }
 .fav-remove-btn:hover { color: var(--live); }
 
+/* ── SHARED PICKS TAB BAR (tennis + golf) ── */
+.picks-tab-bar { display: flex; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.tp-tab, .golf-tab {
+  flex: 1; padding: 6px 10px; font-size: .72rem; font-weight: 700; border: none;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; border-radius: 0;
+  transition: color .15s, border-color .15s;
+}
+.tp-tab.active, .golf-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tp-tab:hover, .golf-tab:hover { color: var(--text); }
+/* Date badge on upcoming pick rows */
+.tp-date-badge { font-size: .62rem; font-weight: 700; color: var(--text-muted); background: rgba(255,255,255,.07); border-radius: 3px; padding: 1px 5px; flex-shrink: 0; }
+
 /* ── TENNIS PICKS — TOURNAMENT-GROUPED, TIME-SORTED LAYOUT ── */
 .tp-section-hdr {
   display: flex; align-items: center; gap: 8px;
