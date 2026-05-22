@@ -3489,10 +3489,13 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
         if (!pd?.season) return;
         const ip = parseFloat(pd.season.inningsPitched || 0);
         if (ip < 20) return;
-        const baseK9 = (parseInt(pd.season.strikeOuts || 0) / ip) * 9;
         if (rates.k9 >= 9.0) {
+          const gs = parseInt(pd.season.gamesStarted || 0);
+          const avgIP = gs > 0 ? ip / gs : 5.5;
+          const projK = rates.k9 * avgIP / 9;
+          const ouLine = Math.max(3.5, Math.floor(projK) - 0.5).toFixed(1);
           recordPlayerPick(`plr_${gKey}_k_${side}`, 'mlb', pname, 'K',
-            `${rates.k9.toFixed(1)}K/9 · ${parseInt(pd.season.strikeOuts||0)}K season`, gameMatchup, gamePk);
+            `${rates.k9.toFixed(1)}K/9 · OVER ${ouLine} K`, gameMatchup, gamePk);
         }
       };
       recKPick(awayPD, awayPName, awayRates, 'away');
@@ -7324,10 +7327,11 @@ function getPicksForTicket(type, date, allPicks) {
   const sortConf = (a, b) => (b[1].conf||1) - (a[1].conf||1);
   const numFromStat = (stat, rx) => { const m = (stat||'').match(rx); return m ? parseFloat(m[1]) : 0; };
   const toGame = ([id, p]) => ({ id, pick: p.team, matchup: p.matchup, conf: p.conf||1, sport: p.sport, propType:'game', result: p.result });
-  const toPlr  = (propType) => ([id, p]) => ({
-    id, pick: lastName(p.player||p.team||''), description: p.stat||'',
-    matchup: p.gameMatchup||p.matchup||'', conf: 2, sport: p.sport, propType, result: p.result
-  });
+  const toPlr  = (propType) => ([id, p]) => {
+    const kLine = p.prop === 'K' ? (p.stat||'').match(/OVER\s+[\d.]+\s+K/)?.[0] : null;
+    return { id, pick: lastName(p.player||p.team||''), description: kLine || (p.stat||''),
+      matchup: p.gameMatchup||p.matchup||'', conf: 2, sport: p.sport, propType, result: p.result };
+  };
 
   switch (type) {
     case 'mlb_game':
@@ -7481,7 +7485,9 @@ function getMLBPerGameTickets(date, allPicks) {
       const gid = parts[1];
       if (!games.has(gid)) games.set(gid, { gameId: gid, matchup: p.gameMatchup||gid, legs: [] });
       const plrName = p.prop === 'RunTotal' ? (p.player||'') : lastName(p.player||'');
-      games.get(gid).legs.push({ id, pick: plrName, description: `${p.prop}: ${p.stat}`, matchup:'', conf: 2, sport:'mlb', propType: p.prop, result: p.result, icon: PROP_ICONS[p.prop]||'🏅' });
+      const kLine   = p.prop === 'K' ? (p.stat||'').match(/OVER\s+[\d.]+\s+K/)?.[0] : null;
+      const desc    = kLine || `${p.prop}: ${p.stat}`;
+      games.get(gid).legs.push({ id, pick: plrName, description: desc, matchup:'', conf: 2, sport:'mlb', propType: p.prop, result: p.result, icon: PROP_ICONS[p.prop]||'🏅' });
     }
   }
 
