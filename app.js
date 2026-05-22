@@ -7070,9 +7070,28 @@ function fixGolfPickMatchupsFromOverride() {
 async function preloadTennisPicksQuiet() {
   try {
     await preloadRankIndex();
-    const d = dateStrLocal(0);
-    const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
-    for (const m of results) {
+    const today    = dateStrLocal(0);
+    const tomorrow = dateStrLocal(1);
+
+    // Fetch today and tomorrow in parallel
+    const [todayMatches, tomorrowMatches] = await Promise.all([
+      tennisFetch('get_fixtures', { date_start: today,    date_stop: today    }).catch(() => []),
+      tennisFetch('get_fixtures', { date_start: tomorrow, date_stop: tomorrow }).catch(() => []),
+    ]);
+
+    // Pre-fetch H2H for upcoming main-draw matches so inlineTennisPick has form data.
+    // Limit to ATP/WTA/Slam/Masters/500/250 — skip Challenger/ITF (too many, low value).
+    const isMainDraw = m => { const c = matchCategory(m.event_type || ''); return c === 'atp' || c === 'wta'; };
+    const isUpcoming = m => !isLive(m.event_status) && !isFinished(m.event_status);
+
+    const upcoming = [...todayMatches, ...tomorrowMatches]
+      .filter(m => isUpcoming(m) && isMainDraw(m) && m.first_player_key && m.second_player_key)
+      .slice(0, 20); // cap at 20 API calls
+
+    await Promise.allSettled(upcoming.map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
+
+    // Process today's matches
+    for (const m of todayMatches) {
       S.matches.set(String(m.event_key), m);
       inlineTennisPick(m);
       if (isFinished(m.event_status) && m.event_winner) {
@@ -7082,6 +7101,12 @@ async function preloadTennisPicksQuiet() {
         else                                          wln = lastName(m.event_winner);
         if (wln) resolvePick('tn_' + m.event_key, wln);
       }
+    }
+
+    // Process tomorrow's matches — generate picks stamped with tomorrow's date
+    for (const m of tomorrowMatches) {
+      S.matches.set(String(m.event_key), m);
+      inlineTennisPick(m, tomorrow);
     }
   } catch {}
 }
