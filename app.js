@@ -5304,6 +5304,8 @@ const GOLF_PAIRINGS_OVERRIDE = {
       ['Rodgers','Ramey','Gomez'],
       ['Scheffler','S. Kim','Koepka'],
       ['Mitchell','Silverman','Laird'],
+      ['C. Kim','Fishburn','Chassart'],
+      ['Willett','Ryder','Villegas'],
     ]
   }
 };
