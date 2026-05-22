@@ -7245,22 +7245,64 @@ function getPicksForTicket(type, date, allPicks) {
     case 'mlb_game':
       return entries.filter(([, p]) => p.sport === 'mlb' && !p.type)
         .sort(sortConf).slice(0, 10).map(toGame);
-    case 'mlb_hits':
-      return entries.filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'Hit')
-        .sort((a, b) => numFromStat(b[1].stat, /^(\.?\d+)/) - numFromStat(a[1].stat, /^(\.?\d+)/))
-        .slice(0, 10).map(toPlr('hits'));
-    case 'mlb_rbi':
-      return entries.filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'RBI')
-        .sort((a, b) => numFromStat(b[1].stat, /(\d+)RBI/) - numFromStat(a[1].stat, /(\d+)RBI/))
-        .slice(0, 10).map(toPlr('rbi'));
-    case 'mlb_hr':
-      return entries.filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'HR')
-        .sort((a, b) => numFromStat(b[1].stat, /(\d+)HR/) - numFromStat(a[1].stat, /(\d+)HR/))
-        .slice(0, 10).map(toPlr('hr'));
-    case 'mlb_ks':
-      return entries.filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'K')
-        .sort((a, b) => numFromStat(b[1].stat, /(\d+\.?\d*)K\/9/) - numFromStat(a[1].stat, /(\d+\.?\d*)K\/9/))
-        .slice(0, 10).map(toPlr('ks'));
+    case 'mlb_hits': {
+      // Score: platoon-adjusted avg × 1000 + bonus for having platoon data. Min .245 avg.
+      return entries
+        .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'Hit')
+        .map(([id, p]) => {
+          const avg = parseFloat((p.stat || '').match(/^(0?\.\d+)/)?.[1] || '0');
+          const merit = avg >= 0.245 ? avg * 1000 + ((p.stat||'').includes(' vs ') ? 15 : 0) : -1;
+          return { id, p, merit };
+        })
+        .filter(x => x.merit > 0)
+        .sort((a, b) => b.merit - a.merit)
+        .slice(0, 10)
+        .map(({ id, p }) => toPlr('hits')([id, p]));
+    }
+    case 'mlb_rbi': {
+      // Score: RBI × 1.8 + lineup-position bonus (#3 = +30, #4 = +20, #5 = +10). Min 18 RBI.
+      return entries
+        .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'RBI')
+        .map(([id, p]) => {
+          const rbi = parseFloat((p.stat || '').match(/^(\d+)RBI/)?.[1] || '0');
+          const pos = parseFloat((p.stat || '').match(/#(\d+)/)?.[1] || '9');
+          const posBonus = Math.max(0, (6 - Math.min(pos, 7))) * 10;
+          const merit = rbi >= 18 ? rbi * 1.8 + posBonus : -1;
+          return { id, p, merit };
+        })
+        .filter(x => x.merit > 0)
+        .sort((a, b) => b.merit - a.merit)
+        .slice(0, 10)
+        .map(({ id, p }) => toPlr('rbi')([id, p]));
+    }
+    case 'mlb_hr': {
+      // Score: HR count × 8. Min 8 HR — below that isn't a meaningful power threat.
+      return entries
+        .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'HR')
+        .map(([id, p]) => {
+          const hr = parseFloat((p.stat || '').match(/^(\d+)HR/)?.[1] || '0');
+          const merit = hr >= 8 ? hr * 8 : -1;
+          return { id, p, merit };
+        })
+        .filter(x => x.merit > 0)
+        .sort((a, b) => b.merit - a.merit)
+        .slice(0, 10)
+        .map(({ id, p }) => toPlr('hr')([id, p]));
+    }
+    case 'mlb_ks': {
+      // Score: (K/9 − 8.0) × 35. Min 8.5 K/9 — below that the K prop is marginal.
+      return entries
+        .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === 'K')
+        .map(([id, p]) => {
+          const k9 = parseFloat((p.stat || '').match(/(\d+\.?\d*)K\/9/)?.[1] || '0');
+          const merit = k9 >= 8.5 ? (k9 - 8.0) * 35 : -1;
+          return { id, p, merit };
+        })
+        .filter(x => x.merit > 0)
+        .sort((a, b) => b.merit - a.merit)
+        .slice(0, 10)
+        .map(({ id, p }) => toPlr('ks')([id, p]));
+    }
     case 'tennis_main': {
       const main = new Set(['slam','masters','500','250']);
       return entries.filter(([, p]) => p.sport === 'tennis' && main.has(p.tier))
