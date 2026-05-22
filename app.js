@@ -1100,6 +1100,56 @@ const TOURNAMENT_AFFINITY = {
   jabeur:    { 'wimbledon':2, 'roland garros':2 }, // reduced — injury history 2024
 };
 
+// Players who significantly underperform their ranking as favorites.
+// Negative score applied regardless of surface or opponent.
+const PLAYER_VOLATILITY = {
+  // ATP
+  bublik:        -3,  // highest retirement rate on tour, mentally unpredictable
+  kyrgios:       -3,  // extreme variance, frequent retirements
+  korda:         -2,  // multiple in-match retirements, inconsistent
+  kokkinakis:    -2,  // injury/inconsistency pattern
+  davidovich:    -2,  // volatile despite clay ability
+  rune:          -2,  // mercurial, inconsistent vs lower-ranked opponents
+  borges:        -1,
+  nakashima:     -1,  // underperforms seeding in slams
+  etcheverry:    -1,
+  cerundolo:     -1,
+  // WTA
+  ostapenko:     -3,  // most volatile player in women's game
+  kvitova:       -2,  // injury history, major variance
+  alexandrova:   -2,
+  muchova:       -2,  // injury history, unreliable form
+  bouzkova:      -1,
+};
+
+// Returns true if the player retired (lost via retirement/walkover) in any recent match.
+function hadRecentRetirement(recent, playerKey) {
+  return recent.some(g => {
+    const st = (g.event_status || '').toLowerCase();
+    if (!st.includes('retir') && !st.includes('walkover') && st !== 'w/o') return false;
+    const gp1 = String(g.first_player_key || '');
+    const won = (g.event_winner === 'First Player' && gp1 === playerKey) ||
+                (g.event_winner === 'Second Player' && gp1 !== playerKey);
+    return !won;
+  });
+}
+
+// Returns current streak: +N = N-match win streak, -N = losing streak.
+function calcWinStreak(recent, playerKey) {
+  if (!recent.length) return 0;
+  let streak = 0;
+  for (const g of recent) {
+    const gp1 = String(g.first_player_key || '');
+    const won = (g.event_winner === 'First Player' && gp1 === playerKey) ||
+                (g.event_winner === 'Second Player' && gp1 !== playerKey);
+    if (streak === 0)         streak = won ? 1 : -1;
+    else if (won  && streak > 0) streak++;
+    else if (!won && streak < 0) streak--;
+    else break;
+  }
+  return streak;
+}
+
 function isGrandSlam(m) {
   const n = (m.tournament_name || m.event_type_type || '').toLowerCase();
   return /wimbledon|us open|french open|roland.?garros|australian open/.test(n);
@@ -1250,9 +1300,23 @@ function inlineTennisPick(m, dateOverride = null) {
     const todayStr = dateStrLocal(0);
     if (p1Recent[0]?.event_date === todayStr && p2Recent[0]?.event_date !== todayStr) p2Score += 1;
     else if (p2Recent[0]?.event_date === todayStr && p1Recent[0]?.event_date !== todayStr) p1Score += 1;
+
+    // Recent retirement — players who retired in last 10 matches get a penalty
+    if (hadRecentRetirement(p1Recent, p1key)) p1Score -= 2;
+    if (hadRecentRetirement(p2Recent, p2key)) p2Score -= 2;
+
+    // Win/loss streak
+    const str1 = calcWinStreak(p1Recent, p1key);
+    const str2 = calcWinStreak(p2Recent, p2key);
+    if (str1 >= 4) p1Score += 2; else if (str1 >= 2) p1Score += 1; else if (str1 <= -3) p1Score -= 1;
+    if (str2 >= 4) p2Score += 2; else if (str2 >= 2) p2Score += 1; else if (str2 <= -3) p2Score -= 1;
   }
 
-  // 7. BO5 amplifies leader's edge
+  // 7. Player volatility — known high-variance players score lower as favorites
+  p1Score += PLAYER_VOLATILITY[l1.toLowerCase()] || 0;
+  p2Score += PLAYER_VOLATILITY[l2.toLowerCase()] || 0;
+
+  // 8. BO5 amplifies leader's edge
   if (isBestOf5(m) && p1Score !== p2Score) {
     if (p1Score > p2Score) p1Score += 1; else p2Score += 1;
   }
@@ -1274,7 +1338,9 @@ function inlineTennisPick(m, dateOverride = null) {
   conf = Math.max(1, Math.min(3, conf + getConfCalibration('tennis')));
 
   const injTag = (winner === 1 && p2Hurt) || (winner === 2 && p1Hurt) ? ' ⚕' : '';
-  recordPick(pickId, pick, matchup, 'tennis', conf, false, pickDate, tier);
+  // force=true: re-evaluate pre-game picks on every preload as more data arrives.
+  // recordPick guards against overwriting resolved (finished) matches.
+  recordPick(pickId, pick, matchup, 'tennis', conf, true, pickDate, tier);
   return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
@@ -1684,6 +1750,28 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     p1Score += 1;
     factors.push({ win: true, label: 'Fatigue', detail: `${l2} played yesterday`, side: 1 });
   }
+
+  // Recent retirement flag
+  const p1Ret = hadRecentRetirement(p1Recent, p1key);
+  const p2Ret = hadRecentRetirement(p2Recent, p2key);
+  if (p1Ret) { p1Score -= 2; factors.push({ win: true, label: 'Retirement risk', detail: `${l1} retired in recent match`, side: 2 }); }
+  if (p2Ret) { p2Score -= 2; factors.push({ win: true, label: 'Retirement risk', detail: `${l2} retired in recent match`, side: 1 }); }
+
+  // Win/loss streak
+  const str1 = calcWinStreak(p1Recent, p1key);
+  const str2 = calcWinStreak(p2Recent, p2key);
+  if (str1 >= 4)       { p1Score += 2; factors.push({ win: true, label: 'Hot streak', detail: `${l1} on ${str1}-match win streak`, side: 1 }); }
+  else if (str1 >= 2)  { p1Score += 1; factors.push({ win: true, label: 'Winning form', detail: `${l1} won last ${str1}`, side: 1 }); }
+  else if (str1 <= -3) { p1Score -= 1; factors.push({ win: true, label: 'Cold streak', detail: `${l1} lost last ${Math.abs(str1)}`, side: 2 }); }
+  if (str2 >= 4)       { p2Score += 2; factors.push({ win: true, label: 'Hot streak', detail: `${l2} on ${str2}-match win streak`, side: 2 }); }
+  else if (str2 >= 2)  { p2Score += 1; factors.push({ win: true, label: 'Winning form', detail: `${l2} won last ${str2}`, side: 2 }); }
+  else if (str2 <= -3) { p2Score -= 1; factors.push({ win: true, label: 'Cold streak', detail: `${l2} lost last ${Math.abs(str2)}`, side: 1 }); }
+
+  // Player volatility — known high-variance players score lower
+  const vt1 = PLAYER_VOLATILITY[lastName(p1Name).toLowerCase()] || 0;
+  const vt2 = PLAYER_VOLATILITY[lastName(p2Name).toLowerCase()] || 0;
+  if (vt1 < 0) { p1Score += vt1; factors.push({ win: true, label: 'Volatility', detail: `${l1} known for inconsistency`, side: 2 }); }
+  if (vt2 < 0) { p2Score += vt2; factors.push({ win: true, label: 'Volatility', detail: `${l2} known for inconsistency`, side: 1 }); }
 
   if (!factors.length) return '';
 
