@@ -5581,6 +5581,9 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const getSA   = p => { const s = p.statistics?.find(x => ['SA','AVG','scoringAverage'].includes(x.abbreviation||x.name)); return s ? parseFloat(s.displayValue) || 0 : 0; };
   const getOWGR = p => { const s = p.statistics?.find(x => /owgr|world.*rank|ranking/i.test(x.abbreviation||x.name||'')); return s ? parseInt(s.displayValue) || 0 : 0; };
   const getTodayNum = p => { const t = p.linescores?.[round-1]?.displayValue; return t ? (t === 'E' ? 0 : parseInt(t) || 0) : null; };
+  // Strokes Gained Total or Tee-to-Green — ESPN abbreviations vary by tour
+  const getSGT  = p => { const s = p.statistics?.find(x => /^sg.?t$|strokes.gained.total|sg.*tee|sgt$/i.test(x.abbreviation||x.name||'')); return s ? parseFloat(s.displayValue) : null; };
+  const getSGApp= p => { const s = p.statistics?.find(x => /sg.?app|approach|sga$/i.test(x.abbreviation||x.name||'')); return s ? parseFloat(s.displayValue) : null; };
 
   const avgSA = players.reduce((s,p) => s + (getSA(p)||70), 0) / players.length;
 
@@ -5613,17 +5616,43 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
       else if (diff < 0) { score += 1; factors.push(`${sa.toFixed(1)} avg`); }
     }
 
-    // 4. Previous rounds in this tournament — recent form this week
-    // Each completed round under par = +1; 2+ under = +1 bonus
-    let wkFormPts = 0;
+    // 4. Previous rounds — form this week + trajectory
+    const roundScores = [];
     for (let r = 1; r < round; r++) {
       const rv = p.linescores?.[r - 1]?.displayValue;
       if (!rv || rv === '-') continue;
       const rn = rv === 'E' ? 0 : parseInt(rv);
-      if (!isNaN(rn) && rn < 0) wkFormPts += 1;
+      if (!isNaN(rn)) roundScores.push(rn);
     }
-    if (wkFormPts >= 2) { score += 2; factors.push(`${wkFormPts}× under`); }
-    else if (wkFormPts === 1) { score += 1; factors.push('prev. under'); }
+    // Under-par rounds
+    const underParRounds = roundScores.filter(n => n < 0).length;
+    if (underParRounds >= 2) { score += 2; factors.push(`${underParRounds}× under`); }
+    else if (underParRounds === 1) { score += 1; factors.push('prev. under'); }
+    // Trajectory: improving round-over-round (each round better than the last)
+    if (roundScores.length >= 2) {
+      const improving = roundScores.every((n, i) => i === 0 || n < roundScores[i - 1]);
+      const declining  = roundScores.every((n, i) => i === 0 || n > roundScores[i - 1]);
+      if (improving) { score += 2; factors.push('↑ trending'); }
+      else if (declining) { score -= 1; factors.push('↓ fading'); }
+    }
+
+    // 5. Strokes Gained — most predictive stat in golf when available
+    const sgt  = getSGT(p);
+    const sgApp = getSGApp(p);
+    // SG: Total — overall value above field average
+    if (sgt !== null) {
+      if (sgt >= 2.0)       { score += 4; factors.push(`SGT +${sgt.toFixed(1)}`); }
+      else if (sgt >= 1.0)  { score += 3; factors.push(`SGT +${sgt.toFixed(1)}`); }
+      else if (sgt >= 0.3)  { score += 2; factors.push(`SGT +${sgt.toFixed(1)}`); }
+      else if (sgt >= 0)    { score += 1; }
+      else if (sgt < -1.0)  { score -= 1; }
+    }
+    // SG: Approach — iron quality, most stable round-to-round predictor
+    if (sgApp !== null && sgt === null) { // only use if SGT not already counted
+      if (sgApp >= 1.5)      { score += 3; factors.push(`SGA +${sgApp.toFixed(1)}`); }
+      else if (sgApp >= 0.5) { score += 2; factors.push(`SGA +${sgApp.toFixed(1)}`); }
+      else if (sgApp >= 0)   { score += 1; }
+    }
 
     // Live round score intentionally excluded — using it shifts the pick to whoever
     // is hot at that moment and causes the displayed pick to change mid-round.
