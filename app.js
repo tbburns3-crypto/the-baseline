@@ -53,6 +53,11 @@ const _detailLoaded = new Set();
 // and bail before writing to the DOM if the sport has since changed.
 let _loadSeq = 0;
 
+// ── REST DAYS CACHE ──────────────────────────────────────────
+// Populated by populateRestDaysCache() during preload.
+// Key: "sport:ABBR" (e.g. "nba:BOS"), value: daysRest (1=B2B, 2=short, 3+=normal)
+const _restDaysCache = new Map();
+
 // ── TENNIS INJURY MAP ────────────────────────────────────────
 // Keyed by lowercase last name → { note, returning, published }
 // Populated from ESPN tennis news headlines on tab open.
@@ -2415,8 +2420,10 @@ function autoRecordAndResolvePick(g) {
     const playoffMult = sc.isPlayoff ? 1.02 : 1.0;
     const boost    = (HOME_BOOST[g.sport] || 1.025) * playoffMult;
     const momentum = seriesMomentumAdj(sc, g.homeTeam, g.homeAbbr, g.awayTeam, g.awayAbbr);
-    const homeWPr  = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport) * momentum.home;
-    const awayWPr  = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport) * momentum.away;
+    const homeRM   = restMult(getDaysRest(g.homeAbbr, g.sport));
+    const awayRM   = restMult(getDaysRest(g.awayAbbr, g.sport));
+    const homeWPr  = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport) * momentum.home * homeRM;
+    const awayWPr  = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport) * momentum.away * awayRM;
     const rawHome  = homeWPr * boost;
     const total    = awayWPr + rawHome;
     const homeFrac = rawHome / total;
@@ -2450,13 +2457,15 @@ function inlineGamePick(g) {
     return `<span class="game-pick-inline pick-locked" title="Pre-game pick (locked)">→ ${esc(stored.team)}</span>`;
   }
 
-  // Pre-game — show smart win probability (with playoff context)
+  // Pre-game — show smart win probability (with playoff context + rest/B2B)
   const sc       = parseSeriesContext(g.series);
   const playoffMult = sc.isPlayoff ? 1.02 : 1.0;
   const boost    = (HOME_BOOST[g.sport] || 1.025) * playoffMult;
   const momentum = seriesMomentumAdj(sc, g.homeTeam, g.homeAbbr, g.awayTeam, g.awayAbbr);
-  const homeWPr  = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport) * momentum.home;
-  const awayWPr  = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport) * momentum.away;
+  const awayDR   = getDaysRest(g.awayAbbr, g.sport);
+  const homeDR   = getDaysRest(g.homeAbbr, g.sport);
+  const homeWPr  = smartWP(g.homeRecs || { total: g.homeRec }, true,  g.sport) * momentum.home * restMult(homeDR);
+  const awayWPr  = smartWP(g.awayRecs || { total: g.awayRec }, false, g.sport) * momentum.away * restMult(awayDR);
   const rawHome  = homeWPr * boost;
   const total    = awayWPr + rawHome;
   const homeFrac = rawHome / total;
@@ -2467,7 +2476,9 @@ function inlineGamePick(g) {
   const short    = favTeam.split(' ').pop();
   const hasL10   = g.homeRecs?.l10 || g.awayRecs?.l10;
   const seriesTip = sc.isPlayoff && sc.gameNum ? ` · Game ${sc.gameNum}${sc.leader ? ` (${sc.leader} leads)` : ' (tied)'}` : '';
-  const tip      = (hasL10 ? `L10: ${g.homeRecs?.l10||'?'} / ${g.awayRecs?.l10||'?'}` : `${g.awayRec||'?'} vs ${g.homeRec||'?'}`) + seriesTip;
+  const b2bNote  = awayDR === 1 ? ` · B2B: ${g.awayAbbr || g.awayTeam.split(' ').pop()}` :
+                   homeDR === 1 ? ` · B2B: ${g.homeAbbr || g.homeTeam.split(' ').pop()}` : '';
+  const tip      = (hasL10 ? `L10: ${g.homeRecs?.l10||'?'} / ${g.awayRecs?.l10||'?'}` : `${g.awayRec||'?'} vs ${g.homeRec||'?'}`) + seriesTip + b2bNote;
   if (margin < 3) return '';
   return `<span class="game-pick-inline" title="${esc(tip)}">→ ${esc(short)} ${pct}%</span>`;
 }
@@ -2646,6 +2657,53 @@ function wpToConf(winPct) {
   return 0;
 }
 
+// Rest-days win-probability multiplier. daysRest=1 means B2B (played yesterday).
+function restMult(daysRest) {
+  if (daysRest === null || daysRest >= 3) return 1.0;
+  if (daysRest === 1) return 0.94;  // B2B: 6% penalty
+  return 0.97;                       // 1-day rest: 3% penalty
+}
+
+function getDaysRest(abbr, sport) {
+  if (!abbr || !sport) return null;
+  const v = _restDaysCache.get(`${sport}:${abbr.toUpperCase()}`);
+  return v !== undefined ? v : null;
+}
+
+// Fetch yesterday/2-days-ago scoreboards for NBA/WNBA/NHL and populate _restDaysCache.
+async function populateRestDaysCache() {
+  const sports = [
+    { key: 'nba',  path: 'basketball/nba'  },
+    { key: 'wnba', path: 'basketball/wnba' },
+    { key: 'nhl',  path: 'hockey/nhl'      },
+  ];
+  const today = dateStrLocal(0);
+  const fmt8 = (offset) => {
+    const d = new Date(today + 'T12:00:00');
+    d.setDate(d.getDate() + offset);
+    return d.toISOString().slice(0, 10).replace(/-/g, '');
+  };
+  for (const sp of sports) {
+    for (let off = -1; off >= -3; off--) {
+      try {
+        const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${sp.path}/scoreboard?dates=${fmt8(off)}`);
+        const j   = await res.json();
+        const daysRest = -off; // off=-1 → daysRest=1 (B2B today), off=-2 → daysRest=2, etc.
+        for (const ev of (j.events || [])) {
+          const comp = ev.competitions?.[0];
+          if (!comp?.status?.type?.completed) continue;
+          for (const c of (comp.competitors || [])) {
+            const abbr = c.team?.abbreviation?.toUpperCase();
+            if (!abbr) continue;
+            const key = `${sp.key}:${abbr}`;
+            if (!_restDaysCache.has(key)) _restDaysCache.set(key, daysRest);
+          }
+        }
+      } catch (e) {}
+    }
+  }
+}
+
 function parseWeatherFactor(w, fmt) {
   if (!w) return null;
   let temp, windSpeed, hasPrecip, condition, windText;
@@ -2789,6 +2847,27 @@ function buildPickSection(awayName, homeName, opts) {
       const who = awayBonus ? aShort : hShort;
       const days = awayBonus ? ar : hr;
       factors.push({ label: 'Extra rest', detail: `${esc(who)} ${days}d rest`, winner: awayBonus ? 'away' : 'home' });
+    }
+  }
+
+  // 10. Team rest / back-to-back penalty (NBA, WNBA, NHL)
+  if (sport !== 'mlb' && sport !== 'nfl' && (awayRestDays !== null || homeRestDays !== null)) {
+    const ar = awayRestDays, hr = homeRestDays;
+    const aB2B = ar !== null && ar <= 1;
+    const hB2B = hr !== null && hr <= 1;
+    if (aB2B || hB2B) {
+      if (aB2B) aScore -= 0.06;
+      if (hB2B) hScore -= 0.06;
+      let detail = '';
+      if (aB2B && hB2B) {
+        detail = `Both on B2B`;
+      } else if (aB2B) {
+        detail = `${esc(aShort)} B2B${hr !== null && hr >= 2 ? ` · ${esc(hShort)} ${hr}d rest` : ''}`;
+      } else {
+        detail = `${esc(hShort)} B2B${ar !== null && ar >= 2 ? ` · ${esc(aShort)} ${ar}d rest` : ''}`;
+      }
+      const winner = aB2B && !hB2B ? 'home' : !aB2B && hB2B ? 'away' : 'tie';
+      factors.push({ label: 'Rest/B2B', detail, winner });
     }
   }
 
@@ -4227,8 +4306,9 @@ async function renderESPNGamePreview(game, panel) {
     const awayTeamId = awayC?.team?.id;
     const homeTeamId = homeC?.team?.id;
 
-    // Fetch team schedules for recent form + H2H
+    // Fetch team schedules for recent form + H2H + rest days
     let awayForm = null, homeForm = null, awayH2H = 0, homeH2H = 0, h2hTotal = 0;
+    let awayDaysRest = null, homeDaysRest = null;
     if (awayTeamId && homeTeamId) {
       const [aRes, hRes] = await Promise.allSettled([
         fetchTeamSched(game.sport, awayTeamId),
@@ -4238,12 +4318,14 @@ async function renderESPNGamePreview(game, panel) {
         const ai = parseScheduleInsights(aRes.value, awayTeamId, homeTeamId);
         awayForm = { recentWins: ai.recentWins, recentPlayed: ai.recentPlayed };
         awayH2H = ai.h2hWins; h2hTotal = ai.h2hTotal;
+        awayDaysRest = ai.daysRest;
       }
       if (hRes.status === 'fulfilled' && hRes.value) {
         const hi = parseScheduleInsights(hRes.value, homeTeamId, awayTeamId);
         homeForm = { recentWins: hi.recentWins, recentPlayed: hi.recentPlayed };
         homeH2H = hi.h2hWins;
         if (hi.h2hTotal > h2hTotal) h2hTotal = hi.h2hTotal;
+        homeDaysRest = hi.daysRest;
       }
     }
 
@@ -4251,7 +4333,8 @@ async function renderESPNGamePreview(game, panel) {
       awayRec, homeRec, seriesSummary, seriesTitle,
       awayAbbr: awayAbbr2, homeAbbr: homeAbbr2,
       awayForm, homeForm, awayH2H, homeH2H, h2hTotal,
-      sport: game.sport, weather: j.gameInfo?.weather || null, weatherFmt: 'espn'
+      sport: game.sport, weather: j.gameInfo?.weather || null, weatherFmt: 'espn',
+      awayRestDays: awayDaysRest, homeRestDays: homeDaysRest
     });
     // Force-update with nuanced pick (form + H2H + series) so simple W-L seed is replaced
     if (pickResult.team && !gameRowState(game).fin) {
@@ -4453,12 +4536,22 @@ async function fetchTeamSched(sport, teamId) {
 }
 
 function parseScheduleInsights(events, myTeamId, oppTeamId) {
-  if (!events?.length) return { recentWins: 0, recentPlayed: 0, h2hWins: 0, h2hTotal: 0 };
+  if (!events?.length) return { recentWins: 0, recentPlayed: 0, h2hWins: 0, h2hTotal: 0, daysRest: null };
   const myId = String(myTeamId), oppId = String(oppTeamId);
   let recentWins = 0, recentPlayed = 0, h2hWins = 0, h2hTotal = 0;
+  const today = dateStrLocal(0);
   const completed = [...events]
     .filter(e => e.competitions?.[0]?.status?.type?.completed)
-    .reverse();
+    .reverse(); // most recent first
+  // Find the most recent completed game to calculate rest days
+  let daysRest = null;
+  for (const ev of completed) {
+    const d = (ev.date || '').slice(0, 10);
+    if (d && d < today) {
+      daysRest = Math.round((new Date(today + 'T12:00:00') - new Date(d + 'T12:00:00')) / 86400000);
+      break;
+    }
+  }
   for (const ev of completed) {
     const comp = ev.competitions[0];
     const mySlot = comp.competitors?.find(c => c.team?.id === myId);
@@ -4468,7 +4561,7 @@ function parseScheduleInsights(events, myTeamId, oppTeamId) {
     if (recentPlayed < 5) { if (won) recentWins++; recentPlayed++; }
     if (isH2H) { if (won) h2hWins++; h2hTotal++; }
   }
-  return { recentWins, recentPlayed, h2hWins, h2hTotal };
+  return { recentWins, recentPlayed, h2hWins, h2hTotal, daysRest };
 }
 
 async function fetchPitcherPreview(pitcherId) {
@@ -6209,6 +6302,9 @@ async function preloadPicksForSimpleView() {
     nhl:  { path: 'hockey/nhl',      cats: ['points', 'goals', 'assists'] },
     wnba: { path: 'basketball/wnba', cats: ['points', 'rebounds', 'assists'] },
   };
+
+  // Populate rest-days cache for NBA/WNBA/NHL B2B detection before recording picks
+  try { await populateRestDaysCache(); } catch (e) {}
 
   // MLB handled separately below — loadMLBPicksPage records the nuanced team+player picks.
   // Avoid running autoRecordAndResolvePick for MLB here to prevent a stale simple-seed
