@@ -7356,10 +7356,7 @@ function getGolfSplitTickets(date, allPicks) {
 }
 
 function getMLBPerGameTickets(date, allPicks) {
-  // Per-game selection: game winner + best hit (both teams) + best RBI + best HR + best K pitcher.
-  // Gives 5-6 picks per game: one per category, deduped to the highest-quality option.
   const PROP_ICONS = { game:'🏆', Hit:'🎯', RBI:'⚡', RunTotal:'📊', K:'🔥' };
-  const PROP_ORDER = { game:0, Hit:1, RBI:2, RunTotal:3, K:4 };
   const RELEVANT   = new Set(['Hit','RBI','K','RunTotal']);
   const entries    = Object.entries(allPicks).filter(([, p]) => p.sport === 'mlb' && p.date === date);
   const games      = new Map();
@@ -7378,38 +7375,67 @@ function getMLBPerGameTickets(date, allPicks) {
     }
   }
 
-  const numFromDesc = (desc, rx) => parseFloat((desc||'').match(rx)?.[1] || 0);
+  // Score each pick on real quality metrics parsed from stored stat strings.
+  // No fixed prop quotas — the best picks for THIS game win spots regardless of type.
+  const pickMerit = (leg) => {
+    if (leg.propType === 'game') return 1000;
+    const stat = (leg.description || '').replace(/^[^:]+:\s*/, ''); // strip "Hit: " prefix
+    const pt   = leg.propType;
+
+    if (pt === 'Hit') {
+      // stat like ".295 vs RHP" — platoon avg is even better signal than season avg
+      const m = stat.match(/^(0?\.\d+)/);
+      const avg = m ? parseFloat(m[1]) : 0;
+      if (avg < 0.245) return -1;  // not worth backing
+      let score = avg * 1000;      // .310 → 310, .275 → 275
+      // Platoon advantage already baked into the displayed avg — if stat says "vs RHP/LHP" it used platoon split
+      if (stat.includes(' vs ')) score += 15;
+      return score;
+    }
+
+    if (pt === 'RBI') {
+      // stat like "45RBI · #4"
+      const rbi = parseFloat(stat.match(/^(\d+)RBI/)?.[1] || '0');
+      const pos = parseFloat(stat.match(/#(\d+)/)?.[1] || '9');
+      if (rbi < 18) return -1;  // too early in season or too weak a producer
+      const posBonus = Math.max(0, (6 - Math.min(pos, 7))) * 10; // #3 = +30, #4 = +20, #5 = +10
+      return rbi * 1.8 + posBonus; // 45 RBI #4 → 81 + 20 = 101
+    }
+
+    if (pt === 'K') {
+      // stat like "9.2K/9 · 67K season"
+      const k9 = parseFloat(stat.match(/(\d+\.?\d*)K\/9/)?.[1] || '0');
+      if (k9 < 8.5) return -1;
+      return (k9 - 8.0) * 35; // 9.0 → 35, 10.0 → 70, 9.5 → 52
+    }
+
+    if (pt === 'RunTotal') {
+      // pick = "OVER 8.5", stat = "proj 8.3 runs"
+      const proj = parseFloat(stat.match(/proj\s+([\d.]+)/)?.[1] || '0');
+      const line = parseFloat((leg.pick || '').match(/([\d.]+)/)?.[1] || '0');
+      const dev  = (proj > 0 && line > 0) ? Math.abs(proj - line) : 0;
+      if (dev < 0.2) return 8;   // model basically agrees with the line — weak edge
+      return Math.min(dev * 55, 90); // 0.5 off = 27, 1.0 = 55, 1.5 = 82 (cap at 90)
+    }
+
+    return 0;
+  };
 
   const selectBest = (legs) => {
-    const byProp = new Map();
-    for (const leg of legs) {
-      if (!byProp.has(leg.propType)) byProp.set(leg.propType, []);
-      byProp.get(leg.propType).push(leg);
-    }
-    const sortBy = (arr, rx) => [...arr].sort((a, b) => numFromDesc(b.description, rx) - numFromDesc(a.description, rx));
-    const result = [];
+    const gamePick = legs.find(l => l.propType === 'game');
+    const props = legs
+      .filter(l => l.propType !== 'game')
+      .map(l => ({ ...l, _merit: pickMerit(l) }))
+      .filter(l => l._merit >= 0)
+      .sort((a, b) => b._merit - a._merit);
 
-    // 1. Game winner — always
-    const gamePick = byProp.get('game')?.[0];
-    if (gamePick) result.push(gamePick);
+    // Only include picks with real conviction (merit > 0)
+    const selected = props.filter(l => l._merit > 0);
 
-    // 2-3. One hit pick per team side (away + home = up to 2)
-    (byProp.get('Hit') || []).slice(0, 2).forEach(h => result.push(h));
-
-    // 4-5. Both RBI picks (away + home team's best RBI man)
-    (byProp.get('RBI') || []).slice(0, 2).forEach(r => result.push(r));
-
-    // 6. Run total O/U — much more predictable than HR
-    const runTotal = byProp.get('RunTotal')?.[0];
-    if (runTotal) result.push(runTotal);
-
-    // 7. Best K pitcher — only if adjusted K/9 ≥ 8.5 (fills 6th slot when RunTotal unavailable)
-    const bestK = sortBy(byProp.get('K') || [], /(\d+\.?\d*)K\/9/)[0];
-    if (bestK && numFromDesc(bestK.description, /(\d+\.?\d*)K\/9/) >= 8.5) result.push(bestK);
-
-    return result
-      .sort((a, b) => (PROP_ORDER[a.propType]||9) - (PROP_ORDER[b.propType]||9))
-      .slice(0, 6);
+    return [
+      ...(gamePick ? [gamePick] : []),
+      ...selected.slice(0, 7),  // up to 7 props — could be 4 hits if they're all excellent
+    ].slice(0, 8);
   };
 
   return [...games.values()]
