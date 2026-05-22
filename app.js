@@ -7143,6 +7143,14 @@ async function preloadTennisPicksQuiet() {
 // into localStorage so renderSimpleView() can show them without the user
 // needing to click through every sport tab manually.
 async function preloadPicksForSimpleView() {
+  // One-time recovery: clear the ticket accidentally rebuilt by the v142 conf-filter bug.
+  // Fires once ever, then _V142_RESET is set so this never runs again.
+  if (!localStorage.getItem('_ticket_reset_v142_done')) {
+    localStorage.setItem('_ticket_reset_v142_done', '1');
+    localStorage.removeItem(_TICKET_KEY);
+    _svPreloadedAt = 0; // force a full preload immediately regardless of throttle
+  }
+
   const now = Date.now();
   if (now - _svPreloadedAt < 20 * 60 * 1000) return;  // re-run at most every 20 min
   _svPreloadedAt = now;
