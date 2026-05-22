@@ -7267,18 +7267,19 @@ function getPicksForTicket(type, date, allPicks) {
 }
 
 function getMLBPerGameTickets(date, allPicks) {
-  // Only game winner, quality hit (avg ≥ .265), elite K arm (K/9 ≥ 10.0).
-  // HR/RBI/Walk/SB omitted — too unlikely to anchor a focused ticket.
-  const PROP_ORDER = { game:0, Hit:1, K:2 };
-  const PROP_ICONS = { game:'🏆', Hit:'🎯', K:'🔥' };
-  const entries = Object.entries(allPicks).filter(([, p]) => p.sport === 'mlb' && p.date === date);
-  const games = new Map();
+  // Per-game selection: game winner + best hit (both teams) + best RBI + best HR + best K pitcher.
+  // Gives 5-6 picks per game: one per category, deduped to the highest-quality option.
+  const PROP_ICONS = { game:'🏆', Hit:'🎯', RBI:'⚡', HR:'💣', K:'🔥' };
+  const PROP_ORDER = { game:0, Hit:1, RBI:2, HR:3, K:4 };
+  const RELEVANT   = new Set(['Hit','HR','RBI','K']);
+  const entries    = Object.entries(allPicks).filter(([, p]) => p.sport === 'mlb' && p.date === date);
+  const games      = new Map();
 
   for (const [id, p] of entries) {
     if (!p.type) {
       if (!games.has(id)) games.set(id, { gameId: id, matchup: p.matchup||id, legs: [] });
       games.get(id).legs.push({ id, pick: p.team||'', matchup:'', conf: p.conf||1, sport:'mlb', propType:'game', result: p.result, icon:'🏆' });
-    } else if (p.type === 'player' && (p.prop === 'Hit' || p.prop === 'K')) {
+    } else if (p.type === 'player' && RELEVANT.has(p.prop)) {
       const parts = id.split('_');
       if (parts.length < 2) continue;
       const gid = parts[1];
@@ -7287,28 +7288,44 @@ function getMLBPerGameTickets(date, allPicks) {
     }
   }
 
+  const numFromDesc = (desc, rx) => parseFloat((desc||'').match(rx)?.[1] || 0);
+
+  const selectBest = (legs) => {
+    const byProp = new Map();
+    for (const leg of legs) {
+      if (!byProp.has(leg.propType)) byProp.set(leg.propType, []);
+      byProp.get(leg.propType).push(leg);
+    }
+    const sortBy = (arr, rx) => [...arr].sort((a, b) => numFromDesc(b.description, rx) - numFromDesc(a.description, rx));
+    const result = [];
+
+    // 1. Game winner — always
+    const gamePick = byProp.get('game')?.[0];
+    if (gamePick) result.push(gamePick);
+
+    // 2-3. One hit pick per team side (away + home = up to 2)
+    (byProp.get('Hit') || []).slice(0, 2).forEach(h => result.push(h));
+
+    // 4. Best RBI man across both teams
+    const bestRBI = sortBy(byProp.get('RBI') || [], /(\d+)RBI/)[0];
+    if (bestRBI) result.push(bestRBI);
+
+    // 5. Best HR threat across both teams
+    const bestHR = sortBy(byProp.get('HR') || [], /(\d+)HR/)[0];
+    if (bestHR) result.push(bestHR);
+
+    // 6. Best K pitcher — only if adjusted K/9 ≥ 8.5
+    const bestK = sortBy(byProp.get('K') || [], /(\d+\.?\d*)K\/9/)[0];
+    if (bestK && numFromDesc(bestK.description, /(\d+\.?\d*)K\/9/) >= 8.5) result.push(bestK);
+
+    return result
+      .sort((a, b) => (PROP_ORDER[a.propType]||9) - (PROP_ORDER[b.propType]||9))
+      .slice(0, 6);
+  };
+
   return [...games.values()]
     .filter(g => g.legs.length > 0)
-    .map(g => {
-      const qualified = [];
-      for (const leg of g.legs) {
-        if (leg.propType === 'game') {
-          qualified.push(leg);
-        } else if (leg.propType === 'Hit') {
-          // Only batters with a platoon-adjusted avg ≥ .265
-          const avg = parseFloat((leg.description || '').match(/^Hit:\s*(\.?\d+)/)?.[1] || 0);
-          if (avg >= 0.265) qualified.push(leg);
-        } else if (leg.propType === 'K') {
-          // Only elite K arms with adjusted K/9 ≥ 10.0
-          const k9 = parseFloat((leg.description || '').match(/(\d+\.?\d*)K\/9/)?.[1] || 0);
-          if (k9 >= 10.0) qualified.push(leg);
-        }
-      }
-      const legs = qualified
-        .sort((a, b) => (PROP_ORDER[a.propType]||9) - (PROP_ORDER[b.propType]||9))
-        .slice(0, 3);
-      return { ...g, legs };
-    })
+    .map(g => ({ ...g, legs: selectBest(g.legs) }))
     .filter(g => g.legs.length > 0)
     .sort((a, b) => a.matchup.localeCompare(b.matchup));
 }
