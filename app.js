@@ -52,8 +52,9 @@ const _detailLoaded = new Set();
 // Incremented on every switchSport call. Async loaders capture the value at start
 // and bail before writing to the DOM if the sport has since changed.
 let _loadSeq = 0;
-let _tpTab        = 'upcoming'; // tennis picks active tab: 'upcoming' | 'results'
-let _golfPicksTab = 'today';    // golf picks active tab: 'yesterday' | 'today' | 'tomorrow'
+let _tpTab          = 'upcoming'; // tennis picks active tab: 'upcoming' | 'results'
+let _golfPicksTab   = 'today';    // golf picks active tab: 'yesterday' | 'today' | 'tomorrow'
+let _svPreloadDone  = false;      // true after preloadPicksForSimpleView completes
 
 // ── REST DAYS CACHE ──────────────────────────────────────────
 // Populated by populateRestDaysCache() during preload.
@@ -465,8 +466,13 @@ function fmtTime12(t) {
   const ampm = h >= 12 ? 'PM' : 'AM';
   return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
-// Tennis event_time is "HH:MM" in the venue's local time — display as-is in 12h format
+// Tennis event_time is "HH:MM" UTC — convert to user's selected timezone
 function fmtTennisTime(date, time) {
+  if (!time) return '';
+  try {
+    const d = new Date((date || dateStrLocal()) + 'T' + time + ':00Z');
+    if (!isNaN(d)) return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() });
+  } catch {}
   return fmtTime12(time);
 }
 
@@ -5670,45 +5676,38 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
   area.innerHTML = tabBar + '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf groups…</p></div>';
 
   try {
+    // ESPN scoreboard ignores ?dates= and always returns the current tournament state.
+    // Single fetch for all tabs; derive yesterday/today/tomorrow from round offsets.
+    const results = await Promise.allSettled(GOLF_TOURS.map(t =>
+      fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard`).then(r => r.json())
+    ));
+
     let html = '';
     const note = '<div class="pc-data-note">3-ball picks · world ranking · scoring avg · tournament position</div>';
 
-    if (tab === 'yesterday') {
-      const yDate = dateStr(-1).replace(/-/g, '');
-      const results = await Promise.allSettled(GOLF_TOURS.map(t =>
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard?dates=${yDate}`).then(r => r.json())
-      ));
-      for (let i = 0; i < GOLF_TOURS.length; i++) {
-        if (results[i].status !== 'fulfilled') continue;
-        const data = results[i].value;
-        const tour = GOLF_TOURS[i];
-        for (const ev of (data.events || [])) {
-          const comp = ev.competitions?.[0]; if (!comp) continue;
-          const round = comp.status?.period || 1;
-          const allComp = comp.competitors || [];
-          const { groups } = groupByTeeTime(allComp, round);
+    for (let i = 0; i < GOLF_TOURS.length; i++) {
+      if (results[i].status !== 'fulfilled') continue;
+      const data = results[i].value;
+      const tour = GOLF_TOURS[i];
+
+      for (const ev of (data.events || [])) {
+        const comp    = ev.competitions?.[0]; if (!comp) continue;
+        const round   = comp.status?.period || 1;
+        const state   = comp.status?.type?.state || '';
+        const isLive  = state === 'in';
+        const allComp = comp.competitors || [];
+
+        if (tab === 'yesterday') {
+          const prevRound = round - 1;
+          if (prevRound < 1) continue;
+          const { groups } = groupByTeeTime(allComp, prevRound);
           if (!groups.length) continue;
           html += `<div class="golf-picks-section">
-            <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} · <span class="golf-tmrw-label">Yesterday</span></div>
-            ${groups.map(g => buildGolfGroupPickCard(g, round, false, tour.key, ev.id)).join('')}
+            <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${prevRound} · <span class="golf-tmrw-label">Yesterday</span></div>
+            ${groups.map(g => buildGolfGroupPickCard(g, prevRound, false, tour.key, ev.id)).join('')}
           </div>`;
-        }
-      }
 
-    } else if (tab === 'today') {
-      const results = await Promise.allSettled(GOLF_TOURS.map(t =>
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard`).then(r => r.json())
-      ));
-      for (let i = 0; i < GOLF_TOURS.length; i++) {
-        if (results[i].status !== 'fulfilled') continue;
-        const data = results[i].value;
-        const tour = GOLF_TOURS[i];
-        for (const ev of (data.events || [])) {
-          const comp   = ev.competitions?.[0]; if (!comp) continue;
-          const state  = comp.status?.type?.state || '';
-          const round  = comp.status?.period || 1;
-          const isLive = state === 'in';
-          const allComp = comp.competitors || [];
+        } else if (tab === 'today') {
           const { groups, upcomingGroups } = groupByTeeTime(allComp, round);
           if (!groups.length && !upcomingGroups.length) continue;
           const preHdr = upcomingGroups.length > 0
@@ -5719,24 +5718,10 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
             ${preHdr}
             ${upcomingGroups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
           </div>`;
-        }
-      }
 
-    } else if (tab === 'tomorrow') {
-      const tmrwDate = dateStr(1).replace(/-/g, '');
-      const results = await Promise.allSettled(GOLF_TOURS.map(t =>
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/golf/${t.key}/scoreboard?dates=${tmrwDate}`).then(r => r.json())
-      ));
-      for (let i = 0; i < GOLF_TOURS.length; i++) {
-        if (results[i].status !== 'fulfilled') continue;
-        const data = results[i].value;
-        const tour = GOLF_TOURS[i];
-        for (const ev of (data.events || [])) {
-          const comp    = ev.competitions?.[0]; if (!comp) continue;
-          const round   = comp.status?.period || 1;
-          const allComp = comp.competitors || [];
-
-          // Try root-level teeTime first (ESPN posts this when pairings are released)
+        } else if (tab === 'tomorrow') {
+          const nextRound = round + 1;
+          // Root-level teeTime is populated when ESPN releases next-round pairings
           const teeMap = new Map();
           for (const p of allComp) {
             const t = p.teeTime || '';
@@ -5748,17 +5733,13 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
             .filter(g => g.players.length >= 2)
             .sort((a, b) => new Date(a.time) - new Date(b.time));
 
-          // Fallback: try round+1 via groupByTeeTime (linescores approach)
+          // Fallback: check round+1 linescores upcoming bucket
           if (!validGroups.length) {
-            for (let r = round + 1; r >= 1; r--) {
-              const { upcomingGroups } = groupByTeeTime(allComp, r);
-              const vg = upcomingGroups.filter(g => g.players.length >= 2);
-              if (vg.length) { validGroups = vg; break; }
-            }
+            const { upcomingGroups } = groupByTeeTime(allComp, nextRound);
+            validGroups = upcomingGroups.filter(g => g.players.length >= 2);
           }
 
           if (!validGroups.length) continue;
-          const nextRound = round + 1;
           html += `<div class="golf-picks-section">
             <div class="golf-picks-event-hdr golf-tmrw-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${nextRound} · <span class="golf-tmrw-label">Tomorrow</span></div>
             ${validGroups.map(g => buildGolfGroupPickCard(g, nextRound, false, tour.key, ev.id)).join('')}
@@ -6761,6 +6742,7 @@ async function preloadPicksForSimpleView() {
   // All sports done — now build the ticket (all picks are in localStorage).
   // Do this AFTER all sports load so we score from the full candidate pool.
   buildDailyTicketIfNeeded();
+  _svPreloadDone = true;
   if (isActive()) renderSimpleView();
 }
 
@@ -6789,7 +6771,9 @@ function renderSimpleView() {
   const ticket = getDailyTicket();
 
   if (!ticket) {
-    el.innerHTML = `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Building today's ticket…</div>`;
+    el.innerHTML = _svPreloadDone
+      ? `<div class="sv-empty">Not enough picks today. Visit the Scores tabs to load games first.</div>`
+      : `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Building today's ticket…</div>`;
     return;
   }
 
