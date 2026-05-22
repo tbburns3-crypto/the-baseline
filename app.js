@@ -970,7 +970,7 @@ function renderMatches(all) {
           ${label}
           ${hasLive ? '<span class="live-badge pulse">LIVE</span>' : ''}
         </div>
-        ${sortedGroups.map(g => buildGroup(g)).join('')}
+        ${sortedGroups.map(g => buildGroup(g, key)).join('')}
       </div>`;
   }
 
@@ -978,7 +978,7 @@ function renderMatches(all) {
   updatePicksDisplay();
 }
 
-function buildGroup(g) {
+function buildGroup(g, catKey = '') {
   const hasLive = g.matches.some(m => isLive(m.event_status));
   const sc = surfaceClass(g.surface);
   const sortedM = [...g.matches].sort((a, b) => {
@@ -988,12 +988,21 @@ function buildGroup(g) {
     return (a.event_time || '').localeCompare(b.event_time || '');
   });
 
+  // Collapse lower-tier categories by default to reduce visual noise
+  const collapseByDefault = !hasLive && ['itf-m','itf-w','challenger-m','challenger-w','doubles','other'].includes(catKey);
+
+  const tier     = g.matches[0] ? tournamentTier(g.matches[0]) : '250';
+  const tierLbl  = TIER_LABEL[tier] || '';
+  const roundLbl = groupRoundLabel(g.matches);
+  const surfLbl  = (g.surface || 'Hard').charAt(0).toUpperCase() + (g.surface || 'Hard').slice(1);
+
   return `
-    <div class="tournament-group" id="tg-${slugify(g.name)}" data-expanded="true">
+    <div class="tournament-group tg-surf-${sc}" id="tg-${slugify(g.name)}" data-expanded="${collapseByDefault ? 'false' : 'true'}">
       <div class="tournament-header" onclick="toggleGroup(this)">
-        <span class="surface-dot ${sc}" title="${esc(g.surface || 'hard')}"></span>
+        <span class="surface-pill surf-${sc}">${esc(surfLbl)}</span>
         <span class="tournament-name">${esc(g.name)}</span>
-        <span class="category-badge">${esc(g.type)}</span>
+        ${tierLbl ? `<span class="tier-badge tier-${tier}">${tierLbl}</span>` : ''}
+        ${roundLbl ? `<span class="round-badge">${roundLbl}</span>` : ''}
         ${hasLive ? '<span class="live-badge">LIVE</span>' : ''}
         <span class="collapse-icon">▾</span>
       </div>
@@ -1059,10 +1068,24 @@ function isBestOf5(m) {
 
 function tournamentTier(m) {
   const n = (m.tournament_name || '').toLowerCase();
+  const cat = matchCategory(m.event_type_type || '');
   if (isGrandSlam(m)) return 'slam';
+  if (cat === 'challenger-m' || cat === 'challenger-w') return 'chal';
+  if (cat === 'itf-m' || cat === 'itf-w') return 'itf';
   if (/masters 1000|rolex|indian wells|miami open|madrid|rome|montreal|toronto|cincinnati|shanghai|paris masters|monte.?carlo/.test(n)) return 'masters';
   if (/500|dubai|acapulco|barcelona|halle|queen.?s|eastbourne|washington|osaka|beijing|vienna|basel|rotterdam/.test(n)) return '500';
   return '250';
+}
+
+const TIER_LABEL = { slam:'SLAM', masters:'MASTERS', '500':'500', '250':'250', chal:'CHAL', itf:'ITF' };
+
+// Returns the label for the highest-priority round found across matches in a group
+function groupRoundLabel(matches) {
+  const ORDER = ['final','semi','quarter','mid','r3','r2','r1'];
+  const SHORT  = { final:'Final', semi:'Semis', quarter:'QF', mid:'R16', r3:'R3', r2:'R2', r1:'R1' };
+  const rounds = new Set(matches.map(m => tennisRound(m)));
+  for (const r of ORDER) { if (rounds.has(r)) return SHORT[r]; }
+  return '';
 }
 
 function inlineTennisPick(m, dateOverride = null) {
@@ -1205,6 +1228,18 @@ function buildMatchRow(m, idSuffix = '') {
   const p1serve = serve === '1' ? '<span class="serve-dot">●</span>' : '';
   const p2serve = serve === '2' ? '<span class="serve-dot">●</span>' : '';
 
+  // Seed tags — show [N] for seeded players; rank # for unseeded (when rankIndex loaded)
+  const s1 = parseInt(m.event_first_player_seed)  || 0;
+  const s2 = parseInt(m.event_second_player_seed) || 0;
+  const s1tag = s1 ? `<span class="player-seed">[${s1}]</span>` : (() => {
+    const ri = S.rankIndex.get(String(m.first_player_key || ''));
+    return ri ? `<span class="player-rank">#${ri.rank}</span>` : '';
+  })();
+  const s2tag = s2 ? `<span class="player-seed">[${s2}]</span>` : (() => {
+    const ri = S.rankIndex.get(String(m.second_player_key || ''));
+    return ri ? `<span class="player-rank">#${ri.rank}</span>` : '';
+  })();
+
   const key = esc(m.event_key);
   const pid = idSuffix ? `${key}-${idSuffix}` : key;
 
@@ -1236,10 +1271,10 @@ function buildMatchRow(m, idSuffix = '') {
       <div class="match-status">${statusHTML}</div>
       <div class="match-players">
         <div class="player p1 ${serve==='1'?'serving':''}">
-          ${p1serve}<span class="player-name">${esc(m.event_first_player||'-')}</span>${injBadge(m.event_first_player)}
+          ${p1serve}${s1tag}<span class="player-name">${esc(m.event_first_player||'-')}</span>${injBadge(m.event_first_player)}
         </div>
         <div class="player p2 ${serve==='2'?'serving':''}">
-          ${p2serve}<span class="player-name">${esc(m.event_second_player||'-')}</span>${injBadge(m.event_second_player)}
+          ${p2serve}${s2tag}<span class="player-name">${esc(m.event_second_player||'-')}</span>${injBadge(m.event_second_player)}
         </div>
       </div>
       <div class="match-scores">

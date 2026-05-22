@@ -467,7 +467,7 @@ input { font: inherit; }
 .tournament-group[data-expanded="false"] .collapse-icon { transform: rotate(-90deg); }
 .tournament-group[data-expanded="false"] .tournament-matches { display: none; }
 
-/* ── SURFACE DOTS ── */
+/* ── SURFACE DOTS (kept for live section) ── */
 .surface-dot {
   width: 9px; height: 9px;
   border-radius: 50%;
@@ -478,6 +478,51 @@ input { font: inherit; }
 .surface-dot.grass   { background: var(--grass); }
 .surface-dot.hard    { background: var(--hard); }
 .surface-dot.indoor  { background: var(--indoor); }
+
+/* ── SURFACE PILL (tournament header) ── */
+.surface-pill {
+  font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  padding: 2px 6px; border-radius: 3px; flex-shrink: 0; white-space: nowrap;
+}
+.surface-pill.surf-clay   { background: rgba(205,133,63,.22); color: var(--clay); }
+.surface-pill.surf-grass  { background: rgba(76,175,80,.18);  color: var(--grass); }
+.surface-pill.surf-hard   { background: rgba(30,136,229,.18); color: var(--hard); }
+.surface-pill.surf-indoor { background: rgba(171,71,188,.18); color: var(--indoor); }
+
+/* ── TOURNAMENT LEFT BORDER (surface color) ── */
+.tournament-group.tg-surf-clay   { border-left: 3px solid var(--clay); }
+.tournament-group.tg-surf-grass  { border-left: 3px solid var(--grass); }
+.tournament-group.tg-surf-hard   { border-left: 3px solid var(--hard); }
+.tournament-group.tg-surf-indoor { border-left: 3px solid var(--indoor); }
+
+/* ── TIER BADGES ── */
+.tier-badge {
+  font-size: .62rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 3px; flex-shrink: 0; white-space: nowrap;
+}
+.tier-slam    { background: rgba(255,193,7,.22);  color: #ffc107; }
+.tier-masters { background: rgba(33,150,243,.18); color: #42a5f5; }
+.tier-500     { background: rgba(0,188,212,.15);  color: #26c6da; }
+.tier-250     { background: rgba(255,255,255,.07); color: var(--text-muted); }
+.tier-chal    { background: rgba(76,175,80,.15);  color: #66bb6a; }
+.tier-itf     { background: rgba(255,255,255,.05); color: var(--text-muted); opacity: .8; }
+
+/* ── ROUND BADGE (tournament header) ── */
+.round-badge {
+  font-size: .65rem; font-weight: 700; letter-spacing: .04em;
+  padding: 2px 7px; border-radius: 3px; flex-shrink: 0;
+  background: rgba(255,255,255,.08); color: var(--text-2); white-space: nowrap;
+}
+
+/* ── SEED + RANK TAGS IN MATCH ROWS ── */
+.player-seed {
+  font-size: .65rem; font-weight: 700; color: var(--accent); flex-shrink: 0;
+  font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+}
+.player-rank {
+  font-size: .62rem; color: var(--text-muted); flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── MATCH ROWS ── */
 .match-row {
@@ -520,13 +565,14 @@ input { font: inherit; }
   gap: 6px;
 }
 .player-name {
-  font-size: 0.88rem;
+  font-size: 0.92rem;
+  font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.player.serving .player-name { font-weight: 700; color: var(--accent); }
+.player.serving .player-name { font-weight: 800; color: var(--accent); }
 .serve-dot { color: var(--accent); font-size: 0.75rem; flex-shrink: 0; line-height: 1; }
 .inj-flag { font-size: .6rem; color: #ffb300; margin-left: 3px; cursor: help; flex-shrink: 0; }
 .inj-flag.inj-return { color: var(--text-muted); }
@@ -1532,8 +1578,15 @@ input { font: inherit; }
 .star-btn:hover { color: #ffb300; transform: scale(1.2); }
 .star-btn.fav-on { color: #ffb300; }
 .match-pick-inline {
-  font-size: .7rem; color: var(--accent-dim); font-style: italic;
+  font-size: .68rem; font-weight: 700;
+  background: rgba(0,230,118,.15); color: var(--accent);
+  border: 1px solid rgba(0,230,118,.3);
+  padding: 2px 7px; border-radius: 4px;
   white-space: nowrap; flex-shrink: 0;
+}
+.match-pick-inline.match-pick-injury {
+  background: rgba(255,179,0,.12); color: #ffb300;
+  border-color: rgba(255,179,0,.3);
 }
 
 /* ── TENNIS MATCH DETAIL (rich H2H + prediction) ── */
