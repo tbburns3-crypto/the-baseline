@@ -5262,16 +5262,41 @@ function formatTeeTime(raw) {
   return String(raw);
 }
 
-// ESPN embeds tee time inside linescores statistics rather than at the competitor root.
-// Search ALL linescores rounds and ALL stat categories in case it's not in [0].
-function extractTeeTime(p) {
-  if (p.teeTime) return p.teeTime;
+// ESPN embeds the actual round tee time inside linescores statistics.
+// p.teeTime at root gets overwritten with the NEXT round's pairings once ESPN
+// publishes them, so we check the current round's linescore stats first.
+// round param: if provided, search that round's stats before falling back.
+function extractTeeTime(p, round) {
+  const todayUTC = new Date().toISOString().slice(0, 10);
+
+  // 1. Current round's linescore statistics — most accurate, not overwritten
+  if (round) {
+    try {
+      const roundLS = p.linescores?.[round - 1];
+      if (roundLS) {
+        for (const cat of (roundLS.statistics?.categories || [])) {
+          for (const stat of (cat.stats || [])) {
+            const dv = String(stat.displayValue || '');
+            if (dv.length > 15 && /\d{1,2}:\d{2}:\d{2}/.test(dv)) return dv;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Root p.teeTime — only trust it if it's today or earlier (not next-round pairing)
+  if (p.teeTime) {
+    try {
+      if (new Date(p.teeTime).toISOString().slice(0, 10) <= todayUTC) return p.teeTime;
+    } catch {}
+  }
+
+  // 3. All other linescores as last resort
   try {
     for (const ls of (p.linescores || [])) {
       for (const cat of (ls.statistics?.categories || [])) {
         for (const stat of (cat.stats || [])) {
           const dv = String(stat.displayValue || '');
-          // Match any string that looks like a date/time (contains colon-separated time + year)
           if (dv.length > 15 && /\d{1,2}:\d{2}:\d{2}/.test(dv)) return dv;
         }
       }
@@ -5295,11 +5320,9 @@ function groupByTeeTime(players, round = 1) {
   const definite = new Map();
   const upcoming = new Map();
 
-  const todayUTC = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD" in UTC
-
   for (const p of players) {
     const holeScores = p.linescores?.[round - 1]?.linescores || [];
-    let t = extractTeeTime(p);
+    const t = extractTeeTime(p, round); // pass round so linescore stats are checked first
 
     if (holeScores.length === 0) {
       if (t) {
@@ -5311,16 +5334,6 @@ function groupByTeeTime(players, round = 1) {
 
     // Use first hole period to determine starting nine (split-tee disambiguation)
     const nine = holeScores[0].period >= 10 ? 'back' : 'front';
-
-    // ESPN updates p.teeTime to the NEXT round's pairings while the current round is
-    // still live. If the tee time's UTC date is past today, discard it — the player
-    // is in the current round and their next-round time is useless for grouping.
-    if (t) {
-      try {
-        const teeUTC = new Date(t).toISOString().slice(0, 10);
-        if (teeUTC > todayUTC) t = '';
-      } catch { t = ''; }
-    }
 
     if (!t) {
       // No usable tee time — slot into fallback groups of up to 3 by field order
