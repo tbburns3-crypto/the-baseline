@@ -6960,8 +6960,10 @@ function getDailyTicket() {
 }
 
 function buildDailyTicketIfNeeded() {
-  if (getDailyTicket()) return;   // already locked for today — never overwrite
   const today = dateStrLocal();
+  // Belt-and-suspenders: separate flag so even a failed localStorage write can't cause a rebuild
+  if (localStorage.getItem('_ticket_built_v10') === today) return;
+  if (getDailyTicket()) { localStorage.setItem('_ticket_built_v10', today); return; }
   const allPicks = getPicks();
 
   const TIER_BONUS  = { slam: 10, masters: 5, '500': 2, '250': 0, chal: -99, itf: -99 };
@@ -7020,7 +7022,9 @@ function buildDailyTicketIfNeeded() {
 
   if (legs.length < 5) return;
 
-  localStorage.setItem(_TICKET_KEY, JSON.stringify({ date: today, legs }));
+  try { localStorage.setItem(_TICKET_KEY, JSON.stringify({ date: today, legs })); } catch {}
+  localStorage.setItem('_ticket_built_v10', today); // mark built even if full ticket write failed
+  _dailyTicketCache = { date: today, legs }; // freeze in memory immediately
 }
 
 // Patch: one-time fix for 2026-05-22 only — no longer active.
