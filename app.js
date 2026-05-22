@@ -631,7 +631,21 @@ async function loadFixtures(offset = 0) {
   try {
     const d = dateStrLocal(offset); // use user TZ — tennis date bar matches the user's "today"
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
-    for (const m of results) S.matches.set(String(m.event_key), m);
+    const picks = getPicks();
+    let picksDirty = false;
+    for (const m of results) {
+      S.matches.set(String(m.event_key), m);
+      // Re-date any pick that was stamped with the wrong date (pre-fix migration)
+      if (m.event_date) {
+        const pid = 'tn_' + m.event_key;
+        const ex  = picks[pid];
+        if (ex && ex.result === null && ex.date !== m.event_date) {
+          ex.date = m.event_date;
+          picksDirty = true;
+        }
+      }
+    }
+    if (picksDirty) savePicks(picks);
     renderMatches(results);
     renderOverview(results);
     renderSidebar(results);
@@ -3428,9 +3442,21 @@ async function loadTennisPicksPage() {
   try {
     const d = dateStrLocal(S.dateOffset);
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
+    const picks = getPicks();
+    let picksDirty = false;
     for (const m of results) {
       S.matches.set(String(m.event_key), m);
       inlineTennisPick(m);
+      // Re-date any existing pick that was stamped with the wrong date.
+      // This catches picks saved before the event_date fix was deployed.
+      if (m.event_date) {
+        const pid = 'tn_' + m.event_key;
+        const ex  = picks[pid];
+        if (ex && ex.result === null && ex.date !== m.event_date) {
+          ex.date  = m.event_date;
+          picksDirty = true;
+        }
+      }
       if (isFinished(m.event_status) && m.event_winner) {
         let wln = '';
         if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player || '');
@@ -3439,6 +3465,7 @@ async function loadTennisPicksPage() {
         if (wln) resolvePick('tn_' + m.event_key, wln);
       }
     }
+    if (picksDirty) savePicks(picks);
   } catch {}
 
   const todayStr    = dateStrLocal(0);
