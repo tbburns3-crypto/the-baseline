@@ -2237,6 +2237,21 @@ body.simple-mode #app-layout { display: none !important; }
 .gp-sit-count   { color: var(--text-muted); font-size: .75rem; }
 .gp-sit-bases   { color: #ffb300; font-size: .75rem; font-weight: 600; }
 
+/* ── VIEW TABS — always scrollable, never wrapping ── */
+#view-tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+#view-tabs::-webkit-scrollbar { display: none; }
+.view-tab { flex-shrink: 0; }
+
+/* iOS touch momentum for all horizontal scrollers */
+#sport-tabs,
+#date-tabs-container,
+#tournament-list { -webkit-overflow-scrolling: touch; }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 900px) {
   #app-layout { flex-direction: column; }
@@ -2254,17 +2269,60 @@ body.simple-mode #app-layout { display: none !important; }
 }
 
 @media (max-width: 600px) {
-  .logo-text { display: none; }
-  .sport-tab { padding: 6px 9px; font-size: 0.8rem; }
-  #main-content { padding: 10px; }
-  .match-row { grid-template-columns: 72px 1fr auto; gap: 6px; padding: 8px 10px; }
+  /* Topbar — strip non-essential chrome to free space for sport tabs */
+  .logo-text    { display: none; }
+  #conn-label   { display: none; }        /* dot still shows */
+  #tz-selector  { display: none; }        /* not needed on mobile */
+  #picks-accuracy { display: none; }      /* shown in Picks tab instead */
+
+  /* Picks banner — show record only, drop breakdown + tap hint */
+  .pb-breakdown { display: none; }
+  .pb-note      { display: none; }
+  #picks-banner { padding: 8px 12px; gap: 8px; }
+
+  /* Sport + view tabs — bigger touch targets */
+  .sport-tab { padding: 8px 10px; font-size: 0.8rem; }
+  .view-tab  { padding: 8px 14px; }
+
+  /* Main content tighter on small screens */
+  #main-content { padding: 8px; }
+
+  /* Tennis match rows */
+  .match-row { grid-template-columns: 68px 1fr auto; gap: 6px; padding: 8px 8px; }
+
+  /* Non-tennis match rows */
   .other-match-row { grid-template-columns: 56px 1fr 50px; }
-  .other-period { display: none; }
+  .other-period    { display: none; }
+
+  /* Filter chips */
   #filter-chips { gap: 4px; }
   .chip { padding: 4px 9px; font-size: 0.75rem; }
+
+  /* Tournament header — allow badge wrap so nothing clips */
+  .tournament-header { padding: 9px 10px; gap: 6px; flex-wrap: wrap; }
+  .tournament-name   { font-size: 0.85rem; min-width: 0; }
+
+  /* Match detail panel — less padding */
+  .match-detail { padding: 10px; }
+
+  /* Picks simple-view button */
+  #simple-view-btn { padding: 4px 8px; font-size: .7rem; }
+
+  /* MLB lineup grid: single column on phone */
+  .lineup-grid { grid-template-columns: 1fr; }
+  .lineup-col  { border-right: none; border-bottom: 1px solid var(--border); }
+  .lineup-col:last-child { border-bottom: none; }
 }
 
 @media (max-width: 400px) {
+  /* Overview cards */
   #overview-cards { grid-template-columns: repeat(2, 1fr); gap: 6px; }
   .ov-count { font-size: 1.3rem; }
+
+  /* Tighten match rows even more on tiny screens */
+  .match-row { grid-template-columns: 60px 1fr auto; gap: 5px; padding: 8px 6px; }
+  .status    { font-size: 0.68rem; padding: 2px 5px; }
+
+  /* Topbar refresh button */
+  #refresh-btn { padding: 4px 5px; }
 }
