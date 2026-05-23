@@ -67,6 +67,10 @@ const _restDaysCache = new Map();
 // Key: "sport:ABBR" (e.g. "nba:GSW"), value: win-probability penalty (0–0.12)
 const _injuryPenalty = new Map();
 
+// ── NHL TEAM STATS CACHE ─────────────────────────────────────
+// Keyed by ESPN team ID, value: { ppPct, pkPct, svPct }
+const _nhlTeamStats = new Map();
+
 // ── TENNIS INJURY MAP ────────────────────────────────────────
 // Keyed by lowercase last name → { note, returning, published }
 // Populated from ESPN tennis news headlines on tab open.
@@ -2557,6 +2561,8 @@ async function espnGames(sport, dateOffset = 0) {
       period: st.period || '',
       time: st.displayClock || '',
       sport,
+      homeId: home?.team?.id || '',
+      awayId: away?.team?.id || '',
       odds: (() => { const o = comp.odds?.[0]; return o ? { spread: o.details || '', overUnder: o.overUnder || null } : null; })(),
       homeLeaders: teamLeaders(home?.team?.id),
       awayLeaders: teamLeaders(away?.team?.id)
@@ -2702,6 +2708,18 @@ function autoRecordAndResolvePick(g, dateOverride = null) {
     const awayPenalty = _injuryPenalty.get(`${sp}:${(g.awayAbbr||'').toUpperCase()}`) || 0;
     if (homePenalty || awayPenalty) {
       homeFrac = Math.max(0.10, Math.min(0.90, homeFrac - homePenalty + awayPenalty));
+    }
+
+    // NHL special teams + goalie adjustment
+    if (sp === 'nhl') {
+      const hSt = _nhlTeamStats.get(String(g.homeId || ''));
+      const aSt = _nhlTeamStats.get(String(g.awayId || ''));
+      if (hSt && aSt) {
+        const svAdj = (hSt.svPct - aSt.svPct) * 2.5;           // .01 SV% gap -> 2.5% WP
+        const ppAdj = (hSt.ppPct - aSt.ppPct) * 0.0012;        // 10 pp% gap -> 1.2% WP
+        const pkAdj = (hSt.pkPct - aSt.pkPct) * 0.0012;
+        homeFrac = Math.max(0.10, Math.min(0.90, homeFrac + svAdj + ppAdj + pkAdj));
+      }
     }
 
     const homePct  = Math.round(homeFrac * 100);
@@ -3024,6 +3042,43 @@ async function fetchInjuryPenalties(sport) {
         else if (st === 'doubtful') penalty += 0.025;
       }
       if (penalty > 0) _injuryPenalty.set(`${sport}:${abbr}`, Math.min(0.12, penalty));
+    }
+  } catch {}
+}
+
+// Fetch NHL team PP%/PK%/SV% from ESPN core API. Uses playoff type if after April, else regular season.
+async function fetchNHLTeamStats(teamId) {
+  if (!teamId) return;
+  const key = String(teamId);
+  if (_nhlTeamStats.has(key)) return;
+  try {
+    const now  = new Date();
+    const year = now.getMonth() >= 8 ? now.getFullYear() + 1 : now.getFullYear();
+    const type = now.getMonth() >= 3 && now.getMonth() <= 6 ? 3 : 2; // Apr-Jul = playoffs
+    const url  = `https://sports.core.api.espn.com/v2/sports/hockey/leagues/nhl/seasons/${year}/types/${type}/teams/${key}/statistics`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const j    = await res.json();
+    const cats = j.splits?.categories || [];
+    const findStat = name => {
+      for (const cat of cats) {
+        const s = (cat.stats || []).find(st =>
+          (st.name || '').toLowerCase().includes(name) ||
+          (st.displayName || '').toLowerCase().includes(name)
+        );
+        if (s != null) return parseFloat(s.displayValue ?? s.value ?? '') || null;
+      }
+      return null;
+    };
+    const ppPct = findStat('powerplaypct') ?? findStat('powerplay');
+    const pkPct = findStat('penaltykillpct') ?? findStat('penaltykill');
+    const svPct = findStat('savepct') ?? findStat('save');
+    if (ppPct !== null || pkPct !== null || svPct !== null) {
+      _nhlTeamStats.set(key, {
+        ppPct: ppPct ?? 20,
+        pkPct: pkPct ?? 80,
+        svPct: svPct != null && svPct > 1 ? svPct / 100 : (svPct ?? 0.905),
+      });
     }
   } catch {}
 }
@@ -4276,7 +4331,10 @@ function buildNBAPicksCard(g, summary) {
         if (isPoint(cat) && !fin) {
           const pid2    = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
           const pickKey = `plr_${g.id}_${pid2}_pts`;
-          recordPlayerPick(pickKey, g.sport || 'nba', top.athlete.displayName, 'Points', `${top.displayValue} PPG`, matchup, null);
+          const ppg   = parseFloat(top.displayValue);
+          const ptLine = !isNaN(ppg) ? (Math.max(0.5, Math.round(ppg - 0.5) + 0.5)).toFixed(1) : null;
+          recordPlayerPick(pickKey, g.sport || 'nba', top.athlete.displayName, 'Points',
+            ptLine ? `OVER ${ptLine}` : (top.displayValue ? `${top.displayValue} PPG` : '-'), matchup, null);
         }
       }
       if (!playerMap.size) continue;
@@ -7138,11 +7196,14 @@ function buildDailyTicketIfNeeded() {
 
     if (p.type === 'player') {
       score += SPORT_BONUS[p.sport] || 1;
-      const n = parseFloat(p.stat);
-      const isSeasonTotal = p.stat && p.stat !== '-' && !p.stat.includes('.') && !isNaN(n) && n > 5;
-      const statLabel = p.stat && p.stat !== '-'
-        ? (isSeasonTotal ? `${p.prop} leader` : `${p.stat} ${p.prop}`)
-        : p.prop;
+      const statLabel = (() => {
+        const s = (p.stat || '').trim();
+        if (!s || s === '-') return p.prop;
+        if (/^(OVER|UNDER)\s/i.test(s)) return `${p.prop}: ${s}`;  // "Points: OVER 28.5"
+        const ouMatch = s.match(/(OVER|UNDER)\s+[\d.]+\s+\w+/i);
+        if (ouMatch) return ouMatch[0];                              // extract "OVER 5.5 K" from composite
+        return p.prop;                                               // raw stat — show only the prop name
+      })();
       candidates.push({ id, score, sport: p.sport || 'other', type: 'player',
         pick: p.player, description: statLabel, matchup: p.gameMatchup || '', conf: p.conf || 1 });
     } else if (p.team) {
@@ -7312,12 +7373,20 @@ async function preloadPicksForSimpleView() {
         espnGames(sport, 0),
         espnGames(sport, 1).catch(() => []),
       ]);
+      // Pre-fetch NHL team stats so goalie/PP/PK can influence picks
+      if (sport === 'nhl') {
+        const allNHL = [...todayGames, ...tomorrowGames];
+        await Promise.allSettled(allNHL.flatMap(g => [
+          fetchNHLTeamStats(g.homeId),
+          fetchNHLTeamStats(g.awayId),
+        ]));
+      }
       todayGames.forEach(g => autoRecordAndResolvePick(g));
       tomorrowGames.forEach(g => autoRecordAndResolvePick(g, tomorrow));
 
       const cfg = sportCfg[sport];
       if (cfg) {
-        const upcoming = todayGames.filter(g => !gameRowState(g).fin).slice(0, 4);
+        const upcoming = todayGames.filter(g => { const { fin, live } = gameRowState(g); return !fin && !live; }).slice(0, 4);
         for (const g of upcoming) {
           try {
             const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${cfg.path}/summary?event=${g.id}`);
@@ -7332,8 +7401,11 @@ async function preloadPicksForSimpleView() {
                 const pid  = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
                 const name = top.athlete.shortName || top.athlete.displayName;
                 const label = cat.displayName || cat.shortDisplayName || catName;
+                const rawAvg = parseFloat(top.displayValue);
+                const oLine  = !isNaN(rawAvg) && rawAvg > 0
+                  ? (Math.max(0.5, Math.round(rawAvg - 0.5) + 0.5)).toFixed(1) : null;
                 recordPlayerPick(`plr_${g.id}_${pid}_${catName.replace(/\s+/g,'_')}`,
-                  sport, name, label, top.displayValue || '-', matchup, null);
+                  sport, name, label, oLine ? `OVER ${oLine}` : (top.displayValue || '-'), matchup, null);
               }
             }
           } catch (e) {}
@@ -7460,8 +7532,8 @@ function getPicksForTicket(type, date, allPicks) {
   const numFromStat = (stat, rx) => { const m = (stat||'').match(rx); return m ? parseFloat(m[1]) : 0; };
   const toGame = ([id, p]) => ({ id, pick: p.team, matchup: p.matchup, conf: p.conf||1, sport: p.sport, propType:'game', result: p.result });
   const toPlr  = (propType) => ([id, p]) => {
-    const kLine = p.prop === 'K' ? (p.stat||'').match(/OVER\s+[\d.]+\s+K/)?.[0] : null;
-    return { id, pick: lastName(p.player||p.team||''), description: kLine || (p.stat||''),
+    const betLine = (p.stat||'').match(/(OVER|UNDER)\s+[\d.]+\s+\w+/i)?.[0];
+    return { id, pick: lastName(p.player||p.team||''), description: betLine || p.prop || '',
       matchup: p.gameMatchup||p.matchup||'', conf: 2, sport: p.sport, propType, result: p.result };
   };
 
@@ -7791,7 +7863,7 @@ function renderTicketsPage() {
   }
 
   // ── MLB ──
-  const { early: mlbEarly, late: mlbLate, singleTicket: mlbSingle } = getMLBSplitPerGameTickets(date, allPicks);
+  const mlbPerGame = getMLBPerGameTickets(date, allPicks);
   const mlbHits  = getPicksForTicket('mlb_hits', date, allPicks);
   const mlbRBI   = getPicksForTicket('mlb_rbi',  date, allPicks);
   const mlbHR    = getPicksForTicket('mlb_hr',   date, allPicks);
@@ -7822,16 +7894,9 @@ function renderTicketsPage() {
     const pendFt   = !hasProps ? `<div class="tp-game-pending">⏳ Lineup not yet posted — props update automatically</div>` : '';
     return renderTicketBlock(esc(g.matchup.replace(/ @ /g,' v ')), g.legs, allPicks, pendFt);
   };
-  const mlbEarlyCards = mlbEarly.map(toMLBCard);
-  const mlbLateCards  = mlbLate.map(toMLBCard);
-
-  const mlbHasAny = mlbEarly.length || mlbLate.length || mlbAggCards.length;
-  const mlbPerGameSection = mlbSingle
-    ? (mlbEarlyCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(mlbEarlyCards)}` : '')
-    : [
-        mlbEarlyCards.length ? `<div class="tp-sub-hdr">Early Games</div>${grid(mlbEarlyCards)}` : '',
-        mlbLateCards.length  ? `<div class="tp-sub-hdr">Late Games</div>${grid(mlbLateCards)}`  : '',
-      ].join('');
+  const mlbPerGameCards = mlbPerGame.map(toMLBCard);
+  const mlbHasAny = mlbPerGameCards.length || mlbAggCards.length;
+  const mlbPerGameSection = mlbPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(mlbPerGameCards)}` : '';
 
   const mlbHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">⚾ MLB</div>
