@@ -4333,8 +4333,7 @@ function buildNBAPicksCard(g, summary) {
           const pickKey = `plr_${g.id}_${pid2}_pts`;
           const ppg     = parseFloat(top.displayValue);
           const ptLine  = !isNaN(ppg) ? (Math.max(0.5, Math.round(ppg - 0.5) + 0.5)).toFixed(1) : null;
-          const tRest   = tAbbr ? (_restDaysCache.get(`nba:${tAbbr.toUpperCase()}`) ?? 3) : 3;
-          const dir     = ptLine && ppg >= 15 && tRest <= 1 ? 'UNDER' : 'OVER';
+          const dir     = propDirection(g.sport || 'nba', ppg, 'points', tAbbr.toUpperCase(), g);
           recordPlayerPick(pickKey, g.sport || 'nba', top.athlete.displayName, 'Points',
             ptLine ? `${dir} ${ptLine}` : (top.displayValue ? `${top.displayValue} PPG` : '-'), matchup, null);
         }
@@ -7386,7 +7385,6 @@ async function preloadPicksForSimpleView() {
             const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
             for (const tl of (j.leaders || [])) {
               const tlAbbr = (tl.team?.abbreviation || '').toUpperCase();
-              const tlRest = tlAbbr ? (_restDaysCache.get(`${sport}:${tlAbbr}`) ?? 3) : 3;
               for (const cat of (tl.leaders || [])) {
                 const catName = (cat.displayName || cat.shortDisplayName || '').toLowerCase();
                 if (!cfg.cats.some(c => catName.includes(c))) continue;
@@ -7397,9 +7395,8 @@ async function preloadPicksForSimpleView() {
                 const label  = cat.displayName || cat.shortDisplayName || catName;
                 const rawAvg = parseFloat(top.displayValue);
                 if (!isNaN(rawAvg) && rawAvg > 0) {
-                  const oLine     = (Math.max(0.5, Math.round(rawAvg - 0.5) + 0.5)).toFixed(1);
-                  const minUnder  = catName.includes('point') ? 15 : catName.includes('rebound') ? 7 : 5;
-                  const dir       = tlRest <= 1 && rawAvg >= minUnder ? 'UNDER' : 'OVER';
+                  const oLine = (Math.max(0.5, Math.round(rawAvg - 0.5) + 0.5)).toFixed(1);
+                  const dir   = propDirection(sport, rawAvg, catName, tlAbbr, g);
                   recordPlayerPick(`plr_${g.id}_${pid}_${catName.replace(/\s+/g,'_')}`,
                     sport, name, label, `${dir} ${oLine}`, matchup, null);
                 } else {
@@ -7514,6 +7511,42 @@ function mlbPickMerit(propType, stat, pick) {
   }
 
   return 0;
+}
+
+// Multi-factor OVER/UNDER direction for player props.
+// Returns 'UNDER' when evidence stacks up; 'OVER' otherwise.
+function propDirection(sport, rawAvg, catName, teamAbbr, g) {
+  const LEAGUE_OU   = { nba: 225, wnba: 160, nhl: 5.5, nfl: 45 };
+  const OU_MARGIN   = { nba: 8,   wnba: 6,   nhl: 0.5, nfl: 4  };
+  const MIN_UNDER   = { points: 15, rebound: 7, assist: 5, goal: 0.4, passing: 200, rushing: 60, receiving: 50 };
+  let score = 0;
+
+  // Rest / fatigue — strongest signal (B2B = played yesterday)
+  const rest = teamAbbr ? (_restDaysCache.get(`${sport}:${teamAbbr}`) ?? 3) : 3;
+  if (rest <= 1) score -= 2;
+  else if (rest >= 3) score += 1;
+
+  // Game total vs league average
+  const ou  = parseFloat(g?.odds?.overUnder || 0);
+  const avg = LEAGUE_OU[sport] || 0;
+  const mar = OU_MARGIN[sport] || 8;
+  if (ou > 0 && avg > 0) {
+    if (ou < avg - mar) score -= 1;        // low-scoring game → fewer stat chances
+    else if (ou > avg + mar) score += 1;  // high-scoring game → more opportunities
+  }
+
+  // Spread magnitude → blowout risk → garbage time → stars sit 4th quarter
+  const spreadStr = String(g?.odds?.spread || '');
+  const spreadPts = Math.abs(parseFloat(spreadStr.match(/[-−]?[\d.]+/)?.[0] || '0'));
+  if (spreadPts > 12) score -= 1;
+  else if (spreadPts > 0 && spreadPts < 4) score += 1; // close game → full-game effort
+
+  // Minimum average needed for UNDER to make sense
+  const cat = catName.toLowerCase();
+  const minKey = Object.keys(MIN_UNDER).find(k => cat.includes(k));
+  const minAvg = minKey ? MIN_UNDER[minKey] : 10;
+
+  return score < -1 && rawAvg >= minAvg ? 'UNDER' : 'OVER';
 }
 
 function toOULine(sport, prop, raw) {
