@@ -135,10 +135,12 @@ function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, forc
   savePicks(picks);
 }
 
-function recordPlayerPick(pickKey, sport, playerName, prop, stat, gameMatchup, gamePk) {
+function recordPlayerPick(pickKey, sport, playerName, prop, stat, gameMatchup, gamePk, gameTime = null) {
   const picks = getPicks();
   if (picks[pickKey]) return;
-  picks[pickKey] = { type: 'player', sport, player: playerName, prop, stat, gameMatchup, gamePk: gamePk || null, date: dateStrLocal(), result: null };
+  const entry = { type: 'player', sport, player: playerName, prop, stat, gameMatchup, gamePk: gamePk || null, date: dateStrLocal(), result: null };
+  if (gameTime) entry.gameTime = gameTime;
+  picks[pickKey] = entry;
   savePicks(picks);
 }
 
@@ -4333,7 +4335,7 @@ function buildNBAPicksCard(g, summary) {
           const ptLine  = !isNaN(ppg) ? (Math.max(0.5, Math.round(ppg - 0.5) + 0.5)).toFixed(1) : null;
           const dir     = propDirection(g.sport || 'nba', ppg, 'points', tAbbr.toUpperCase(), g);
           recordPlayerPick(pickKey, g.sport || 'nba', top.athlete.displayName, 'Points',
-            ptLine ? `${dir} ${ptLine}` : (top.displayValue ? `${top.displayValue} PPG` : '-'), matchup, null);
+            ptLine ? `${dir} ${ptLine} PTS` : (top.displayValue ? `${top.displayValue} PPG` : '-'), matchup, null, g.gameDate || null);
         }
       }
       if (!playerMap.size) continue;
@@ -6937,9 +6939,15 @@ const SPORT_ICONS  = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'�
 const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', nfl:'Football', nhl:'Hockey', soccer:'Soccer', golf:'Golf' };
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
-const _TICKET_KEY     = '_baseline_ticket_v10';
-const _YST_TICKET_KEY = '_baseline_yst_ticket_v10';
-let _dailyTicketCache = null; // in-session lock — once set, never changes within this page load
+const _TICKET_KEY         = '_baseline_ticket_v10';
+const _YST_TICKET_KEY     = '_baseline_yst_ticket_v10';
+const _MORN_TICKET_KEY    = '_baseline_morn_v10';
+const _EVE_TICKET_KEY     = '_baseline_eve_v10';
+const _YST_MORN_TICKET_KEY = '_baseline_yst_morn_v10';
+const _YST_EVE_TICKET_KEY  = '_baseline_yst_eve_v10';
+let _dailyTicketCache   = null; // in-session lock — once set, never changes within this page load
+let _morningTicketCache = null;
+let _eveningTicketCache = null;
 
 function getDailyTicket() {
   const today = dateStrLocal();
@@ -6955,13 +6963,80 @@ function getDailyTicket() {
   } catch { return null; }
 }
 
+function getMorningTicket() {
+  const today = dateStrLocal();
+  if (_morningTicketCache?.date === today) return _morningTicketCache;
+  try {
+    const obj = JSON.parse(localStorage.getItem(_MORN_TICKET_KEY) || 'null');
+    if (obj?.date === today) { _morningTicketCache = obj; return obj; }
+  } catch {}
+  return null;
+}
+
+function getEveningTicket() {
+  const today = dateStrLocal();
+  if (_eveningTicketCache?.date === today) return _eveningTicketCache;
+  try {
+    const obj = JSON.parse(localStorage.getItem(_EVE_TICKET_KEY) || 'null');
+    if (obj?.date === today) { _eveningTicketCache = obj; return obj; }
+  } catch {}
+  return null;
+}
+
+// Returns true if this pick is for a game that starts at/after 6pm ET
+function isEveningGame(p) {
+  const sport = p.sport || '';
+  if (['tennis', 'golf', 'soccer'].includes(sport)) return false;
+  const gt = p.gameTime;
+  if (!gt) return ['nba', 'wnba', 'nhl', 'nfl'].includes(sport); // fallback by sport
+  try {
+    const dt = new Date(gt);
+    const utcH = dt.getUTCHours() + dt.getUTCMinutes() / 60;
+    const etH  = (utcH - 4 + 24) % 24; // EDT = UTC-4 (close enough Apr–Nov)
+    return etH >= 18;
+  } catch { return ['nba', 'wnba', 'nhl', 'nfl'].includes(sport); }
+}
+
+// Split the already-built combined ticket into morning/evening based on game time.
+// Runs after buildDailyTicketIfNeeded — does not modify the combined ticket.
+function buildSplitTicketsIfNeeded() {
+  const today = dateStrLocal();
+  if (localStorage.getItem('_split_v1') === today) {
+    if (!_morningTicketCache) {
+      try { _morningTicketCache = JSON.parse(localStorage.getItem(_MORN_TICKET_KEY) || 'null') || null; } catch {}
+    }
+    if (!_eveningTicketCache) {
+      try { _eveningTicketCache = JSON.parse(localStorage.getItem(_EVE_TICKET_KEY) || 'null') || null; } catch {}
+    }
+    return;
+  }
+  const ticket = getDailyTicket();
+  if (!ticket) return;
+  const allPicks = getPicks();
+  const mornLegs = ticket.legs.filter(l => !isEveningGame(allPicks[l.id] || {}));
+  const eveLegs  = ticket.legs.filter(l =>  isEveningGame(allPicks[l.id] || {}));
+  if (mornLegs.length) {
+    const mo = { date: today, legs: mornLegs };
+    try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
+    _morningTicketCache = mo;
+  }
+  if (eveLegs.length) {
+    const eo = { date: today, legs: eveLegs };
+    try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
+    _eveningTicketCache = eo;
+  }
+  localStorage.setItem('_split_v1', today);
+}
+
 function archiveYesterdayTicket() {
   const yesterday = dateStrLocal(-1);
   try {
     const s = localStorage.getItem(_TICKET_KEY);
-    if (!s) return;
-    const obj = JSON.parse(s);
-    if (obj.date === yesterday) localStorage.setItem(_YST_TICKET_KEY, s);
+    if (s) { const obj = JSON.parse(s); if (obj.date === yesterday) localStorage.setItem(_YST_TICKET_KEY, s); }
+    const sm = localStorage.getItem(_MORN_TICKET_KEY);
+    if (sm) { const obj = JSON.parse(sm); if (obj.date === yesterday) localStorage.setItem(_YST_MORN_TICKET_KEY, sm); }
+    const se = localStorage.getItem(_EVE_TICKET_KEY);
+    if (se) { const obj = JSON.parse(se); if (obj.date === yesterday) localStorage.setItem(_YST_EVE_TICKET_KEY, se); }
   } catch {}
 }
 
@@ -7206,10 +7281,10 @@ async function preloadPicksForSimpleView() {
                   const oLine = (Math.max(0.5, Math.round(rawAvg - 0.5) + 0.5)).toFixed(1);
                   const dir   = propDirection(sport, rawAvg, catName, tlAbbr, g);
                   recordPlayerPick(`plr_${g.id}_${pid}_${catName.replace(/\s+/g,'_')}`,
-                    sport, name, label, `${dir} ${oLine}`, matchup, null);
+                    sport, name, label, `${dir} ${oLine}`, matchup, null, g.gameDate || null);
                 } else {
                   recordPlayerPick(`plr_${g.id}_${pid}_${catName.replace(/\s+/g,'_')}`,
-                    sport, name, label, top.displayValue || '-', matchup, null);
+                    sport, name, label, top.displayValue || '-', matchup, null, g.gameDate || null);
                 }
               }
             }
@@ -7251,6 +7326,7 @@ async function preloadPicksForSimpleView() {
   // All sports done — now build the ticket (all picks are in localStorage).
   // Do this AFTER all sports load so we score from the full candidate pool.
   buildDailyTicketIfNeeded();
+  buildSplitTicketsIfNeeded();
   _svPreloadDone = true;
   if (isActive()) renderSimpleView();
   if (S.sport === 'tickets') renderTicketsPage();
@@ -7642,7 +7718,18 @@ function getLineupPendingMatchups(date, allPicks) {
 function cleanLegDesc(leg) {
   const d = (leg.description || '').trim();
   if (!d) return '';
-  if (/^(OVER|UNDER)\s+[\d.]/i.test(d)) return d;
+  // "OVER 27.5 PTS" — already has abbreviation
+  if (/^(OVER|UNDER)\s+[\d.]+\s+\S/i.test(d)) return d;
+  // "OVER 27.5" — missing abbreviation; look up prop from stored pick and append it
+  if (/^(OVER|UNDER)\s+[\d.]+\s*$/i.test(d)) {
+    const stored = leg.id ? (getPicks()[leg.id] || null) : null;
+    if (stored?.prop) {
+      const PROP_ABBRS = { Points:'PTS', Rebounds:'REB', Assists:'AST', Goals:'G', 'Goals+Assists':'GA',
+                           'Passing Yards':'PASS', 'Rushing Yards':'RUSH', 'Receiving Yards':'REC' };
+      return `${d} ${PROP_ABBRS[stored.prop] || stored.prop}`;
+    }
+    return d;
+  }
   const ouEmbed = d.match(/(OVER|UNDER)\s+[\d.]+\s+\w+/i);
   if (ouEmbed) return ouEmbed[0];
   // "27.9 Points", "5.7 Assists", "18.0 Points" → convert to bet line
@@ -7712,29 +7799,48 @@ function renderTicketsPage() {
     <button class="tp-day-btn${off===1?' tp-day-active':''}" onclick="_ticketDateOffset=1;renderTicketsPage()">Tomorrow</button>
   </div>`;
 
-  // ── Today's Picks (locked daily ticket — today only) ──
+  // ── Today's Picks — Morning / Evening split tickets ──
   let todayPicksHTML = '';
   if (off === 0) {
-    const ticket = getDailyTicket();
-    if (ticket) {
-      const legs = ticket.legs.map(l => ({ ...l, matchup: (l.matchup||'').replace(/ @ /g,' v ') }));
+    const morn = getMorningTicket();
+    const eve  = getEveningTicket();
+    const cards = [];
+    if (morn?.legs?.length) cards.push(renderTicketBlock('🌤 Day Ticket', morn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+    if (eve?.legs?.length)  cards.push(renderTicketBlock('🌙 Night Ticket', eve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+    if (!cards.length) {
+      // Fall back to combined ticket if splits haven't been built yet
+      const ticket = getDailyTicket();
+      if (ticket) cards.push(renderTicketBlock('🎫 Daily Ticket', ticket.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+    }
+    if (cards.length) {
       todayPicksHTML = `<div class="tp-sport-section">
-        <div class="tp-sport-hdr">🎫 Today's Picks — All-Sports Parlay</div>
-        ${grid([renderTicketBlock('🎫 Daily Ticket', legs, allPicks)])}
+        <div class="tp-sport-hdr">🎫 Today's Picks</div>
+        ${grid(cards)}
       </div>`;
     }
   }
 
-  // ── Yesterday's Parlay (archived before today's ticket overwrites it) ──
+  // ── Yesterday's Picks — Morning / Evening archived tickets ──
   let ystTicketHTML = '';
   if (off === -1) {
     try {
-      const yst = JSON.parse(localStorage.getItem(_YST_TICKET_KEY) || 'null');
-      if (yst?.date === date && yst.legs?.length) {
-        const legs = yst.legs.map(l => ({ ...l, matchup: (l.matchup||'').replace(/ @ /g,' v ') }));
+      const ystMorn = JSON.parse(localStorage.getItem(_YST_MORN_TICKET_KEY) || 'null');
+      const ystEve  = JSON.parse(localStorage.getItem(_YST_EVE_TICKET_KEY)  || 'null');
+      const cards = [];
+      if (ystMorn?.date === date && ystMorn.legs?.length)
+        cards.push(renderTicketBlock('🌤 Day Ticket', ystMorn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+      if (ystEve?.date === date && ystEve.legs?.length)
+        cards.push(renderTicketBlock('🌙 Night Ticket', ystEve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+      if (!cards.length) {
+        // Fall back to combined yesterday ticket
+        const yst = JSON.parse(localStorage.getItem(_YST_TICKET_KEY) || 'null');
+        if (yst?.date === date && yst.legs?.length)
+          cards.push(renderTicketBlock('🎫 Daily Ticket', yst.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+      }
+      if (cards.length) {
         ystTicketHTML = `<div class="tp-sport-section">
-          <div class="tp-sport-hdr">🎫 Yesterday's All-Sports Parlay</div>
-          ${grid([renderTicketBlock('🎫 Daily Ticket', legs, allPicks)])}
+          <div class="tp-sport-hdr">🎫 Yesterday's Picks</div>
+          ${grid(cards)}
         </div>`;
       }
     } catch {}
