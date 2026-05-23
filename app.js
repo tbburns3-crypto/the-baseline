@@ -7015,8 +7015,15 @@ function isEveningGame(p) {
 // Split the already-built combined ticket into morning/evening based on game time.
 // Runs after buildDailyTicketIfNeeded — does not modify the combined ticket.
 // Shared: score all today's picks into a candidate list (same logic as buildDailyTicketIfNeeded)
+// ITF events below ~$60k prize money — not covered by major sports apps.
+// Match on "W15", "W25", "W35", "W40", "M15", "M25" anywhere in the tournament name.
+const _MINOR_ITF_RE = /\b[WM](?:15|25|35|40)\b/i;
+function isMinorITFEvent(matchup) {
+  return _MINOR_ITF_RE.test(matchup || '');
+}
+
 function _buildPickCandidates(allPicks, today) {
-  const TIER_BONUS  = { slam: 10, masters: 5, '500': 2, '250': 0, chal: -99, itf: -99 };
+  const TIER_BONUS  = { slam: 10, masters: 5, '500': 2, '250': 0, chal: -1, itf: -3 };
   const SPORT_BONUS = { mlb: 3, nba: 3, nhl: 3, soccer: 3, golf: 3, wnba: 2, nfl: 2 };
   const out = [];
   for (const [id, p] of Object.entries(allPicks)) {
@@ -7033,7 +7040,8 @@ function _buildPickCandidates(allPicks, today) {
     } else if (p.team) {
       if ((p.conf || 0) < 1) continue;
       const sport = p.sport || 'tennis';
-      if (sport === 'tennis' && (p.tier === 'chal' || p.tier === 'itf')) continue;
+      // Skip micro-level ITF events (W15, M15, W25, M25, W35, W40) — not in major sports apps
+      if (sport === 'tennis' && p.tier === 'itf' && isMinorITFEvent(p.matchup)) continue;
       score += sport === 'tennis' ? (TIER_BONUS[p.tier] ?? 0) : (SPORT_BONUS[sport] || 1);
       out.push({ id, score, sport, type: 'game',
         pick: p.team, description: p.matchup || '', matchup: p.matchup || '',
@@ -7129,7 +7137,7 @@ function buildDailyTicketIfNeeded() {
   if (getDailyTicket()) { localStorage.setItem('_ticket_built_v10', today); return; }
   const allPicks = getPicks();
 
-  const TIER_BONUS  = { slam: 10, masters: 5, '500': 2, '250': 0, chal: -99, itf: -99 };
+  const TIER_BONUS  = { slam: 10, masters: 5, '500': 2, '250': 0, chal: -1, itf: -3 };
   const SPORT_BONUS = { mlb: 3, nba: 3, nhl: 3, soccer: 3, golf: 3, wnba: 2, nfl: 2 };
 
   // Clean up malformed _fb_ golf picks from earlier bug before building ticket
@@ -7159,8 +7167,8 @@ function buildDailyTicketIfNeeded() {
       if ((p.conf || 0) < 1) continue; // skip toss-up game picks (< 60% confidence)
       const sport = p.sport || 'tennis';
       if (sport === 'tennis') {
-        const tierBonus = TIER_BONUS[p.tier] ?? -99;
-        score += Math.max(0, tierBonus);
+        if (p.tier === 'itf' && isMinorITFEvent(p.matchup)) continue;
+        score += TIER_BONUS[p.tier] ?? -3;
       } else {
         score += SPORT_BONUS[sport] || 1;
       }
