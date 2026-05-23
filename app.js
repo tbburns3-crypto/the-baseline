@@ -281,10 +281,12 @@ function showPicksHistory() {
       const l = dayResolved.length - w;
       const recordBadge = dayResolved.length
         ? `<span class="ph-day-record ${w > l ? 'ph-day-up' : w < l ? 'ph-day-down' : 'ph-day-even'}">${w}W–${l}L</span>` : '';
+      const gId = 'phg_' + date.replace(/\D/g,'');
       const pendBadge = dayPending.length
-        ? `<span class="ph-day-pend">${dayPending.length} pending</span>` : '';
+        ? `<button class="ph-day-pend-btn" onclick="(function(b){var g=document.getElementById('${gId}');var open=g.style.display!=='none';g.style.display=open?'none':'block';b.textContent=open?'${dayPending.length} pending ▾':'${dayPending.length} pending ▴';})(this)">${dayPending.length} pending ▾</button>`
+        : '';
       content += `<div class="ph-day-hdr">${fmtDayLabel(date)}${recordBadge}${pendBadge}</div>`;
-      if (dayPending.length)  content += dayPending.map(renderPend).join('');
+      if (dayPending.length)  content += `<div class="ph-pend-group" id="${gId}" style="display:none">${dayPending.map(renderPend).join('')}</div>`;
       if (dayResolved.length) content += dayResolved.map(renderRow).join('');
     }
   }
