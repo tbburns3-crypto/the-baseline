@@ -3192,12 +3192,12 @@ function buildPickSection(awayName, homeName, opts) {
     }
   }
 
-  // 6. MLB pitcher ERA
+  // 6. MLB pitcher ERA — starting pitcher is the single biggest game-by-game factor
   if (awayERA !== null && homeERA !== null) {
     const ae = parseFloat(awayERA), he = parseFloat(homeERA);
     if (ae > 0 && he > 0) {
-      aScore += Math.max(0, 5.5 - ae) * 0.025;
-      hScore += Math.max(0, 5.5 - he) * 0.025;
+      aScore += Math.max(0, 5.5 - ae) * 0.05;
+      hScore += Math.max(0, 5.5 - he) * 0.05;
       if (Math.abs(ae - he) > 0.4) {
         factors.push({ label: 'Starter ERA', detail: `${esc(aShort)} ${ae.toFixed(2)} · ${esc(hShort)} ${he.toFixed(2)}`, winner: ae < he ? 'away' : 'home' });
       }
@@ -3215,8 +3215,8 @@ function buildPickSection(awayName, homeName, opts) {
   // 8. Pitcher last start quality (MLB)
   if (sport === 'mlb' && (awayLastStartERA !== null || homeLastStartERA !== null)) {
     const ase = parseFloat(awayERA || 4.20), hse = parseFloat(homeERA || 4.20);
-    if (awayLastStartERA !== null) { const d = awayLastStartERA - ase; if (d < -1.5) aScore += 0.025; else if (d > 2.5) aScore -= 0.025; }
-    if (homeLastStartERA !== null) { const d = homeLastStartERA - hse; if (d < -1.5) hScore += 0.025; else if (d > 2.5) hScore -= 0.025; }
+    if (awayLastStartERA !== null) { const d = awayLastStartERA - ase; if (d < -1.5) aScore += 0.05; else if (d > 2.5) aScore -= 0.05; }
+    if (homeLastStartERA !== null) { const d = homeLastStartERA - hse; if (d < -1.5) hScore += 0.05; else if (d > 2.5) hScore -= 0.05; }
     if (awayLastStartERA !== null && homeLastStartERA !== null && Math.abs(awayLastStartERA - homeLastStartERA) >= 2.0) {
       factors.push({ label: 'Last start', detail: `${esc(aShort)} ${awayLastStartERA.toFixed(2)} · ${esc(hShort)} ${homeLastStartERA.toFixed(2)}`, winner: awayLastStartERA < homeLastStartERA ? 'away' : 'home' });
     }
@@ -4926,9 +4926,10 @@ async function renderESPNGamePreview(game, panel) {
       sport: game.sport, weather: j.gameInfo?.weather || null, weatherFmt: 'espn',
       awayRestDays: awayDaysRest, homeRestDays: homeDaysRest
     });
-    // Force-update with nuanced pick (form + H2H + series) so simple W-L seed is replaced
+    // MLB: force=true so pitcher ERA data overrides the simple seed pick.
+    // NBA/NHL/Soccer: force=false so we never overwrite the Vegas-blended pick from autoRecordAndResolvePick.
     if (pickResult.team && !gameRowState(game).fin) {
-      recordPick(String(game.id), pickResult.team, `${game.awayTeam} @ ${game.homeTeam}`, game.sport || '', pickResult.conf, true, null, '', game.sport === 'mlb' ? { gameTime: game.gameDate } : {});
+      recordPick(String(game.id), pickResult.team, `${game.awayTeam} @ ${game.homeTeam}`, game.sport || '', pickResult.conf, game.sport === 'mlb', null, '', game.sport === 'mlb' ? { gameTime: game.gameDate } : {});
     }
 
     let html = pickResult.html;
