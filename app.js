@@ -7077,6 +7077,13 @@ function _buildPickCandidates(allPicks, today) {
   const out = [];
   for (const [id, p] of Object.entries(allPicks)) {
     if (p.date !== today || id.includes('_fb_')) continue;
+    // Extra guard: tennis — verify actual match event_date isn't tomorrow
+    if ((p.sport === 'tennis' || !p.sport) && id.startsWith('tn_')) {
+      const m = S.matches.get(id.replace(/^tn_/, ''));
+      if (m?.event_date && m.event_date > today) continue;
+    }
+    // Extra guard: other sports with stored gameDate
+    if (p.gameDate && String(p.gameDate).slice(0, 10) > today) continue;
     let score = p.conf || 1;
     if (p.type === 'player') {
       score += SPORT_BONUS[p.sport] || 1;
@@ -7119,15 +7126,29 @@ function _selectTicketLegs(candidates) {
 
 // ── SECRET TICKET ────────────────────────────────────────────
 function buildSecretTicket() {
-  const today = dateStrLocal(0);
+  const today    = dateStrLocal(0);
+  const tomorrow = dateStrLocal(1);
   const allPicks = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
-  // Strict: conf >= 2, no challenger/ITF tennis, no RunTotal
+  // Strict: conf >= 2, no challenger/ITF tennis, no RunTotal, TODAY's games only
   const strict = candidates.filter(c => {
     if (c.conf < 2) return false;
     if (c.sport === 'tennis' && (c.tier === 'chal' || c.tier === 'itf')) return false;
     const p = allPicks[c.id];
     if (p?.prop === 'RunTotal') return false;
+    // Hard date check: tennis — verify via S.matches event_date
+    if (c.sport === 'tennis') {
+      const matchKey = c.id.replace(/^tn_/, '');
+      const m = S.matches.get(matchKey);
+      if (m?.event_date && m.event_date > today) return false;
+    }
+    // Hard date check: other sports with stored gameDate
+    if (p?.gameDate) {
+      const gameDay = String(p.gameDate).slice(0, 10);
+      if (gameDay > today) return false;
+    }
+    // Fallback: if pick date itself is tomorrow, exclude
+    if (p?.date && p.date > today) return false;
     return true;
   }).sort((a, b) => b.score - a.score);
   const sportCount = {};
