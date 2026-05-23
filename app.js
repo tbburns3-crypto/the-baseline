@@ -3778,7 +3778,8 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
         recordPlayerPick(`runs_${gKey}`, 'mlb', `${dir} ${ouLine}`, 'RunTotal',
           `proj ${projTotalRuns} runs`, gameMatchup, gamePk);
       }
-    } else {
+    } else if (fin) {
+      // Only grade picks once the game is truly final — never during live play
       resolvePlayerPicksForGame(gKey, gamePk);
       // Resolve run total pick once game is final
       const _rtKey = `runs_${gKey}`;
@@ -8394,6 +8395,20 @@ function init() {
   // One-time: purge tennis picks stored with today's date but event_date from the past
   if (!localStorage.getItem('_rebuild_v169')) {
     localStorage.setItem('_rebuild_v169', '1');
+  }
+  // One-time: un-grade any player picks that were wrongly marked loss during live play
+  if (!localStorage.getItem('_rebuild_v182')) {
+    const today = dateStrLocal(0);
+    const picks = getPicks();
+    let changed = false;
+    for (const [id, p] of Object.entries(picks)) {
+      if (p.type === 'player' && p.result === 'loss' && p.date === today) {
+        picks[id].result = null;
+        changed = true;
+      }
+    }
+    if (changed) savePicks(picks);
+    localStorage.setItem('_rebuild_v182', '1');
   }
   // One-time: clear old dateless golf pickIds (golf_NNNN_ovN) + force ticket rebuild
   if (!localStorage.getItem('_rebuild_v164b')) {
