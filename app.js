@@ -7132,36 +7132,18 @@ function _selectTicketLegs(candidates) {
 // ── SECRET TICKET ────────────────────────────────────────────
 function buildSecretTicket() {
   const today    = dateStrLocal(0);
-  const tomorrow = dateStrLocal(1);
   const allPicks = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
-  // Strict: conf >= 2, no challenger/ITF tennis, no RunTotal, TODAY's games only
+  // MLB only — conf >= 2, no RunTotal
   const strict = candidates.filter(c => {
+    if (c.sport !== 'mlb') return false;
     if (c.conf < 2) return false;
-    if (c.sport === 'tennis' && (c.tier === 'chal' || c.tier === 'itf')) return false;
     const p = allPicks[c.id];
     if (p?.prop === 'RunTotal') return false;
-    // Hard date check: tennis — check stored matchDate first; fall back to S.matches
-    if (c.sport === 'tennis') {
-      if (p?.matchDate && p.matchDate > today) return false;
-      const matchKey = c.id.replace(/^tn_/, '');
-      const m = S.matches.get(matchKey);
-      if (m?.event_date && m.event_date > today) return false;
-    }
-    // Hard date check: other sports with stored gameDate
-    if (p?.gameDate) {
-      const gameDay = String(p.gameDate).slice(0, 10);
-      if (gameDay > today) return false;
-    }
-    // Fallback: if pick date itself is tomorrow, exclude
-    if (p?.date && p.date > today) return false;
     return true;
   }).sort((a, b) => b.score - a.score);
-  const sportCount = {};
   const legs = [];
   for (const c of strict) {
-    if ((sportCount[c.sport] || 0) >= 3) continue;
-    sportCount[c.sport] = (sportCount[c.sport] || 0) + 1;
     legs.push({ ...c, _pickObj: allPicks[c.id] });
     if (legs.length >= 10) break;
   }
@@ -7214,7 +7196,7 @@ function showSecretTicket() {
     <div class="st-hdr">
       <div class="st-hdr-left">
         <div class="st-title">🔒 Secret Ticket</div>
-        <div class="st-sub">Top ${legs.length} picks today · Highest confidence only${statusLine ? ' · '+statusLine.replace(/<[^>]+>/g,'') : ''}</div>
+        <div class="st-sub">⚾ MLB · Top ${legs.length} picks today · Highest confidence only</div>
       </div>
       <button class="st-close" onclick="document.getElementById('st-modal').remove()">✕</button>
     </div>
