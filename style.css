@@ -2046,10 +2046,76 @@ body.simple-mode #app-layout { display: none !important; }
 .tp-loading { background: rgba(0,230,118,.06); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-size: .8rem; color: var(--text-2); margin-bottom: 12px; }
 
 /* date nav */
-.tp-day-nav { display: flex; gap: 6px; margin-bottom: 10px; }
+.tp-day-nav { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .tp-day-btn { flex: 1; padding: 7px 0; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted); font-size: .78rem; font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
 .tp-day-btn:hover { background: var(--bg-hover); color: var(--text); }
 .tp-day-active { background: rgba(0,230,118,.12); border-color: var(--accent); color: var(--accent) !important; }
+
+/* Secret Ticket open button */
+.st-open-btn {
+  padding: 7px 14px; border-radius: 6px;
+  background: linear-gradient(135deg, rgba(255,215,0,.18), rgba(255,170,0,.1));
+  border: 1px solid rgba(255,200,0,.35);
+  color: #ffd700; font-size: .78rem; font-weight: 800;
+  cursor: pointer; letter-spacing: .03em; transition: all .15s;
+  white-space: nowrap;
+}
+.st-open-btn:hover { background: linear-gradient(135deg, rgba(255,215,0,.28), rgba(255,170,0,.18)); border-color: rgba(255,200,0,.6); }
+
+/* ── SECRET TICKET MODAL ── */
+.st-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.75);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 950; padding: 0;
+}
+@media (min-width: 600px) { .st-modal { align-items: center; } }
+.st-panel {
+  background: #0d1a0f; border: 1px solid rgba(255,200,0,.3);
+  border-radius: 16px 16px 0 0; width: 100%; max-width: 520px;
+  max-height: 82vh; overflow-y: auto; padding-bottom: 8px;
+  box-shadow: 0 0 40px rgba(255,200,0,.1);
+}
+@media (min-width: 600px) { .st-panel { border-radius: 16px; max-height: 82vh; } }
+.st-hdr {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 18px 12px; border-bottom: 1px solid rgba(255,200,0,.2);
+  position: sticky; top: 0; background: #0d1a0f; z-index: 1;
+}
+.st-hdr-left { flex: 1; }
+.st-title { font-weight: 900; font-size: 1.05rem; color: #ffd700; letter-spacing: .02em; }
+.st-sub    { font-size: .7rem; color: rgba(255,215,0,.55); margin-top: 2px; }
+.st-close  {
+  background: rgba(255,200,0,.1); border: 1px solid rgba(255,200,0,.2);
+  color: rgba(255,215,0,.6); font-size: 1rem; cursor: pointer;
+  padding: 4px 9px; border-radius: 8px; transition: all .15s;
+}
+.st-close:hover { background: rgba(255,200,0,.2); color: #ffd700; }
+.st-list { padding: 4px 0; }
+.st-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 18px; border-bottom: 1px solid rgba(255,200,0,.07);
+  border-left: 3px solid transparent;
+}
+.st-win  { border-left-color: rgba(0,230,118,.5); }
+.st-loss { border-left-color: rgba(239,83,80,.4); }
+.st-num  { font-size: .7rem; color: rgba(255,215,0,.4); font-weight: 700; min-width: 16px; }
+.st-sport { font-size: 1rem; }
+.st-body { flex: 1; min-width: 0; }
+.st-match { font-size: .74rem; color: rgba(255,215,0,.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-pick  { font-size: .9rem; font-weight: 700; color: #e8f5e9; margin-top: 1px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.st-prop  { font-size: .7rem; font-weight: 600; background: rgba(255,200,0,.12); color: #ffd700; border-radius: 4px; padding: 1px 6px; }
+.st-conf  { font-size: .68rem; letter-spacing: 1px; color: rgba(255,200,0,.6); white-space: nowrap; }
+.st-badge { font-size: .72rem; font-weight: 900; padding: 2px 7px; border-radius: 5px; }
+.st-w     { background: rgba(0,230,118,.2); color: var(--accent); }
+.st-l     { background: rgba(239,83,80,.15); color: #ef5350; }
+.st-record { font-weight: 700; color: var(--accent); }
+.st-empty { padding: 28px 18px; text-align: center; color: rgba(255,215,0,.5); font-size: .86rem; line-height: 1.6; }
+.st-empty-sub { font-size: .76rem; color: rgba(255,255,255,.3); }
+.st-footer {
+  text-align: center; padding: 14px 18px 10px;
+  font-size: .68rem; color: rgba(255,215,0,.35); letter-spacing: .04em;
+  border-top: 1px solid rgba(255,200,0,.1); margin-top: 6px;
+}
 
 /* sport sections */
 .tp-sport-section { margin-bottom: 22px; }

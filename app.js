@@ -7117,6 +7117,88 @@ function _selectTicketLegs(candidates) {
   return legs.length >= 2 ? legs : null;
 }
 
+// ── SECRET TICKET ────────────────────────────────────────────
+function buildSecretTicket() {
+  const today = dateStrLocal(0);
+  const allPicks = getPicks();
+  const candidates = _buildPickCandidates(allPicks, today);
+  // Strict: conf >= 2, no challenger/ITF tennis, no RunTotal
+  const strict = candidates.filter(c => {
+    if (c.conf < 2) return false;
+    if (c.sport === 'tennis' && (c.tier === 'chal' || c.tier === 'itf')) return false;
+    const p = allPicks[c.id];
+    if (p?.prop === 'RunTotal') return false;
+    return true;
+  }).sort((a, b) => b.score - a.score);
+  const sportCount = {};
+  const legs = [];
+  for (const c of strict) {
+    if ((sportCount[c.sport] || 0) >= 3) continue;
+    sportCount[c.sport] = (sportCount[c.sport] || 0) + 1;
+    legs.push({ ...c, _pickObj: allPicks[c.id] });
+    if (legs.length >= 10) break;
+  }
+  return legs;
+}
+
+function showSecretTicket() {
+  document.getElementById('st-modal')?.remove();
+  const legs   = buildSecretTicket();
+  const today  = dateStrLocal(0);
+  const allPicks = getPicks();
+  const SPORT_ICON = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nhl:'🏒', nfl:'🏈', soccer:'⚽', golf:'⛳', other:'🏅' };
+  const MLB_DISP_ST = { Hit:'1+ Hits', RBI:'1+ RBI', HR:'To Hit HR', Double:'1+ Double', XBH:'1+ XBH', K:'Pitcher Ks', Walk:'To Walk', SB:'To Steal' };
+
+  const makeRow = (c, i) => {
+    const live   = allPicks[c.id] || {};
+    const result = live.result ?? null;
+    const badge  = result === 'win'  ? '<span class="st-badge st-w">W</span>'
+                 : result === 'loss' ? '<span class="st-badge st-l">L</span>' : '';
+    const dots   = '●'.repeat(c.conf) + '○'.repeat(3 - c.conf);
+    const icon   = SPORT_ICON[c.sport] || '🏅';
+    const pick   = c.type === 'player'
+      ? (MLB_DISP_ST[c._pickObj?.prop] || c.description || c._pickObj?.prop || '')
+      : '';
+    const name   = c.type === 'player' ? lastName(c.pick || '') : (c.pick || '');
+    const match  = (c.matchup || '').replace(/ @ /g, ' v ');
+    return `<div class="st-row${result==='win'?' st-win':result==='loss'?' st-loss':''}">
+      <span class="st-num">${i+1}</span>
+      <span class="st-sport">${icon}</span>
+      <div class="st-body">
+        <div class="st-match">${esc(match)}</div>
+        <div class="st-pick">${esc(name)}${pick ? `<span class="st-prop">${esc(pick)}</span>` : ''}</div>
+      </div>
+      <span class="st-conf">${dots}</span>
+      ${badge}
+    </div>`;
+  };
+
+  const wins   = legs.filter(c => (allPicks[c.id]?.result) === 'win').length;
+  const losses = legs.filter(c => (allPicks[c.id]?.result) === 'loss').length;
+  const statusLine = (wins || losses) ? `<span class="st-record">${wins}W – ${losses}L</span>` : '';
+
+  const body = legs.length
+    ? legs.map((c, i) => makeRow(c, i)).join('')
+    : '<div class="st-empty">Not enough high-confidence picks yet today.<br><span class="st-empty-sub">Browse the sport tabs to load picks first.</span></div>';
+
+  const modal = document.createElement('div');
+  modal.id = 'st-modal';
+  modal.innerHTML = `<div class="st-panel">
+    <div class="st-hdr">
+      <div class="st-hdr-left">
+        <div class="st-title">🔒 Secret Ticket</div>
+        <div class="st-sub">Top ${legs.length} picks today · Highest confidence only${statusLine ? ' · '+statusLine.replace(/<[^>]+>/g,'') : ''}</div>
+      </div>
+      <button class="st-close" onclick="document.getElementById('st-modal').remove()">✕</button>
+    </div>
+    <div class="st-list">${body}</div>
+    <div class="st-footer">Built fresh from today's data · For your eyes only 👀</div>
+  </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.className = 'st-modal';
+  document.body.appendChild(modal);
+}
+
 // Day ticket builds ONCE at first run each day (picks for games before 6pm ET).
 // Night ticket builds ONCE after 5pm ET (picks for games at/after 6pm ET).
 // After each ticket is built, only W/L updates can change it.
@@ -7611,9 +7693,11 @@ function getPicksForTicket(type, date, allPicks) {
   const sortConf = (a, b) => (b[1].conf||1) - (a[1].conf||1);
   const numFromStat = (stat, rx) => { const m = (stat||'').match(rx); return m ? parseFloat(m[1]) : 0; };
   const toGame = ([id, p]) => ({ id, pick: p.team, matchup: p.matchup, conf: p.conf||1, sport: p.sport, propType:'game', result: p.result });
+  const MLB_DISP = { Hit:'1+ Hits', RBI:'1+ RBI', HR:'To Hit HR', Double:'1+ Double', XBH:'1+ XBH', K:'Pitcher Ks', Walk:'To Walk', SB:'To Steal' };
   const toPlr  = (propType) => ([id, p]) => {
     const betLine = (p.stat||'').match(/(OVER|UNDER)\s+[\d.]+\s+\w+/i)?.[0];
-    return { id, pick: lastName(p.player||p.team||''), description: betLine || p.prop || '',
+    const desc = betLine || (p.sport === 'mlb' ? (MLB_DISP[p.prop] || p.prop) : p.prop) || '';
+    return { id, pick: lastName(p.player||p.team||''), description: desc,
       matchup: p.gameMatchup||p.matchup||'', conf: 2, sport: p.sport, propType, result: p.result };
   };
 
@@ -7970,10 +8054,12 @@ function renderTicketsPage() {
   const fullDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   const grid     = (cards) => `<div class="tp-grid">${cards.join('')}</div>`;
 
+  const secretBtn = off === 0 ? `<button class="st-open-btn" onclick="showSecretTicket()">🔒 Secret Ticket</button>` : '';
   const dateNav = `<div class="tp-day-nav">
     <button class="tp-day-btn${off===-1?' tp-day-active':''}" onclick="_ticketDateOffset=-1;renderTicketsPage()">Yesterday</button>
     <button class="tp-day-btn${off===0?' tp-day-active':''}" onclick="_ticketDateOffset=0;renderTicketsPage()">Today</button>
     <button class="tp-day-btn${off===1?' tp-day-active':''}" onclick="_ticketDateOffset=1;renderTicketsPage()">Tomorrow</button>
+    ${secretBtn}
   </div>`;
 
   // ── Today's Picks — Morning / Evening split tickets ──
