@@ -1916,34 +1916,6 @@ input { font: inherit; }
   padding: 1px 4px; margin-left: 4px; vertical-align: middle;
 }
 
-/* ── LOTTERY ── */
-.lottery-section { padding: 12px 12px 24px; max-width: 540px; }
-.lottery-api-note { font-size: .74rem; color: #ffb300; background: rgba(255,179,0,.08); border: 1px solid rgba(255,179,0,.2); border-radius: 7px; padding: 8px 12px; margin-bottom: 10px; }
-.lottery-api-note a { color: #ffb300; }
-.lottery-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
-.lottery-card-hdr { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
-.lottery-game-icon { font-size: 1.1rem; flex-shrink: 0; }
-.lottery-game-name { font-weight: 700; font-size: .95rem; flex: 1; }
-.lottery-draw-date { color: var(--text-muted); font-size: .72rem; white-space: nowrap; }
-.lottery-numbers { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
-.lotto-ball {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 50%;
-  background: rgba(255,255,255,.07); border: 1.5px solid var(--border);
-  font-weight: 700; font-size: .82rem; color: var(--text); flex-shrink: 0;
-}
-.lotto-ball-special { background: #c62828; color: #fff; border-color: #b71c1c; }
-.lotto-ball-mega    { background: #fdd835; color: #1a1a1a; border-color: #f9a825; }
-.lotto-ball-fire    { background: #e64a19; color: #fff; border-color: #bf360c; }
-.lotto-sep { color: var(--text-muted); font-size: .9rem; align-self: center; }
-.lotto-mult { background: rgba(255,255,255,.08); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: .72rem; font-weight: 700; color: var(--text-muted); align-self: center; margin-left: 2px; }
-.lottery-next { color: var(--text-muted); font-size: .76rem; margin-top: 7px; }
-.lottery-next b { color: var(--accent); }
-/* Ohio lottery fallback links */
-.lottery-ohio-links { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
-.lottery-ohio-hdr { font-size: .72rem; font-weight: 700; color: var(--text-muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 10px; }
-.lottery-ohio-link { display: inline-block; background: rgba(255,255,255,.06); border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px; margin: 3px 4px 3px 0; font-size: .8rem; color: var(--text); text-decoration: none; }
-.lottery-ohio-link:hover { background: rgba(0,230,118,.12); border-color: var(--accent); color: var(--accent); }
 /* Golf picks — pre-round lock label + locked earlier-group cards */
 .golf-pick-pre-label { font-size: .65rem; color: var(--text-muted); letter-spacing: .04em; text-transform: uppercase; }
 .golf-pick-card-locked { opacity: .85; }
@@ -2009,11 +1981,6 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-plr-l { color: var(--text-muted); }
 .sv-empty { text-align: center; padding: 50px 24px; color: var(--text-muted); font-size: .92rem; line-height: 1.6; }
 .sv-hint { display: block; font-size: .78rem; margin-top: 10px; opacity: .7; }
-/* Lottery in simple view */
-.sv-lottery-section { grid-column: 1 / -1; }
-.sv-lottery-block { margin-top: 14px; }
-.sv-lottery-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; margin-top: 6px; }
-.sv-lottery-cards .lottery-card { margin: 0; }
 /* ── FLAT TOP PICKS LIST ── */
 .sv-top-picks-list { display: flex; flex-direction: column; gap: 6px; }
 .sv-top-item { display: flex; align-items: flex-start; gap: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }

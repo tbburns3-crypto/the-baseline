@@ -1185,8 +1185,8 @@ function groupRoundLabel(matches) {
   return '';
 }
 
-function inlineTennisPick(m, dateOverride = null) {
-  if (isLive(m.event_status)) return '';
+function inlineTennisPick(m, dateOverride = null, allowLive = false) {
+  if (isLive(m.event_status) && !allowLive) return '';
 
   const today     = dateStrLocal(0);
   const matchDate = m.event_date || '';
@@ -2302,7 +2302,6 @@ function stopScoresTimer() {
 function loadSportScores(sport) {
   if (sport === 'soccer')       loadSoccerScores();
   else if (sport === 'golf')    loadGolfLeaderboard();
-  else if (sport === 'lottery') loadLottery();
   else if (sport === 'tickets') renderTicketsPage();
   else loadOtherScores(sport);
 }
@@ -2342,7 +2341,7 @@ function switchSport(sport) {
     lineupsTab.style.display  = 'none';
     picksTab.style.display    = '';
     picksTab.textContent = '⛳ Picks';
-  } else if (sport === 'lottery' || sport === 'tickets') {
+  } else if (sport === 'tickets') {
     secTab.style.display    = 'none';
     playersTab.style.display = 'none';
     lineupsTab.style.display = 'none';
@@ -2403,7 +2402,6 @@ function switchView(view) {
   } else {
     if (view === 'scores') {
       const panelId = S.sport === 'golf'    ? 'view-golf-leaderboard'
-                    : S.sport === 'lottery' ? 'view-lottery'
                     : S.sport === 'tickets' ? 'view-tickets'
                     : 'view-other-scores';
       document.getElementById(panelId).classList.add('active');
@@ -6933,209 +6931,12 @@ async function refresh() {
   }
 }
 
-// ── OHIO LOTTERY ─────────────────────────────────────────────
-// Multi-state games: official APIs (via CORS proxy since they don't set CORS headers)
-const LOTTERY_MM_URL = 'https://corsproxy.io/?https://www.megamillions.com/cmspages/getwinningnumbers.aspx';
-const LOTTERY_PB_URL = 'https://corsproxy.io/?https://www.powerball.com/api/v1/numbers/powerball/recent/limit/1';
-// NY Open Data fallbacks (free, CORS-friendly, no key required)
-const LOTTERY_MM_FALLBACK = 'https://data.ny.gov/resource/5xaw-6ayf.json?$limit=1&$order=draw_date+DESC';
-const LOTTERY_PB_FALLBACK = 'https://data.ny.gov/resource/d6yy-54nr.json?$limit=1&$order=draw_date+DESC';
-// Ohio Lottery: try multiple candidate endpoints, fall back to HTML parse of their page
-const LOTTERY_OHIO_CANDIDATES = [
-  'https://corsproxy.io/?https://www.ohiolottery.com/Winning-Numbers/WinningNumbersJson',
-  'https://corsproxy.io/?https://www.ohiolottery.com/GamesPagesAjax/WinningNumbers',
-  'https://corsproxy.io/?https://www.ohiolottery.com/api/winningnumbers/getall',
-];
-
-// Display order — Ohio games first, multi-state at bottom
-const LOTTERY_ORDER = [
-  'Pick 3', 'Pick 4', 'Pick 5',
-  'Rolling Cash 5', 'Classic Lotto', 'Lucky for Life',
-  'Mega Millions', 'Powerball',
-];
-
-function lottoBall(n, cls = '') {
-  return `<span class="lotto-ball${cls ? ' ' + cls : ''}">${esc(String(n))}</span>`;
-}
-
-function renderLotteryCard(game) {
-  const balls      = (game.numbers || []).map(n => lottoBall(n)).join('');
-  const specialBall = game.special != null
-    ? `<span class="lotto-sep">+</span>${lottoBall(game.special, game.specialCls || 'lotto-ball-special')}`
-    : '';
-  const multBadge = game.multiplier
-    ? `<span class="lotto-mult">${esc(game.multiplier)}</span>`
-    : '';
-  const jackpot = game.jackpot
-    ? `<div class="lottery-next">💰 Next jackpot: <b>${esc(game.jackpot)}</b></div>`
-    : '';
-  const nextDraw = game.nextDraw
-    ? `<div class="lottery-next">Next draw: ${esc(game.nextDraw)}</div>`
-    : '';
-  return `<div class="lottery-card">
-    <div class="lottery-card-hdr">
-      <span class="lottery-game-icon">${game.icon}</span>
-      <span class="lottery-game-name">${esc(game.name)}</span>
-      <span class="lottery-draw-date">${esc(game.date || '')}</span>
-    </div>
-    <div class="lottery-numbers">${balls}${specialBall}${multBadge}</div>
-    ${jackpot}${nextDraw}
-  </div>`;
-}
-
-function lotteryGameOrder(name) {
-  const i = LOTTERY_ORDER.findIndex(n => name.toLowerCase().includes(n.toLowerCase()));
-  return i < 0 ? 99 : i;
-}
-
-// Try Ohio Lottery JSON endpoints in sequence, then fall back to HTML parse
-async function fetchOhioLotteryGames() {
-  // Strategy 1: try known JSON endpoints
-  for (const url of LOTTERY_OHIO_CANDIDATES) {
-    try {
-      const r = await fetch(url);
-      if (!r.ok) continue;
-      const ct = r.headers.get('content-type') || '';
-      if (!ct.includes('json') && !ct.includes('javascript')) continue;
-      const data = await r.json();
-      const list = Array.isArray(data) ? data : (data?.games || data?.results || data?.data || []);
-      if (list.length > 0 && (list[0].GameName || list[0].gameName || list[0].name)) return list;
-    } catch {}
-  }
-  // Strategy 2: parse the winning-numbers page for embedded JSON
-  try {
-    const html = await fetch('https://corsproxy.io/?https://www.ohiolottery.com/Winning-Numbers/All-Games').then(r => r.text());
-    const doc  = new DOMParser().parseFromString(html, 'text/html');
-    for (const s of doc.querySelectorAll('script:not([src])')) {
-      const c = s.textContent || '';
-      // Look for JSON arrays that look like game result records
-      const m = c.match(/(\[\s*\{[^<]{50,}?\}[\s,]*\{[^<]{10,}?\}\s*\])/s);
-      if (m) {
-        try {
-          const arr = JSON.parse(m[1]);
-          if (Array.isArray(arr) && arr.length > 0 && (arr[0].GameName || arr[0].WinningNumbers)) return arr;
-        } catch {}
-      }
-    }
-  } catch {}
-  return null; // all strategies failed
-}
-
-async function fetchLotteryGames() {
-  const [ohioData, mmR, pbR, mmFbR, pbFbR] = await Promise.allSettled([
-    fetchOhioLotteryGames(),
-    fetch(LOTTERY_MM_URL).then(r => r.json()),
-    fetch(LOTTERY_PB_URL).then(r => r.json()),
-    fetch(LOTTERY_MM_FALLBACK).then(r => r.json()),
-    fetch(LOTTERY_PB_FALLBACK).then(r => r.json()),
-  ]);
-
-  const games = [];
-  const ohioList = ohioData.status === 'fulfilled' ? (ohioData.value || []) : [];
-
-  for (const g of ohioList) {
-    const name = g.GameName || g.gameName || g.name || '';
-    if (!name) continue;
-    const low = name.toLowerCase();
-    if (low.includes('keno') || low.includes('mega') || low.includes('powerball')) continue;
-    const numStr = g.WinningNumbers || g.winningNumbers || g.numbers || '';
-    const nums   = String(numStr).split(/[-,\s]+/).map(s => s.trim()).filter(n => /^\d+$/.test(n));
-    if (!nums.length) continue;
-    const fireStr = g.Fireball || g.fireball || '';
-    const icon = low.includes('pick 3') ? '3️⃣' : low.includes('pick 4') ? '4️⃣'
-               : low.includes('pick 5') ? '5️⃣' : low.includes('rolling') ? '🎱'
-               : low.includes('classic') ? '🎰' : low.includes('lucky') ? '🍀' : '🎲';
-    games.push({ name, icon, numbers: nums, special: fireStr || null, specialCls: 'lotto-ball-fire', multiplier: null, date: g.DrawDate || g.drawDate || '' });
-  }
-
-  const mmRow = (() => {
-    if (mmR.status === 'fulfilled') {
-      const v = mmR.value;
-      if (v?.WinningNumber1) return { type: 'official', v };
-    }
-    if (mmFbR.status === 'fulfilled') {
-      const arr = mmFbR.value;
-      return Array.isArray(arr) && arr[0] ? { type: 'ny', v: arr[0] } : null;
-    }
-    return null;
-  })();
-  if (mmRow) {
-    const { type, v } = mmRow;
-    const nums  = type === 'official'
-      ? [v.WinningNumber1, v.WinningNumber2, v.WinningNumber3, v.WinningNumber4, v.WinningNumber5].filter(Boolean)
-      : String(v.winning_numbers || '').split(/\s+/).filter(Boolean);
-    const mb    = type === 'official' ? v.MegaBall   : v.mega_ball;
-    const mult  = type === 'official' ? (v.MegaPlier ? `${v.MegaPlier}x Megaplier` : null)
-                                      : (v.multiplier ? `${v.multiplier}x Megaplier` : null);
-    const date  = type === 'official' ? (v.DrawDate || '')
-                                      : (v.draw_date ? new Date(v.draw_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '');
-    games.push({ name:'Mega Millions', icon:'💰', numbers:nums, special:mb||null, specialCls:'lotto-ball-mega', multiplier:mult, date });
-  }
-
-  const pbRow = (() => {
-    if (pbR.status === 'fulfilled') {
-      const v = pbR.value;
-      const row = Array.isArray(v) ? v[0] : v;
-      if (row?.field1 || row?.winning_numbers) return { type: 'official', v: row };
-    }
-    if (pbFbR.status === 'fulfilled') {
-      const arr = pbFbR.value;
-      return Array.isArray(arr) && arr[0] ? { type: 'ny', v: arr[0] } : null;
-    }
-    return null;
-  })();
-  if (pbRow) {
-    const { type, v } = pbRow;
-    const nums  = type === 'official' && v.field1
-      ? [v.field1, v.field2, v.field3, v.field4, v.field5].filter(Boolean)
-      : String(v.winning_numbers || '').split(/\s+/).filter(Boolean);
-    const pb    = type === 'official' ? (v.field6 || v.powerball) : v.powerball;
-    const mult  = type === 'official' ? (v.multiplier || null)
-                                      : (v.multiplier ? `${v.multiplier}x Power Play` : null);
-    const date  = type === 'official' ? (v.date || v.drawDate || '')
-                                      : (v.draw_date ? new Date(v.draw_date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '');
-    games.push({ name:'Powerball', icon:'⚡', numbers:nums, special:pb||null, specialCls:'lotto-ball-special', multiplier:mult, date });
-  }
-
-  games.sort((a, b) => lotteryGameOrder(a.name) - lotteryGameOrder(b.name));
-  return { games, ohioList };
-}
-
-async function loadLottery() {
-  const seq  = _loadSeq;
-  const area = document.getElementById('lottery-area');
-  if (!area) return;
-  if (!area.querySelector('.lottery-card')) {
-    area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading lottery numbers…</p></div>';
-  }
-
-  const { games, ohioList } = await fetchLotteryGames();
-
-  if (_loadSeq !== seq) return;
-
-  const OHIO_GAMES = [
-    { name:'Pick 3', icon:'3️⃣', slug:'Pick-3' }, { name:'Pick 4', icon:'4️⃣', slug:'Pick-4' },
-    { name:'Pick 5', icon:'5️⃣', slug:'Pick-5' }, { name:'Rolling Cash 5', icon:'🎱', slug:'Rolling-Cash-5' },
-    { name:'Classic Lotto', icon:'🎰', slug:'Classic-Lotto' }, { name:'Lucky for Life', icon:'🍀', slug:'Lucky-for-Life' },
-  ];
-  const ohioHasData = ohioList.length > 0;
-  const ohioSection = ohioHasData ? '' : `<div class="lottery-ohio-links">
-    <div class="lottery-ohio-hdr">🏛 Ohio Games — tap to view on OhioLottery.com</div>
-    ${OHIO_GAMES.map(g => `<a class="lottery-ohio-link" href="https://www.ohiolottery.com/Games/${g.slug}/Winning-Numbers" target="_blank" rel="noopener">${g.icon} ${g.name}</a>`).join('')}
-  </div>`;
-
-  area.innerHTML = `<div class="lottery-section">${ohioSection}${games.map(renderLotteryCard).join('')}</div>`;
-
-  const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() });
-  setConn('connected', `Lottery updated ${t}`);
-}
 
 // ── SIMPLE VIEW (Picks of the Day) ───────────────────────────
 const SPORT_ICONS  = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'🏈', nhl:'🏒', soccer:'⚽', golf:'⛳' };
 const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', nfl:'Football', nhl:'Hockey', soccer:'Soccer', golf:'Golf' };
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
-let _svLotteryHTML = '';
 const _TICKET_KEY     = '_baseline_ticket_v10';
 const _YST_TICKET_KEY = '_baseline_yst_ticket_v10';
 let _dailyTicketCache = null; // in-session lock — once set, never changes within this page load
@@ -7287,21 +7088,28 @@ async function preloadTennisPicksQuiet() {
       tennisFetch('get_fixtures', { date_start: tomorrow, date_stop: tomorrow }).catch(() => []),
     ]);
 
-    // Pre-fetch H2H for upcoming main-draw matches so inlineTennisPick has form data.
-    // Limit to ATP/WTA/Slam/Masters/500/250 — skip Challenger/ITF (too many, low value).
+    // Pre-fetch H2H for upcoming AND live main-draw matches so inlineTennisPick has form data.
+    // Limit to ATP/WTA — skip Challenger/ITF (too many, low value).
     const isMainDraw = m => { const c = matchCategory(m.event_type || ''); return c === 'atp' || c === 'wta'; };
     const isUpcoming = m => !isLive(m.event_status) && !isFinished(m.event_status);
 
-    const upcoming = [...todayMatches, ...tomorrowMatches]
-      .filter(m => isUpcoming(m) && isMainDraw(m) && m.first_player_key && m.second_player_key)
-      .slice(0, 20); // cap at 20 API calls
+    // Include live today's matches in H2H fetch so we can record picks for matches that
+    // already started by the time the user opens the app (e.g. Roland Garros morning).
+    const needsH2H = [...todayMatches, ...tomorrowMatches]
+      .filter(m => (isUpcoming(m) || isLive(m.event_status)) && isMainDraw(m) && m.first_player_key && m.second_player_key)
+      .slice(0, 25); // cap at 25 API calls
 
-    await Promise.allSettled(upcoming.map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
+    await Promise.allSettled(needsH2H.map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
+
+    const existingPicks = getPicks();
 
     // Process today's matches
     for (const m of todayMatches) {
       S.matches.set(String(m.event_key), m);
-      inlineTennisPick(m);
+      // For live matches: record a pick only if one wasn't already stored (pre-game analysis).
+      const pickId = 'tn_' + m.event_key;
+      const alreadyHasPick = !!existingPicks[pickId];
+      inlineTennisPick(m, null, isLive(m.event_status) && !alreadyHasPick);
       if (isFinished(m.event_status) && m.event_winner) {
         let wln = '';
         if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player  || '');
@@ -7435,11 +7243,6 @@ async function preloadPicksForSimpleView() {
   try { await loadSoccerScores(); } catch (e) {}
   try { await loadGolfPicksPage(); } catch (e) {}
   try { await preloadTennisPicksQuiet(); } catch (e) {}
-
-  try {
-    const { games } = await fetchLotteryGames();
-    if (games.length) _svLotteryHTML = games.map(renderLotteryCard).join('');
-  } catch (e) {}
 
   // Fix any stored golf pick matchup strings using the manual override before
   // the ticket reads them — ensures the ticket shows correct 3-ball groupings.
