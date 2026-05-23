@@ -198,26 +198,34 @@ function showPicksHistory() {
   const makeRow = p => {
     const win = p.result === 'win';
     return `<div class="ph-row ${win ? 'ph-win' : 'ph-loss'}">
-      <span class="ph-icon">${win ? '✓' : '✗'}</span>
-      <span class="ph-matchup">${esc(p.matchup || p.team)}</span>
-      <span class="ph-pick">→ ${esc(p.team)}</span>
+      <div class="ph-result-pill ${win ? 'ph-win-pill' : 'ph-loss-pill'}">${win ? 'W' : 'L'}</div>
+      <div class="ph-row-info">
+        <div class="ph-matchup">${esc(p.matchup || p.team)}</div>
+        <div class="ph-pick-line">Picked: <strong>${esc(p.team)}</strong></div>
+      </div>
     </div>`;
   };
 
   const makePendingRow = p => `<div class="ph-row ph-pending-row">
-    <span class="ph-icon">⏳</span>
-    <span class="ph-matchup">${esc(p.matchup || p.team)}</span>
-    <span class="ph-pick">→ ${esc(p.team)}</span>
+    <div class="ph-result-pill ph-pend-pill">·</div>
+    <div class="ph-row-info">
+      <div class="ph-matchup">${esc(p.matchup || p.team)}</div>
+      <div class="ph-pick-line">Picked: <strong>${esc(p.team)}</strong></div>
+    </div>
   </div>`;
 
   const makePlayerRow = p => {
     const win  = p.result === 'win';
-    const icon = p.result === null ? '⏳' : (win ? '✓' : '✗');
-    const cls  = p.result === null ? 'ph-pending-row' : (win ? 'ph-win' : 'ph-loss');
+    const isPending = p.result === null;
+    const pillCls = isPending ? 'ph-pend-pill' : (win ? 'ph-win-pill' : 'ph-loss-pill');
+    const pillTxt = isPending ? '·' : (win ? 'W' : 'L');
+    const cls = isPending ? 'ph-pending-row' : (win ? 'ph-win' : 'ph-loss');
     return `<div class="ph-row ph-player-row ${cls}">
-      <span class="ph-icon">${icon}</span>
-      <span class="ph-matchup"><span class="ph-prop-badge">${PROP_ICON[p.prop]||''} ${esc(p.prop)}</span> ${esc(lastName(p.player || ''))}</span>
-      <span class="ph-pick">${esc(p.gameMatchup || '')}</span>
+      <div class="ph-result-pill ${pillCls}">${pillTxt}</div>
+      <div class="ph-row-info">
+        <div class="ph-matchup"><span class="ph-prop-badge">${PROP_ICON[p.prop]||''} ${esc(p.prop)}</span>${esc(lastName(p.player || ''))}</div>
+        <div class="ph-pick-line">${esc(p.gameMatchup || '')}</div>
+      </div>
     </div>`;
   };
 
@@ -290,18 +298,34 @@ function showPicksHistory() {
       const pct = Math.round(tiers[c].w / tiers[c].t * 100);
       const dots = '●'.repeat(c) + '○'.repeat(3-c);
       const cls  = pct >= 60 ? 'good' : pct <= 40 ? 'bad' : 'avg';
-      return `<div class="ph-cal-row"><span class="ph-cal-dots">${dots}</span><span class="ph-cal-stat ph-cat-${cls}">${tiers[c].w}-${tiers[c].t-tiers[c].w} (${pct}%)</span></div>`;
+      return `<div class="ph-cal-row">
+        <span class="ph-cal-dots">${dots}</span>
+        <span class="ph-cal-label">${c === 3 ? 'High' : c === 2 ? 'Medium' : 'Low'} confidence</span>
+        <span class="ph-cal-stat ph-cat-${cls}">${tiers[c].w}–${tiers[c].t-tiers[c].w} <em>${pct}%</em></span>
+      </div>`;
     }).join('');
-    content += `<div class="ph-cal-section"><div class="ph-sport-hdr">Accuracy by Confidence</div>${calRows}</div>`;
+    content += `<div class="ph-cal-section"><div class="ph-cal-title">Accuracy by Confidence</div>${calRows}</div>`;
   }
+
+  // Overall W-L for header badge
+  const totalW = resolved.filter(p => p.result === 'win').length;
+  const totalL = resolved.length - totalW;
+  const overallPct = resolved.length ? Math.round(totalW / resolved.length * 100) : null;
+  const overallCls = overallPct === null ? '' : overallPct >= 55 ? 'ph-cat-good' : overallPct <= 40 ? 'ph-cat-bad' : 'ph-cat-avg';
+  const overallBadge = resolved.length
+    ? `<span class="ph-hdr-record ${overallCls}">${totalW}W – ${totalL}L${overallPct !== null ? ` · ${overallPct}%` : ''}</span>`
+    : '';
 
   const modal = document.createElement('div');
   modal.id    = 'picks-history-modal';
   modal.className = 'ph-modal';
   modal.innerHTML = `<div class="ph-panel">
     <div class="ph-hdr">
-      <span class="ph-title">${esc(sportLabel)} Pick History</span>
-      <span class="ph-sub">last 14 days</span>
+      <div class="ph-hdr-left">
+        <span class="ph-title">${esc(sportLabel)} Picks</span>
+        <span class="ph-sub">last 14 days</span>
+      </div>
+      ${overallBadge}
       <button class="ph-close" onclick="document.getElementById('picks-history-modal').remove()">✕</button>
     </div>
     <div class="ph-list">${content}</div>
