@@ -325,8 +325,9 @@ function resolvePick(gameId, winnerFull) {
 function updatePicksDisplay() {
   const allVals    = Object.values(getPicks());
   const sport      = S.sport;
+  const today      = dateStrLocal(0);
 
-  const sportPicks = allVals.filter(p => (p.sport || 'tennis') === sport);
+  const sportPicks = allVals.filter(p => (p.sport || 'tennis') === sport && p.date === today);
   const sportRes   = sportPicks.filter(p => p.result !== null);
   const sportPend  = sportPicks.filter(p => p.result === null);
   const sWins      = sportRes.filter(p => p.result === 'win').length;
@@ -428,6 +429,7 @@ function setUserTZ(tz) {
   localStorage.setItem(_TZ_KEY, tz);
   document.querySelectorAll('.tz-btn').forEach(b => b.classList.toggle('tz-active', b.dataset.tz === tz));
   renderSimpleView();
+  switchSport(S.sport); // re-render game times in the active view
 }
 // Returns YYYY-MM-DD in the user's chosen timezone (default ET)
 function dateStrLocal(offset = 0) {
@@ -1280,7 +1282,7 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
       const now = Date.now(); let hw1 = 0, hw2 = 0;
       for (const g of h2h) {
         const age = g.event_date ? (now - new Date(g.event_date+'T12:00:00').getTime()) / 2592000000 : 24;
-        const wt  = age <= 12 ? 2 : age <= 24 ? 1.5 : 1;
+        const wt  = age <= 12 ? 2 : age <= 24 ? 1.5 : 0.5; // >2yr old results barely count
         const gp1 = String(g.first_player_key || '');
         const p1w = (g.event_winner === 'First Player' && gp1 === p1key) || (g.event_winner === 'Second Player' && gp1 !== p1key);
         if (p1w) hw1 += wt; else hw2 += wt;
@@ -7168,7 +7170,7 @@ function buildDailyTicketIfNeeded() {
       const sport = p.sport || 'tennis';
       if (sport === 'tennis') {
         if (p.tier === 'itf' && isMinorITFEvent(p.matchup)) continue;
-        score += TIER_BONUS[p.tier] ?? -3;
+        score += TIER_BONUS[p.tier] ?? 0;
       } else {
         score += SPORT_BONUS[sport] || 1;
       }
@@ -7327,10 +7329,14 @@ async function preloadPicksForSimpleView() {
   try { await populateRestDaysCache(); } catch (e) {}
   await Promise.allSettled([fetchInjuryPenalties('nba'), fetchInjuryPenalties('wnba')]);
 
-  // MLB handled separately below — loadMLBPicksPage records the nuanced team+player picks.
-  // Avoid running autoRecordAndResolvePick for MLB here to prevent a stale simple-seed
-  // (based on win% alone) from conflicting with the pitcher/form analysis pick.
+  // Seed MLB game picks now with force=false so they show up before the user visits the MLB tab.
+  // buildPickSection (force=true for MLB) will overwrite with pitcher/form analysis when the tab loads.
   const tomorrow = dateStrLocal(1);
+  try {
+    const [mlbToday, mlbTmrw] = await Promise.all([espnGames('mlb', 0), espnGames('mlb', 1).catch(() => [])]);
+    mlbToday.forEach(g => autoRecordAndResolvePick(g));
+    mlbTmrw.forEach(g => autoRecordAndResolvePick(g, tomorrow));
+  } catch {}
   for (const sport of ['nba', 'nfl', 'nhl', 'wnba']) {
     try {
       const [todayGames, tomorrowGames] = await Promise.all([
@@ -7717,7 +7723,13 @@ function getMLBPerGameTickets(date, allPicks) {
       .filter(l => l._merit >= 0)
       .sort((a, b) => b._merit - a._merit);
 
-    const selected = props.filter(l => l._merit > 0);
+    // Deduplicate: keep only the best pick per player name
+    const seenPlayers = new Set();
+    const selected = props.filter(l => l._merit > 0).filter(l => {
+      if (seenPlayers.has(l.pick)) return false;
+      seenPlayers.add(l.pick);
+      return true;
+    });
     return [
       ...(gamePick ? [gamePick] : []),
       ...selected.slice(0, 7),
@@ -7909,7 +7921,7 @@ function renderTicketsPage() {
     const cards = [];
     if (morn?.legs?.length) cards.push(renderTicketBlock('🌤 Day Ticket', morn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
     if (eve?.legs?.length)  cards.push(renderTicketBlock('🌙 Night Ticket', eve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
-    else if (!eve) cards.push(`<div class="sv-ticket sv-ticket-pending"><div class="sv-ticket-hdr">🌙 Night Ticket</div><div class="sv-pending-msg">Check back after 5:03 PM ET for tonight's picks</div></div>`);
+    else if (!eve) cards.push(`<div class="sv-ticket sv-ticket-pending"><div class="sv-ticket-hdr">🌙 Night Ticket</div><div class="sv-pending-msg">Check back after 5:00 PM ET for tonight's picks</div></div>`);
     if (cards.length) {
       todayPicksHTML = `<div class="tp-sport-section">
         <div class="tp-sport-hdr">🎫 Today's Picks</div>
@@ -8153,7 +8165,7 @@ function renderSimpleView() {
     ? makeBlock('🌙 Night Ticket', eve)
     : `<div class="sv-ticket sv-ticket-pending">
         <div class="sv-ticket-hdr">🌙 Night Ticket</div>
-        <div class="sv-pending-msg">Check back after 5:03 PM ET for tonight's picks</div>
+        <div class="sv-pending-msg">Check back after 5:00 PM ET for tonight's picks</div>
       </div>`;
 
   el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>`;
