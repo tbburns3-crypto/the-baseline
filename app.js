@@ -7007,6 +7007,46 @@ const SPORT_ICONS  = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'�
 const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', nfl:'Football', nhl:'Hockey', soccer:'Soccer', golf:'Golf' };
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
+
+// ── SUPABASE SYNC ─────────────────────────────────────────────────────────────
+// Anon key is safe in frontend — read + insert only, protected by RLS.
+// Service role key is NEVER stored here. First-build-wins: once a ticket is
+// written for a date, ignore-duplicates prevents any overwrite.
+const _SB_URL = 'https://xxbymjminigvhfetfvwe.supabase.co';
+const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4Ynltam1pbmlndmhmZXRmdndlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1NzA3ODYsImV4cCI6MjA5NTE0Njc4Nn0.oVz5wqtrOKeCEVhCGvuSsOHAEzsGEMjvaTYSnehPT1M';
+
+async function _sbGetTickets(date) {
+  try {
+    const url = `${_SB_URL}/rest/v1/baseline_tickets?date=in.(${encodeURIComponent(date+'_day')},${encodeURIComponent(date+'_night')})&select=date,morn_legs,eve_legs`;
+    const res = await fetch(url, { headers: { apikey: _SB_KEY, Authorization: `Bearer ${_SB_KEY}` } });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return null;
+    const day   = rows.find(r => r.date === date + '_day');
+    const night = rows.find(r => r.date === date + '_night');
+    return { morn: day?.morn_legs || null, eve: night?.eve_legs || null };
+  } catch { return null; }
+}
+
+async function _sbSaveTicket(date, slot, legs) {
+  // slot: 'day' | 'night' — stored as separate rows so no UPDATE needed
+  try {
+    const row = slot === 'day'
+      ? { date: date + '_day',   morn_legs: legs, eve_legs: null }
+      : { date: date + '_night', morn_legs: null, eve_legs: legs };
+    await fetch(`${_SB_URL}/rest/v1/baseline_tickets`, {
+      method: 'POST',
+      headers: {
+        apikey: _SB_KEY, Authorization: `Bearer ${_SB_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=ignore-duplicates'  // first build wins — never overwrites
+      },
+      body: JSON.stringify(row)
+    });
+  } catch {}
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const _TICKET_KEY         = '_baseline_ticket_v10';
 const _YST_TICKET_KEY     = '_baseline_yst_ticket_v10';
 const _MORN_TICKET_KEY    = '_baseline_morn_v10';
@@ -7225,21 +7265,21 @@ function showSecretTicket() {
 
 // Day ticket builds ONCE at first run each day (picks for games before 6pm ET).
 // Night ticket builds ONCE after 5pm ET (picks for games at/after 6pm ET).
+// Supabase sync: first device to build each day saves to DB; all others load it.
 // After each ticket is built, only W/L updates can change it.
-function buildSplitTicketsIfNeeded() {
+async function buildSplitTicketsIfNeeded() {
   const today = dateStrLocal();
 
-  // Current hour in ET for night-ticket timing gate
   let etHour = 0;
   try {
     const s = new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' });
     etHour = parseInt(s) || 0;
   } catch {}
 
-  const dayBuilt   = localStorage.getItem('_day_built_v1')   === today;
-  const nightBuilt = localStorage.getItem('_night_built_v1') === today;
+  let dayBuilt   = localStorage.getItem('_day_built_v1')   === today;
+  let nightBuilt = localStorage.getItem('_night_built_v1') === today;
 
-  // Restore caches from storage if not already in memory
+  // Restore caches from local storage if already built this device
   if (dayBuilt && !_morningTicketCache) {
     try { _morningTicketCache = JSON.parse(localStorage.getItem(_MORN_TICKET_KEY) || 'null') || null; } catch {}
   }
@@ -7247,8 +7287,28 @@ function buildSplitTicketsIfNeeded() {
     try { _eveningTicketCache = JSON.parse(localStorage.getItem(_EVE_TICKET_KEY) || 'null') || null; } catch {}
   }
 
+  // ── Supabase sync: pull shared ticket if this device hasn't built yet ──
+  if (!dayBuilt || (!nightBuilt && etHour >= 17)) {
+    const sbData = await _sbGetTickets(today);
+    if (sbData?.morn && !dayBuilt) {
+      const mo = { date: today, legs: sbData.morn };
+      try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
+      _morningTicketCache = mo;
+      localStorage.setItem('_day_built_v1', today);
+      dayBuilt = true;
+    }
+    if (sbData?.eve && !nightBuilt && etHour >= 17) {
+      const eo = { date: today, legs: sbData.eve };
+      try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
+      _eveningTicketCache = eo;
+      localStorage.setItem('_night_built_v1', today);
+      nightBuilt = true;
+    }
+  }
+
   if (dayBuilt && (nightBuilt || etHour < 17)) return;
 
+  // ── No shared ticket found — this device is first to build ──
   const allPicks   = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
 
@@ -7258,6 +7318,7 @@ function buildSplitTicketsIfNeeded() {
       const mo = { date: today, legs: mornLegs };
       try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
       _morningTicketCache = mo;
+      _sbSaveTicket(today, 'day', mornLegs); // fire-and-forget; first-build-wins in DB
     }
     localStorage.setItem('_day_built_v1', today);
   }
@@ -7268,6 +7329,7 @@ function buildSplitTicketsIfNeeded() {
       const eo = { date: today, legs: eveLegs };
       try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
       _eveningTicketCache = eo;
+      _sbSaveTicket(today, 'night', eveLegs); // fire-and-forget
     }
     localStorage.setItem('_night_built_v1', today);
   }
@@ -7585,7 +7647,7 @@ async function preloadPicksForSimpleView() {
   // All sports done — now build the ticket (all picks are in localStorage).
   // Do this AFTER all sports load so we score from the full candidate pool.
   buildDailyTicketIfNeeded();
-  buildSplitTicketsIfNeeded();
+  await buildSplitTicketsIfNeeded();
   _svPreloadDone = true;
   if (isActive()) renderSimpleView();
   if (S.sport === 'tickets') renderTicketsPage();
