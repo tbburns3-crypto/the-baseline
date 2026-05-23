@@ -7326,6 +7326,10 @@ async function preloadPicksForSimpleView() {
 
       const cfg = sportCfg[sport];
       if (cfg) {
+        // Max plausible per-game averages — anything above these is a season total, not per-game
+        const PER_GAME_MAX = {
+          nhl:  { goals: 1.5, assists: 2.5, points: 3.5 },
+        };
         const upcoming = todayGames.filter(g => { const { fin, live } = gameRowState(g); return !fin && !live; }).slice(0, 4);
         for (const g of upcoming) {
           try {
@@ -7343,6 +7347,12 @@ async function preloadPicksForSimpleView() {
                 const name   = top.athlete.shortName || top.athlete.displayName;
                 const label  = cat.displayName || cat.shortDisplayName || catName;
                 const rawAvg = parseFloat(top.displayValue);
+                // Skip if value looks like a season total rather than a per-game average
+                const pgMax = PER_GAME_MAX[sport];
+                if (pgMax && !isNaN(rawAvg)) {
+                  const maxVal = Object.entries(pgMax).find(([k]) => catName.includes(k))?.[1];
+                  if (maxVal !== undefined && rawAvg > maxVal) continue;
+                }
                 if (!isNaN(rawAvg) && rawAvg > 0) {
                   const oLine = (Math.max(0.5, Math.round(rawAvg - 0.5) + 0.5)).toFixed(1);
                   const dir   = propDirection(sport, rawAvg, catName, tlAbbr, g);
@@ -7870,14 +7880,12 @@ function renderTicketsPage() {
   if (off === 0) {
     const morn = getMorningTicket();
     const eve  = getEveningTicket();
+    let etHr = 0;
+    try { etHr = parseInt(new Date().toLocaleString('en-US', { hour:'numeric', hour12:false, timeZone:'America/New_York' })) || 0; } catch {}
     const cards = [];
     if (morn?.legs?.length) cards.push(renderTicketBlock('🌤 Day Ticket', morn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
     if (eve?.legs?.length)  cards.push(renderTicketBlock('🌙 Night Ticket', eve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
-    if (!cards.length) {
-      // Fall back to combined ticket if splits haven't been built yet
-      const ticket = getDailyTicket();
-      if (ticket) cards.push(renderTicketBlock('🎫 Daily Ticket', ticket.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
-    }
+    else if (!eve) cards.push(`<div class="sv-ticket sv-ticket-pending"><div class="sv-ticket-hdr">🌙 Night Ticket</div><div class="sv-pending-msg">Check back after 5:03 PM ET for tonight's picks</div></div>`);
     if (cards.length) {
       todayPicksHTML = `<div class="tp-sport-section">
         <div class="tp-sport-hdr">🎫 Today's Picks</div>
@@ -8064,29 +8072,33 @@ function renderSimpleView() {
   document.getElementById('sv-date').textContent =
     new Date(today + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   const headline = document.querySelector('.sv-headline');
-  if (headline) headline.textContent = "Today's Ticket";
-
-  const ticket = getDailyTicket();
-
-  if (!ticket) {
-    el.innerHTML = _svPreloadDone
-      ? `<div class="sv-empty">Not enough picks today. Visit the Scores tabs to load games first.</div>`
-      : `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Building today's ticket…</div>`;
-    return;
-  }
+  if (headline) headline.textContent = "Today's Tickets";
 
   const allPicks = getPicks();
+  const morn = getMorningTicket();
+  const eve  = getEveningTicket();
+
+  // Current ET hour for night-ticket timing message
+  let etHour = 0;
+  try { etHour = parseInt(new Date().toLocaleString('en-US', { hour:'numeric', hour12:false, timeZone:'America/New_York' })) || 0; } catch {}
+
+  if (!morn && !eve) {
+    el.innerHTML = _svPreloadDone
+      ? `<div class="sv-empty">Not enough picks today. Visit the Scores tabs to load games first.</div>`
+      : `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Building today's tickets…</div>`;
+    return;
+  }
 
   const ticketRow = (leg, i) => {
     const live   = allPicks[leg.id] || {};
     const result = live.result;
     const badge  = result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
                  : result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
-    const conf  = Math.min(3, Math.max(1, leg.conf || 1));
-    const dots  = '●'.repeat(conf) + '○'.repeat(3 - conf);
-    const icon  = SPORT_ICONS[leg.sport] || '🏅';
-    const match = (leg.matchup || '').replace(/ @ /g, ' v ');
-    const svDesc   = cleanLegDesc(leg);
+    const conf   = Math.min(3, Math.max(1, leg.conf || 1));
+    const dots   = '●'.repeat(conf) + '○'.repeat(3 - conf);
+    const icon   = SPORT_ICONS[leg.sport] || '🏅';
+    const match  = (leg.matchup || '').replace(/ @ /g, ' v ');
+    const svDesc = cleanLegDesc(leg);
     const pickLine = svDesc
       ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(svDesc)}</span>`
       : `<span class="sv-tk-pick">${esc(leg.pick)}</span>`;
@@ -8101,16 +8113,26 @@ function renderSimpleView() {
     </div>`;
   };
 
-  const legs    = ticket.legs;
-  const wins    = legs.filter(l => allPicks[l.id]?.result === 'win').length;
-  const losses  = legs.filter(l => allPicks[l.id]?.result === 'loss').length;
-  const statusLine = (wins || losses)
-    ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
+  const makeBlock = (label, ticket) => {
+    const legs   = ticket.legs;
+    const wins   = legs.filter(l => allPicks[l.id]?.result === 'win').length;
+    const losses = legs.filter(l => allPicks[l.id]?.result === 'loss').length;
+    const status = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
+    return `<div class="sv-ticket">
+      <div class="sv-ticket-hdr">${esc(label)} — ${legs.length} Leg${legs.length!==1?'s':''} ${status}</div>
+      <div class="sv-ticket-list">${legs.map(ticketRow).join('')}</div>
+    </div>`;
+  };
 
-  el.innerHTML = `<div class="sv-ticket">
-    <div class="sv-ticket-hdr">🎫 Today's Ticket — ${legs.length} Legs ${statusLine}</div>
-    <div class="sv-ticket-list">${legs.map(ticketRow).join('')}</div>
-  </div>`;
+  const dayHTML   = morn ? makeBlock('🌤 Day Ticket', morn) : '';
+  const nightHTML = eve
+    ? makeBlock('🌙 Night Ticket', eve)
+    : `<div class="sv-ticket sv-ticket-pending">
+        <div class="sv-ticket-hdr">🌙 Night Ticket</div>
+        <div class="sv-pending-msg">Check back after 5:03 PM ET for tonight's picks</div>
+      </div>`;
+
+  el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>`;
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────
@@ -8147,6 +8169,15 @@ function renderTZSelector() {
 }
 
 function init() {
+  // One-time ticket rebuild to pick up tennis picks + fix bad NHL stats
+  if (!localStorage.getItem('_rebuild_v164')) {
+    localStorage.removeItem('_ticket_built_v10');
+    localStorage.removeItem('_day_built_v1');
+    localStorage.removeItem('_night_built_v1');
+    localStorage.removeItem(_MORN_TICKET_KEY);
+    localStorage.removeItem(_EVE_TICKET_KEY);
+    localStorage.setItem('_rebuild_v164', '1');
+  }
   clearOldPicks();
   updatePicksDisplay();
   renderTZSelector();

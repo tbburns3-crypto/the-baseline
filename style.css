@@ -2037,6 +2037,12 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-tk-conf { font-size: .6rem; color: var(--text-muted); letter-spacing: 1px; flex-shrink: 0; }
 .sv-tk-prop { font-size: .62rem; color: var(--text-muted); margin-left: 4px; font-style: italic; flex-shrink: 0; }
 .sv-tk-status { font-size: .65rem; color: var(--text); margin-left: 6px; font-weight: 600; }
+/* Side-by-side day/night tickets in simple view */
+.sv-tickets-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
+@media (max-width: 640px) { .sv-tickets-grid { grid-template-columns: 1fr; } }
+.sv-tickets-grid .sv-ticket { margin-top: 0; }
+.sv-ticket-pending { opacity: .75; }
+.sv-pending-msg { text-align: center; padding: 28px 16px; color: var(--text-muted); font-size: .82rem; line-height: 1.5; }
 
 /* ── TICKETS PAGE ── */
 .tp-page { padding: 12px 12px 32px; }
