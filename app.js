@@ -193,7 +193,7 @@ function showPicksHistory() {
   const SPORT_LABEL = { tennis:'🎾 Tennis', mlb:'⚾ MLB', nba:'🏀 NBA', wnba:'🏀 WNBA', nfl:'🏈 NFL', nhl:'🏒 NHL', soccer:'⚽ Soccer', golf:'⛳ Golf' };
   const sportLabel  = SPORT_LABEL[sport] || sport.toUpperCase();
 
-  const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃', Points:'🏀', Rebounds:'📊', Assists:'🎽' };
+  const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃', Double:'2️⃣', XBH:'💥', Points:'🏀', Rebounds:'📊', Assists:'🎽' };
 
   const makeRow = p => {
     const win = p.result === 'win';
@@ -3576,7 +3576,12 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const vsR      = st.vsR || null;
     const platAvg  = oppHand === 'L' ? parseFloat(vsL?.avg || avg) : parseFloat(vsR?.avg || avg);
     // Rate stats (more predictive than raw counting totals)
+    const doubles  = parseInt(st.doubles || 0);
+    const triples  = parseInt(st.triples || 0);
+    const xbh      = doubles + triples + hr;
     const hrRate   = ab > 20 ? hr / ab : 0;
+    const dblRate  = ab > 20 ? doubles / ab : 0;
+    const xbhRate  = ab > 20 ? xbh / ab : 0;
     const bbPct    = (ab + bb) > 0 ? bb / (ab + bb) : 0;
     const rbiRate  = ab > 0 ? rbi / ab : 0;
     // Rate × matchup factor scoring
@@ -3586,6 +3591,8 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const bbScore  = bbPct   * pitRates.bb9 * 100;
     const sbScore  = sb * 10 + sbSucc * 50;
     const hScore   = platAvg * 600 + (ab > 0 ? h / ab : 0) * 400;
+    const dblScore = dblRate * 1000 * parkHit;
+    const xbhScore = xbhRate * 1000 * Math.sqrt(parkHR * parkHit);
     // Confidence: 0–3 based on platoon avg quality, streak, sample size + historical calibration
     const conf = Math.max(0, Math.min(3,
       (platAvg >= 0.310 ? 2 : platAvg >= 0.270 ? 1 : 0) +
@@ -3597,7 +3604,8 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       id: p.id, name: p.fullName, abbr: teamAbbr, pos,
       batSide, oppPitcherId, oppHand, hand, avg, platAvg, vsL, vsR,
       hr, rbi, h, bb, sb, cs, sbSucc, ab, ops, obp, pitRates, l30avg, streak, conf,
-      hitScore, hrScore, rbiScore, bbScore, sbScore, hScore,
+      doubles, triples, xbh,
+      hitScore, hrScore, rbiScore, bbScore, sbScore, hScore, dblScore, xbhScore,
     };
   };
 
@@ -3686,6 +3694,10 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const hBB  = top(homeValid, 'bbScore');
     const aSB  = awayValid.filter(b => b.sb >= 3).sort((a, b) => b.sbScore - a.sbScore)[0];
     const hSB  = homeValid.filter(b => b.sb >= 3).sort((a, b) => b.sbScore - a.sbScore)[0];
+    const aDbl = awayValid.filter(b => b.doubles >= 4).sort((a, b) => b.dblScore - a.dblScore)[0];
+    const hDbl = homeValid.filter(b => b.doubles >= 4).sort((a, b) => b.dblScore - a.dblScore)[0];
+    const aXBH = awayValid.filter(b => b.xbh >= 8).sort((a, b) => b.xbhScore - a.xbhScore)[0];
+    const hXBH = homeValid.filter(b => b.xbh >= 8).sort((a, b) => b.xbhScore - a.xbhScore)[0];
 
     const avg_    = b => _fmtAvg(b?.platAvg || b?.avg) || '-';
     const statStr = {
@@ -3695,22 +3707,22 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
         const pitERA = parseFloat(oppPD?.season?.era || 4.5);
         const ph = (PARK_HIT[homeAbbr] || 1.0) >= 1.02;
         let s = `${avg_(b)} vs ${b.oppHand||'?'}HP`;
-        if (b.babip !== null && b.babip < 0.270) s += '·due';   // BABIP regression incoming
-        if (pitERA > 4.8) s += '·pitH↑';                        // pitcher allows hits above avg
-        if (ph) s += '·park↑';                                   // hit-friendly park
+        if (b.babip !== null && b.babip < 0.270) s += '·due';
+        if (pitERA > 4.8) s += '·pitH↑';
+        if (ph) s += '·park↑';
         return s;
       },
       hr: b => {
         if (!b) return '';
         const vs    = vsMap.get(b.id);
         const vsHR  = (vs && parseInt(vs.atBats||0) >= 5) ? parseInt(vs.homeRuns||0) : 0;
-        const oppR  = b.team === awayAbbr ? homeRates : awayRates; // away batter faces home pitcher
+        const oppR  = b.team === awayAbbr ? homeRates : awayRates;
         const phHR  = parkHR >= 1.05;
         let s = `${b.hr||0}HR · ${avg_(b)} vs ${b.oppHand||'?'}HP`;
-        if (vsHR > 0)              s += `·${vsHR}vsHR`;   // career HR vs this exact pitcher
-        if ((oppR?.hr9||0) > 1.25) s += '·pitHR↑';        // pitcher allows HRs above avg
-        if (phHR)                  s += '·parkHR↑';        // HR-friendly park
-        if (b.favorable)           s += '·plat';            // platoon power advantage
+        if (vsHR > 0)              s += `·${vsHR}vsHR`;
+        if ((oppR?.hr9||0) > 1.25) s += '·pitHR↑';
+        if (phHR)                  s += '·parkHR↑';
+        if (b.favorable)           s += '·plat';
         return s;
       },
       rbi: b => {
@@ -3718,19 +3730,22 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
         const oppPD = b.team === awayAbbr ? homePD : awayPD;
         const pitERA = parseFloat(oppPD?.season?.era || 4.5);
         let s = `${b.rbi||0}RBI · #${b.pos}`;
-        if (pitERA > 4.8) s += '·pitR↑';  // high ERA pitcher = more runners scoring
+        if (pitERA > 4.8) s += '·pitR↑';
         return s;
       },
       walk: b => b ? `${b.bb||0}BB · ${b.obp||'-'}OBP` : '',
       sb:   b => b ? `${b.sb}SB` : '',
+      dbl:  b => b ? `${b.doubles||0}2B · ${avg_(b)} vs ${b.oppHand||'?'}HP` : '',
+      xbh:  b => b ? `${b.xbh||0}XBH · ${b.hr||0}HR · ${b.doubles||0}2B` : '',
     };
 
     // Record both teams' picks per category
     const gKey   = String(espnGame.id);
     const gamePk = mlbGame?.gamePk || null;
     if (!fin && !live) {
-      for (const [b, prop] of [[aHit,'hit'],[hHit,'hit'],[aHR,'hr'],[hHR,'hr'],[aRBI,'rbi'],[hRBI,'rbi'],[aBB,'walk'],[hBB,'walk'],[aSB,'sb'],[hSB,'sb']]) {
-        if (b) recordPlayerPick('plr_'+gKey+'_'+b.id+'_'+prop, 'mlb', b.name, prop==='hit'?'Hit':prop==='hr'?'HR':prop==='rbi'?'RBI':prop==='walk'?'Walk':'SB', statStr[prop](b), gameMatchup, gamePk);
+      const propLabel = p => ({ hit:'Hit', hr:'HR', rbi:'RBI', walk:'Walk', sb:'SB', dbl:'Double', xbh:'XBH' }[p] || p);
+      for (const [b, prop] of [[aHit,'hit'],[hHit,'hit'],[aHR,'hr'],[hHR,'hr'],[aRBI,'rbi'],[hRBI,'rbi'],[aBB,'walk'],[hBB,'walk'],[aSB,'sb'],[hSB,'sb'],[aDbl,'dbl'],[hDbl,'dbl'],[aXBH,'xbh'],[hXBH,'xbh']]) {
+        if (b) recordPlayerPick('plr_'+gKey+'_'+b.id+'_'+prop, 'mlb', b.name, propLabel(prop), statStr[prop](b), gameMatchup, gamePk);
       }
       // Pitcher strikeout picks — record for high-K/9 arms (adjusted for form, rest, bullpen)
       const recKPick = (pd, pname, rates, side) => {
@@ -3784,12 +3799,16 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       return rows.join('');
     };
 
-    const hasSB = aSB || hSB;
+    const hasSB  = aSB  || hSB;
+    const hasDbl = aDbl || hDbl;
+    const hasXBH = aXBH || hXBH;
     picksHTML = `<div class="pc-picks">
-      ${catRows('🎯','Hit',  aHit, hHit, 'hit')}
-      ${catRows('💣','HR',   aHR,  hHR,  'hr')}
-      ${catRows('⚡','RBI',  aRBI, hRBI, 'rbi')}
-      ${catRows('🚶','Walk', aBB,  hBB,  'walk')}
+      ${catRows('🎯','Hit',    aHit, hHit, 'hit')}
+      ${catRows('💣','HR',     aHR,  hHR,  'hr')}
+      ${catRows('⚡','RBI',    aRBI, hRBI, 'rbi')}
+      ${hasDbl ? catRows('2️⃣','2B',  aDbl, hDbl, 'dbl') : ''}
+      ${hasXBH ? catRows('💥','XBH', aXBH, hXBH, 'xbh') : ''}
+      ${catRows('🚶','Walk',   aBB,  hBB,  'walk')}
       ${hasSB ? catRows('🏃','SB', aSB, hSB, 'sb') : ''}
     </div>`;
   } else {
@@ -7515,6 +7534,20 @@ function mlbPickMerit(propType, stat, pick) {
     return (k9 - 8.0) * 35; // 9.0 → 35, 9.5 → 52, 10.0 → 70
   }
 
+  if (propType === 'Double') {
+    const dbl = parseFloat(s.match(/^(\d+)2B/)?.[1] || '0');
+    if (dbl < 4) return -1;
+    let score = dbl * 5;
+    if (s.includes('vs ')) score += 10;
+    return score;
+  }
+
+  if (propType === 'XBH') {
+    const xbh = parseFloat(s.match(/^(\d+)XBH/)?.[1] || '0');
+    if (xbh < 8) return -1;
+    return xbh * 2.5;
+  }
+
   if (propType === 'RunTotal') {
     const proj = parseFloat(s.match(/proj\s+([\d.]+)/)?.[1] || '0');
     const line = parseFloat((pick || '').match(/([\d.]+)/)?.[1] || '0');
@@ -7591,9 +7624,11 @@ function getPicksForTicket(type, date, allPicks) {
     case 'mlb_hits':
     case 'mlb_rbi':
     case 'mlb_hr':
-    case 'mlb_ks': {
-      const propMap = { mlb_hits:'Hit', mlb_rbi:'RBI', mlb_hr:'HR', mlb_ks:'K' };
-      const plrMap  = { mlb_hits:'hits', mlb_rbi:'rbi', mlb_hr:'hr', mlb_ks:'ks' };
+    case 'mlb_ks':
+    case 'mlb_doubles':
+    case 'mlb_xbh': {
+      const propMap = { mlb_hits:'Hit', mlb_rbi:'RBI', mlb_hr:'HR', mlb_ks:'K', mlb_doubles:'Double', mlb_xbh:'XBH' };
+      const plrMap  = { mlb_hits:'hits', mlb_rbi:'rbi', mlb_hr:'hr', mlb_ks:'ks', mlb_doubles:'doubles', mlb_xbh:'xbh' };
       const prop = propMap[type], plrKey = plrMap[type];
       return entries
         .filter(([, p]) => p.sport === 'mlb' && p.type === 'player' && p.prop === prop)
@@ -7721,8 +7756,9 @@ function getMLBSplitPerGameTickets(date, allPicks) {
 }
 
 function getMLBPerGameTickets(date, allPicks) {
-  const PROP_ICONS = { game:'🏆', Hit:'🎯', RBI:'⚡', RunTotal:'📊', K:'🔥' };
-  const RELEVANT   = new Set(['Hit','RBI','K','RunTotal']);
+  const PROP_ICONS  = { game:'🏆', Hit:'🎯', RBI:'⚡', RunTotal:'📊', K:'🔥', HR:'💣', Double:'2️⃣', XBH:'💥', Walk:'🚶', SB:'🏃' };
+  const PROP_LABELS = { Hit:'1+ Hits', RBI:'1+ RBI', HR:'To Hit HR', K:'Pitcher Ks', Double:'1+ Double', XBH:'1+ XBH', Walk:'To Walk', SB:'To Steal' };
+  const RELEVANT    = new Set(['Hit','RBI','K','RunTotal','HR','Double','XBH']);
   const entries    = Object.entries(allPicks).filter(([, p]) => p.sport === 'mlb' && p.date === date);
   const games      = new Map();
 
@@ -7738,7 +7774,7 @@ function getMLBPerGameTickets(date, allPicks) {
       if (!games.has(gid)) games.set(gid, { gameId: gid, matchup: p.gameMatchup||gid, legs: [] });
       const plrName = p.prop === 'RunTotal' ? (p.player||'') : lastName(p.player||'');
       const kLine   = p.prop === 'K' ? (p.stat||'').match(/OVER\s+[\d.]+\s+K/)?.[0] : null;
-      const desc    = kLine || `${p.prop}: ${p.stat}`;
+      const desc    = kLine || PROP_LABELS[p.prop] || p.prop;
       games.get(gid).legs.push({ id, pick: plrName, description: desc, matchup:'', conf: 2, sport:'mlb', propType: p.prop, result: p.result, icon: PROP_ICONS[p.prop]||'🏅' });
     }
   }
@@ -7987,10 +8023,12 @@ function renderTicketsPage() {
 
   // ── MLB ──
   const mlbPerGame = getMLBPerGameTickets(date, allPicks);
-  const mlbHits  = getPicksForTicket('mlb_hits', date, allPicks);
-  const mlbRBI   = getPicksForTicket('mlb_rbi',  date, allPicks);
-  const mlbHR    = getPicksForTicket('mlb_hr',   date, allPicks);
-  const mlbKs    = getPicksForTicket('mlb_ks',   date, allPicks);
+  const mlbHits    = getPicksForTicket('mlb_hits',    date, allPicks);
+  const mlbRBI     = getPicksForTicket('mlb_rbi',     date, allPicks);
+  const mlbHR      = getPicksForTicket('mlb_hr',      date, allPicks);
+  const mlbKs      = getPicksForTicket('mlb_ks',      date, allPicks);
+  const mlbDoubles = getPicksForTicket('mlb_doubles',  date, allPicks);
+  const mlbXBH     = getPicksForTicket('mlb_xbh',     date, allPicks);
   const pending  = getLineupPendingMatchups(date, allPicks);
 
   // Count distinct games with lineups posted (need ≥3 for a meaningful combined ticket)
@@ -8006,10 +8044,12 @@ function renderTicketsPage() {
     : (!showMLBAgg && mlbGamesWithLineups > 0 ? `<div class="tp-pending">⏳ Combined tickets need 3+ lineups — ${mlbGamesWithLineups}/3 posted so far. Checking automatically.</div>` : '');
 
   const mlbAggCards = showMLBAgg ? [
-    mlbHits.length ? renderTicketBlock('🎯 1+ Hits',        mlbHits, allPicks) : '',
-    mlbRBI.length  ? renderTicketBlock('⚡ 1+ RBI',         mlbRBI,  allPicks) : '',
-    mlbHR.length   ? renderTicketBlock('💣 To Hit HR',      mlbHR,   allPicks) : '',
-    mlbKs.length   ? renderTicketBlock('🔥 Pitcher Ks',     mlbKs,   allPicks) : '',
+    mlbHits.length    ? renderTicketBlock('🎯 1+ Hits',     mlbHits,    allPicks) : '',
+    mlbRBI.length     ? renderTicketBlock('⚡ 1+ RBI',      mlbRBI,     allPicks) : '',
+    mlbHR.length      ? renderTicketBlock('💣 To Hit HR',   mlbHR,      allPicks) : '',
+    mlbDoubles.length ? renderTicketBlock('2️⃣ 1+ Double',   mlbDoubles, allPicks) : '',
+    mlbXBH.length     ? renderTicketBlock('💥 1+ XBH',      mlbXBH,     allPicks) : '',
+    mlbKs.length      ? renderTicketBlock('🔥 Pitcher Ks',  mlbKs,      allPicks) : '',
   ].filter(Boolean) : [];
 
   const toMLBCard = g => {
