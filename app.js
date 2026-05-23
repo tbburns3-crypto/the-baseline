@@ -7134,10 +7134,9 @@ function buildSecretTicket() {
   const today    = dateStrLocal(0);
   const allPicks = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
-  // MLB only — conf >= 2, no RunTotal
+  // MLB only — no RunTotal, sorted by score (highest confidence first)
   const strict = candidates.filter(c => {
     if (c.sport !== 'mlb') return false;
-    if (c.conf < 2) return false;
     const p = allPicks[c.id];
     if (p?.prop === 'RunTotal') return false;
     return true;
