@@ -5909,7 +5909,9 @@ async function loadGolfLeaderboard() {
       for (const ev of (data.events || [])) {
         const comp    = ev.competitions?.[0]; if (!comp) continue;
         const state   = comp.status?.type?.state || '';
-        const round   = comp.status?.period || 1;
+        const espnRound = comp.status?.period || 1;
+        const pickOv  = GOLF_PAIRINGS_OVERRIDE[ev.id];
+        const round   = (pickOv && pickOv.date === dateStrLocal(0)) ? pickOv.round : espnRound;
         const isLive  = state === 'in';
         const isFinal = state === 'post' || comp.status?.type?.completed;
         const venue   = comp.venue?.fullName || '';
@@ -6256,7 +6258,9 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           </div>`;
 
         } else if (tab === 'today') {
-          const { groups, upcomingGroups } = groupByTeeTime(allComp, round, ev.id);
+          const todayOv = GOLF_PAIRINGS_OVERRIDE[ev.id];
+          const roundForGroups = (todayOv && todayOv.date === dateStrLocal(0)) ? todayOv.round : round;
+          const { groups, upcomingGroups } = groupByTeeTime(allComp, roundForGroups, ev.id);
 
           // Collect pickIds that are already displayed via current groups
           const shownPickIds = new Set([...groups, ...upcomingGroups].flatMap(g => {
