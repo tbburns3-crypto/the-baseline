@@ -6302,10 +6302,10 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
             : '';
 
           html += `<div class="golf-picks-section">
-            <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${round} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
-            ${groups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+            <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${roundForGroups} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
+            ${groups.map(g => buildGolfGroupPickCard(g, roundForGroups, isLive, tour.key, ev.id)).join('')}
             ${preHdr}
-            ${upcomingGroups.map(g => buildGolfGroupPickCard(g, round, isLive, tour.key, ev.id)).join('')}
+            ${upcomingGroups.map(g => buildGolfGroupPickCard(g, roundForGroups, isLive, tour.key, ev.id)).join('')}
             ${earlierHTML}
           </div>`;
 
