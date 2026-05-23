@@ -7145,17 +7145,20 @@ function closeAuthModal() {
   document.getElementById('auth-modal').classList.remove('auth-open');
 }
 
+let _otpEmail = '';
+
 function showAuthForm() {
+  _otpEmail = '';
   const btn = document.getElementById('auth-submit-btn');
-  if (btn) { btn.disabled = false; btn.textContent = 'Send Sign-In Link'; }
-  document.getElementById('auth-form').style.display  = '';
-  document.getElementById('auth-sent').style.display  = 'none';
-  document.getElementById('auth-error').style.display = 'none';
+  if (btn) { btn.disabled = false; btn.textContent = 'Send Code'; }
+  document.getElementById('auth-step-email').style.display = '';
+  document.getElementById('auth-step-code').style.display  = 'none';
+  document.getElementById('auth-error').style.display      = 'none';
   const inp = document.getElementById('auth-email-input');
   if (inp) inp.value = '';
 }
 
-async function sendMagicLink() {
+async function sendOtpCode() {
   const inp   = document.getElementById('auth-email-input');
   const email = (inp?.value || '').trim();
   if (!email) { inp?.focus(); return; }
@@ -7166,18 +7169,41 @@ async function sendMagicLink() {
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
   try {
-    const { error } = await _sbClient.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: location.origin + location.pathname }
-    });
+    const { error } = await _sbClient.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
     if (error) throw error;
-    document.getElementById('auth-form').style.display = 'none';
-    document.getElementById('auth-sent-to').textContent = email;
-    document.getElementById('auth-sent').style.display  = '';
+    _otpEmail = email;
+    document.getElementById('auth-step-email').style.display = 'none';
+    document.getElementById('auth-code-email').textContent   = email;
+    document.getElementById('auth-step-code').style.display  = '';
+    document.getElementById('auth-error').style.display      = 'none';
+    setTimeout(() => document.getElementById('auth-code-input')?.focus(), 60);
   } catch (err) {
     errEl.textContent   = err.message || 'Something went wrong. Please try again.';
     errEl.style.display = '';
-    if (btn) { btn.disabled = false; btn.textContent = 'Send Sign-In Link'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Send Code'; }
+  }
+}
+
+async function verifyOtpCode() {
+  const inp  = document.getElementById('auth-code-input');
+  const code = (inp?.value || '').trim().replace(/\s/g, '');
+  if (!code || code.length < 6) { inp?.focus(); return; }
+
+  const errEl = document.getElementById('auth-error');
+  errEl.style.display = 'none';
+  const btn = document.getElementById('auth-verify-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+
+  try {
+    const { error } = await _sbClient.auth.verifyOtp({ email: _otpEmail, token: code, type: 'email' });
+    if (error) throw error;
+    // onAuthStateChange handles the rest
+  } catch (err) {
+    errEl.textContent   = err.message || 'Invalid code. Please try again.';
+    errEl.style.display = '';
+    if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
+    if (inp) inp.value = '';
+    inp?.focus();
   }
 }
 

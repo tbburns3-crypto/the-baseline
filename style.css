@@ -2563,8 +2563,17 @@ body.simple-mode #app-layout { display: none !important; }
 .auth-sent-icon { font-size: 2.4rem; text-align: center; margin: 8px 0 14px; }
 .auth-sent-msg  { font-size: .9rem; color: var(--text-muted); text-align: center; line-height: 1.55; margin: 0 0 16px; }
 .auth-sent-msg strong { color: var(--text); }
+.auth-code-input {
+  width: 100%; box-sizing: border-box;
+  background: rgba(255,255,255,.06); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 1.6rem;
+  padding: 11px 14px; margin-bottom: 12px;
+  letter-spacing: .3em; text-align: center;
+  outline: none; transition: border-color .15s;
+}
+.auth-code-input:focus { border-color: var(--accent); }
 .auth-resend-link {
-  display: block; margin: 0 auto;
+  display: block; margin: 10px auto 0;
   background: none; border: none; color: var(--accent);
   font-size: .82rem; cursor: pointer; text-decoration: underline; padding: 0;
 }

@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>The Baseline — Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=187">
+  <link rel="stylesheet" href="style.css?v=188">
 </head>
 <body>
 
@@ -16,15 +16,19 @@
     <div class="auth-modal-box">
       <button class="auth-modal-close" onclick="closeAuthModal()">✕</button>
       <div class="auth-modal-brand">◉ THE BASELINE</div>
-      <h2 class="auth-modal-title">Sign In / Sign Up</h2>
-      <p class="auth-modal-desc">Enter your email and we'll send you a link — no password needed.</p>
-      <div id="auth-form">
-        <input type="email" id="auth-email-input" class="auth-email-input" placeholder="your@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')sendMagicLink()">
-        <button id="auth-submit-btn" class="auth-submit-btn" onclick="sendMagicLink()">Send Sign-In Link</button>
+      <!-- Step 1: email -->
+      <div id="auth-step-email">
+        <h2 class="auth-modal-title">Sign In / Sign Up</h2>
+        <p class="auth-modal-desc">Enter your email — we'll send a 6-digit code. No password needed.</p>
+        <input type="email" id="auth-email-input" class="auth-email-input" placeholder="your@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')sendOtpCode()">
+        <button id="auth-submit-btn" class="auth-submit-btn" onclick="sendOtpCode()">Send Code</button>
       </div>
-      <div id="auth-sent" style="display:none">
-        <div class="auth-sent-icon">✉️</div>
-        <p class="auth-sent-msg">Check your inbox! We sent a sign-in link to <strong id="auth-sent-to"></strong></p>
+      <!-- Step 2: code entry -->
+      <div id="auth-step-code" style="display:none">
+        <h2 class="auth-modal-title">Enter your code</h2>
+        <p class="auth-modal-desc">We sent a 6-digit code to <strong id="auth-code-email"></strong></p>
+        <input type="text" id="auth-code-input" class="auth-code-input" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')verifyOtpCode()">
+        <button id="auth-verify-btn" class="auth-submit-btn" onclick="verifyOtpCode()">Sign In</button>
         <button class="auth-resend-link" onclick="showAuthForm()">Use a different email</button>
       </div>
       <div id="auth-error" class="auth-error-msg" style="display:none"></div>
@@ -249,6 +253,6 @@
   </div><!-- /app-layout -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=187"></script>
+  <script src="app.js?v=188"></script>
 </body>
 </html>
