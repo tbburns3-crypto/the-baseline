@@ -4331,10 +4331,12 @@ function buildNBAPicksCard(g, summary) {
         if (isPoint(cat) && !fin) {
           const pid2    = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
           const pickKey = `plr_${g.id}_${pid2}_pts`;
-          const ppg   = parseFloat(top.displayValue);
-          const ptLine = !isNaN(ppg) ? (Math.max(0.5, Math.round(ppg - 0.5) + 0.5)).toFixed(1) : null;
+          const ppg     = parseFloat(top.displayValue);
+          const ptLine  = !isNaN(ppg) ? (Math.max(0.5, Math.round(ppg - 0.5) + 0.5)).toFixed(1) : null;
+          const tRest   = tAbbr ? (_restDaysCache.get(`nba:${tAbbr.toUpperCase()}`) ?? 3) : 3;
+          const dir     = ptLine && ppg >= 15 && tRest <= 1 ? 'UNDER' : 'OVER';
           recordPlayerPick(pickKey, g.sport || 'nba', top.athlete.displayName, 'Points',
-            ptLine ? `OVER ${ptLine}` : (top.displayValue ? `${top.displayValue} PPG` : '-'), matchup, null);
+            ptLine ? `${dir} ${ptLine}` : (top.displayValue ? `${top.displayValue} PPG` : '-'), matchup, null);
         }
       }
       if (!playerMap.size) continue;
@@ -7383,19 +7385,27 @@ async function preloadPicksForSimpleView() {
             const j   = await res.json();
             const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
             for (const tl of (j.leaders || [])) {
+              const tlAbbr = (tl.team?.abbreviation || '').toUpperCase();
+              const tlRest = tlAbbr ? (_restDaysCache.get(`${sport}:${tlAbbr}`) ?? 3) : 3;
               for (const cat of (tl.leaders || [])) {
                 const catName = (cat.displayName || cat.shortDisplayName || '').toLowerCase();
                 if (!cfg.cats.some(c => catName.includes(c))) continue;
                 const top = (cat.leaders || [])[0];
                 if (!top?.athlete?.displayName) continue;
-                const pid  = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
-                const name = top.athlete.shortName || top.athlete.displayName;
-                const label = cat.displayName || cat.shortDisplayName || catName;
+                const pid    = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
+                const name   = top.athlete.shortName || top.athlete.displayName;
+                const label  = cat.displayName || cat.shortDisplayName || catName;
                 const rawAvg = parseFloat(top.displayValue);
-                const oLine  = !isNaN(rawAvg) && rawAvg > 0
-                  ? (Math.max(0.5, Math.round(rawAvg - 0.5) + 0.5)).toFixed(1) : null;
-                recordPlayerPick(`plr_${g.id}_${pid}_${catName.replace(/\s+/g,'_')}`,
-                  sport, name, label, oLine ? `OVER ${oLine}` : (top.displayValue || '-'), matchup, null);
+                if (!isNaN(rawAvg) && rawAvg > 0) {
+                  const oLine     = (Math.max(0.5, Math.round(rawAvg - 0.5) + 0.5)).toFixed(1);
+                  const minUnder  = catName.includes('point') ? 15 : catName.includes('rebound') ? 7 : 5;
+                  const dir       = tlRest <= 1 && rawAvg >= minUnder ? 'UNDER' : 'OVER';
+                  recordPlayerPick(`plr_${g.id}_${pid}_${catName.replace(/\s+/g,'_')}`,
+                    sport, name, label, `${dir} ${oLine}`, matchup, null);
+                } else {
+                  recordPlayerPick(`plr_${g.id}_${pid}_${catName.replace(/\s+/g,'_')}`,
+                    sport, name, label, top.displayValue || '-', matchup, null);
+                }
               }
             }
           } catch (e) {}
@@ -7581,8 +7591,9 @@ function getPicksForTicket(type, date, allPicks) {
           if (p.type === 'player') {
             const raw  = parseFloat(p.stat || 0) || parseFloat((p.stat||'').replace(/^(OVER|UNDER)\s+/i,'')) || 0;
             const line = toOULine(sp, p.prop, raw);
+            const dir  = /^UNDER\s/i.test(p.stat||'') ? 'UNDER' : 'OVER';
             const abbr = PROP_ABBR[p.prop] || (p.prop||'PROP').replace(/\s+per\s+game/i,'').trim();
-            const desc = line !== null ? `OVER ${line} ${abbr}` : (p.stat||'').match(/^(OVER|UNDER)/i) ? p.stat : abbr;
+            const desc = line !== null ? `${dir} ${line} ${abbr}` : (p.stat||'').match(/^(OVER|UNDER)/i) ? p.stat : abbr;
             return { id, pick: lastName(p.player||p.team||''), description: desc, matchup: p.gameMatchup||p.matchup||'', conf: p.conf||1, sport: sp, propType:'player', result: p.result };
           }
           return toGame([id, p]);
@@ -7746,8 +7757,9 @@ function getSportPerGameTickets(date, allPicks, sport) {
       if (!games.has(gid)) games.set(gid, { gameId: gid, matchup: p.gameMatchup||gid, legs: [] });
       const raw  = parseFloat(p.stat || 0) || parseFloat((p.stat||'').replace(/^(OVER|UNDER)\s+/i,'')) || 0;
       const line = toOULine(sport, p.prop, raw);
+      const dir  = /^UNDER\s/i.test(p.stat||'') ? 'UNDER' : 'OVER';
       const abbr = abbrs[p.prop] || (p.prop||'PROP').replace(/\s+per\s+game/i,'').trim();
-      const desc = line !== null ? `OVER ${line} ${abbr}` : (p.stat||'').match(/^(OVER|UNDER)/i) ? p.stat : abbr;
+      const desc = line !== null ? `${dir} ${line} ${abbr}` : (p.stat||'').match(/^(OVER|UNDER)/i) ? p.stat : abbr;
       games.get(gid).legs.push({
         id, pick: lastName(p.player||''), description: desc,
         matchup:'', conf: p.conf||1, sport,
