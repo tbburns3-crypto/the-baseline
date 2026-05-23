@@ -5552,51 +5552,30 @@ const GOLF_TOURS = [
 // Scores/stats still come from ESPN — only group membership changes.
 const GOLF_PAIRINGS_OVERRIDE = {
   '401811948': {
-    date: '2026-05-22',
-    round: 2,
+    date: '2026-05-23',
+    round: 3,
     groups: [
-      ['Meissner','A. Svensson','Wu'],
-      ['Hoey','Smith','Dahmen'],
-      ['Roy','Lower','Piercy'],
-      ['Hirata','Dou','Clanton'],
-      ['Springer','Saddler','Huang'],
-      ['Keefer','Hadwin','Norlander'],
-      ['Streelman','Higgs','Kizzire'],
-      ['T. Kim','Hubbard','Champ'],
-      ['Davis','Hoffman','Wise'],
-      ['Walker','Hossler','Brehm'],
-      ['Ghim','Grillo','Noh'],
-      ['Li','Blanchet','Howell'],
-      ['Kuchar','Highsmith','Mouw'],
-      ['Pavon','Duncan','Griffin'],
-      ['Bezuidenhout','Blair','Phillips'],
-      ['Moore','List','Kanaya'],
-      ['Olesen','McGreevy','Campos'],
-      ['Malnati','Hodges','Martin'],
-      ['Higgo','Thompson','Palmer'],
-      ['Power','Kohles','Byrd'],
-      ['Garnett','Lebioda','Hahn'],
-      ['Hojgaard','Hoge','Lee'],
-      ['Brennan','Yu','Riley'],
-      ['Cole','Whaley','Young'],
-      ['Vilips','Fisk','Schenk'],
-      ['Crowe','Bae','Parry'],
-      ['Brown','Sargent','Stout'],
-      ['Shipley','Goodwin','Tosti'],
-      ['Thorbjornsen','Finau','Vegas'],
-      ['Gordon','Eckroat','Cook'],
-      ['Coody','Schmid','Hisatsune'],
-      ['Montgomery','Sides','Ewart'],
-      ['Neergaard-Petersen','Nyholm','Rozo'],
-      ['Greyserman','Pendrith','Horschel'],
-      ['Suber','J. Kang','Buchanan'],
-      ['J. Svensson','Peterson','Chatfield'],
-      ['Hughes','Rooyen','Streb'],
-      ['Rodgers','Ramey','Gomez'],
-      ['Scheffler','S. Kim','Koepka'],
-      ['Mitchell','Silverman','Laird'],
-      ['C. Kim','Fishburn','Chassart'],
-      ['Willett','Ryder','Villegas'],
+      ['Pendrith','Hoey','Malnati'],
+      ['Fisk','Rodgers','Ramey'],
+      ['Grillo','Rooyen','Noh'],
+      ['Parry','Griffin','Merritt'],
+      ['Hubbard','Ewart','Fishburn'],
+      ['Ghim','VanDerLaan','Bae'],
+      ['Greyserman','Kirk','Ryder'],
+      ['B. Brown','Hughes','Silverman'],
+      ['Coody','Neergaard-Petersen','Lebioda'],
+      ['Hisatsune','Smith','Hoffman'],
+      ['Hojgaard','T. Kim','J. Svensson'],
+      ['Koepka','Jaeger','Clanton'],
+      ['Meissner','List','Villegas'],
+      ['Cole','Keefer','Blair'],
+      ['Power','Bauchou','C. Kim'],
+      ['Moore','Finau','Hoge'],
+      ['Olesen','Higgo','Pavon'],
+      ['Dan Brown','Willett','Byrd'],
+      ['Spieth','Mitchell','Duncan'],
+      ['Scheffler','Clark','Suber'],
+      ['S. Kim','Im','Hirata'],
     ]
   }
 };
@@ -7156,7 +7135,8 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 let _svLotteryHTML = '';
-const _TICKET_KEY = '_baseline_ticket_v10';
+const _TICKET_KEY     = '_baseline_ticket_v10';
+const _YST_TICKET_KEY = '_baseline_yst_ticket_v10';
 let _dailyTicketCache = null; // in-session lock — once set, never changes within this page load
 
 function getDailyTicket() {
@@ -7171,6 +7151,16 @@ function getDailyTicket() {
     _dailyTicketCache = obj; // freeze in memory — can't be rebuilt for the rest of this session
     return obj;
   } catch { return null; }
+}
+
+function archiveYesterdayTicket() {
+  const yesterday = dateStrLocal(-1);
+  try {
+    const s = localStorage.getItem(_TICKET_KEY);
+    if (!s) return;
+    const obj = JSON.parse(s);
+    if (obj.date === yesterday) localStorage.setItem(_YST_TICKET_KEY, s);
+  } catch {}
 }
 
 function buildDailyTicketIfNeeded() {
@@ -7447,6 +7437,7 @@ async function preloadPicksForSimpleView() {
   // Fix any stored golf pick matchup strings using the manual override before
   // the ticket reads them — ensures the ticket shows correct 3-ball groupings.
   fixGolfPickMatchupsFromOverride();
+  archiveYesterdayTicket();
   // All sports done — now build the ticket (all picks are in localStorage).
   // Do this AFTER all sports load so we score from the full candidate pool.
   buildDailyTicketIfNeeded();
@@ -7886,6 +7877,21 @@ function renderTicketsPage() {
     }
   }
 
+  // ── Yesterday's Parlay (archived before today's ticket overwrites it) ──
+  let ystTicketHTML = '';
+  if (off === -1) {
+    try {
+      const yst = JSON.parse(localStorage.getItem(_YST_TICKET_KEY) || 'null');
+      if (yst?.date === date && yst.legs?.length) {
+        const legs = yst.legs.map(l => ({ ...l, matchup: (l.matchup||'').replace(/ @ /g,' v ') }));
+        ystTicketHTML = `<div class="tp-sport-section">
+          <div class="tp-sport-hdr">🎫 Yesterday's All-Sports Parlay</div>
+          ${grid([renderTicketBlock('🎫 Daily Ticket', legs, allPicks)])}
+        </div>`;
+      }
+    } catch {}
+  }
+
   // ── MLB ──
   const mlbPerGame = getMLBPerGameTickets(date, allPicks);
   const mlbHits  = getPicksForTicket('mlb_hits', date, allPicks);
@@ -8013,6 +8019,7 @@ function renderTicketsPage() {
     <div class="tp-full-date">${fullDate}</div>
     ${off === 0 && !_svPreloadDone ? '<div class="tp-loading">⏳ Loading picks from all sports…</div>' : ''}
     ${todayPicksHTML}
+    ${ystTicketHTML}
     ${mlbHTML}${tennisHTML}${golfHTML}${nbaHTML}${wnbaHTML}${nhlHTML}${nflHTML}
   </div>`;
 }
