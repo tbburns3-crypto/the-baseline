@@ -2382,7 +2382,9 @@ function switchSport(sport) {
     loadTennisInjuryNews(); // fire-and-forget: ESPN news injury flags — re-runs picks once loaded
   } else {
     wsDisconnect();
-    if (sport !== 'tickets') {
+    if (sport === 'tickets') {
+      setConn('connected', 'Tickets ready');
+    } else {
       setConn('disconnected', `${sport.toUpperCase()} - updating every 30s`);
     }
     loadSportScores(sport);
@@ -8209,27 +8211,10 @@ function init() {
   // One-time ticket rebuild to pick up tennis picks + fix bad NHL stats
   if (!localStorage.getItem('_rebuild_v164')) {
     localStorage.removeItem('_ticket_built_v10');
-    localStorage.removeItem('_day_built_v1');
-    localStorage.removeItem('_night_built_v1');
-    localStorage.removeItem(_MORN_TICKET_KEY);
-    localStorage.removeItem(_EVE_TICKET_KEY);
     localStorage.setItem('_rebuild_v164', '1');
   }
   // One-time: purge tennis picks stored with today's date but event_date from the past
   if (!localStorage.getItem('_rebuild_v169')) {
-    const today169 = dateStrLocal(0);
-    const picks169 = getPicks();
-    let changed169 = false;
-    for (const [id, p] of Object.entries(picks169)) {
-      if (p.sport === 'tennis' && id.startsWith('tn_') && p.date === today169 && p.result === null) {
-        delete picks169[id]; changed169 = true;
-      }
-    }
-    if (changed169) savePicks(picks169);
-    localStorage.removeItem('_day_built_v1');
-    localStorage.removeItem('_night_built_v1');
-    localStorage.removeItem(_MORN_TICKET_KEY);
-    localStorage.removeItem(_EVE_TICKET_KEY);
     localStorage.setItem('_rebuild_v169', '1');
   }
   // One-time: clear old dateless golf pickIds (golf_NNNN_ovN) + force ticket rebuild
@@ -8240,10 +8225,6 @@ function init() {
       if (/^golf_\d+_ov\d+$/.test(id)) { delete picks[id]; changed = true; }
     }
     if (changed) savePicks(picks);
-    localStorage.removeItem('_day_built_v1');
-    localStorage.removeItem('_night_built_v1');
-    localStorage.removeItem(_MORN_TICKET_KEY);
-    localStorage.removeItem(_EVE_TICKET_KEY);
     localStorage.setItem('_rebuild_v164b', '1');
   }
   clearOldPicks();
