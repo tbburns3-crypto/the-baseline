@@ -5644,8 +5644,11 @@ function playerRoundStatus(p, round) {
 // when ESPN overwrites p.teeTime with next-round pairings.
 // For override groups, overrideIdx is used instead to guarantee uniqueness
 // even when two groups share the same tee time + nine.
-function normGolfPickId(eventId, teeTime, nine, overrideIdx) {
-  if (overrideIdx !== undefined) return `golf_${eventId}_ov${overrideIdx}`;
+function normGolfPickId(eventId, teeTime, nine, overrideIdx, overrideDate) {
+  if (overrideIdx !== undefined) {
+    const d = overrideDate || dateStrLocal(0);
+    return `golf_${eventId}_${d}_ov${overrideIdx}`;
+  }
   try {
     const d = new Date(teeTime);
     if (!isNaN(d)) {
@@ -5694,10 +5697,10 @@ function groupByTeeTime(players, round = 1, eventId = '') {
         const startHole = withHoles.linescores[round-1].linescores[0]?.period || 1;
         const nine = startHole >= 10 ? 'back' : 'front';
         // overrideIdx makes the pickId unique even when two groups share a tee time + nine
-        groups.push({ time: t, nine, players: matched, overrideIdx: ovIdx });
+        groups.push({ time: t, nine, players: matched, overrideIdx: ovIdx, overrideDate: ov.date });
       } else {
         const anyT = matched.map(p => extractTeeTime(p, round)).find(t => t) || '';
-        upcomingGroups.push({ time: anyT, nine: 'unknown', players: matched, upcoming: true, overrideIdx: ovIdx });
+        upcomingGroups.push({ time: anyT, nine: 'unknown', players: matched, upcoming: true, overrideIdx: ovIdx, overrideDate: ov.date });
       }
     }
     groups.sort((a, b) => new Date(a.time) - new Date(b.time));
@@ -6005,7 +6008,7 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   // Determine group state BEFORE scoring so we know if pick should be locked
   const statuses     = players.map(p => playerRoundStatus(p, round));
   const groupStarted = statuses.some(s => s === 'live' || s === 'finished');
-  const pickId       = normGolfPickId(eventId, group.time, group.nine, group.overrideIdx);
+  const pickId       = normGolfPickId(eventId, group.time, group.nine, group.overrideIdx, group.overrideDate);
   // Fallback IDs for picks recorded before the overrideIdx scheme was added
   const ttPickId  = normGolfPickId(eventId, group.time, group.nine);
   const oldPickId = group.time ? `golf_${eventId}_${group.time.replace(/\D/g,'')}` : null;
@@ -6257,7 +6260,7 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
 
           // Collect pickIds that are already displayed via current groups
           const shownPickIds = new Set([...groups, ...upcomingGroups].flatMap(g => {
-            const ids = [normGolfPickId(ev.id, g.time, g.nine, g.overrideIdx)];
+            const ids = [normGolfPickId(ev.id, g.time, g.nine, g.overrideIdx, g.overrideDate)];
             // Also mark the tee-time-based ID as shown so old stored picks aren't double-rendered
             if (g.overrideIdx !== undefined) ids.push(normGolfPickId(ev.id, g.time, g.nine));
             if (g.time) ids.push(`golf_${ev.id}_${g.time.replace(/\D/g,'')}`);
@@ -7018,7 +7021,8 @@ function _buildPickCandidates(allPicks, today) {
     } else if (p.team) {
       if ((p.conf || 0) < 1) continue;
       const sport = p.sport || 'tennis';
-      score += sport === 'tennis' ? Math.max(0, TIER_BONUS[p.tier] ?? -99) : (SPORT_BONUS[sport] || 1);
+      if (sport === 'tennis' && (p.tier === 'chal' || p.tier === 'itf')) continue;
+      score += sport === 'tennis' ? (TIER_BONUS[p.tier] ?? 0) : (SPORT_BONUS[sport] || 1);
       out.push({ id, score, sport, type: 'game',
         pick: p.team, description: p.matchup || '', matchup: p.matchup || '',
         conf: p.conf || 1, tier: p.tier });
@@ -7621,8 +7625,8 @@ function getGolfSplitTickets(date, allPicks) {
     const [id] = entry;
     let isEarly = true;
 
-    if (activeOv && ovEventId && id.startsWith(`golf_${ovEventId}_ov`)) {
-      const idx = parseInt(id.slice(`golf_${ovEventId}_ov`.length), 10);
+    if (activeOv && ovEventId && id.startsWith(`golf_${ovEventId}_${activeOv.date}_ov`)) {
+      const idx = parseInt(id.slice(`golf_${ovEventId}_${activeOv.date}_ov`.length), 10);
       isEarly = !isNaN(idx) && earlyCount !== null ? idx < earlyCount : true;
     } else {
       // Non-override: parse HHMM from pick ID (UTC)
@@ -8177,6 +8181,20 @@ function init() {
     localStorage.removeItem(_MORN_TICKET_KEY);
     localStorage.removeItem(_EVE_TICKET_KEY);
     localStorage.setItem('_rebuild_v164', '1');
+  }
+  // One-time: clear old dateless golf pickIds (golf_NNNN_ovN) + force ticket rebuild
+  if (!localStorage.getItem('_rebuild_v164b')) {
+    const picks = getPicks();
+    let changed = false;
+    for (const id of Object.keys(picks)) {
+      if (/^golf_\d+_ov\d+$/.test(id)) { delete picks[id]; changed = true; }
+    }
+    if (changed) savePicks(picks);
+    localStorage.removeItem('_day_built_v1');
+    localStorage.removeItem('_night_built_v1');
+    localStorage.removeItem(_MORN_TICKET_KEY);
+    localStorage.removeItem(_EVE_TICKET_KEY);
+    localStorage.setItem('_rebuild_v164b', '1');
   }
   clearOldPicks();
   updatePicksDisplay();
