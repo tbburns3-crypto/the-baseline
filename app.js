@@ -1082,9 +1082,9 @@ const GRASS_COUNTRIES = new Set(['AUS','GBR','USA','GER','CAN','RSA','NZL','SWE'
 // Updated 2025: reflect current form, post-surgery players, new top-10 entrants
 const TOURNAMENT_AFFINITY = {
   // ATP
-  djokovic:  { 'australian open':2, 'wimbledon':2, 'us open':2, 'paris masters':2 }, // reduced — post-surgery 2024, less dominant in 2025
+  djokovic:  { 'australian open':2, 'wimbledon':2, 'us open':2, 'paris masters':2, 'roland garros':3, 'french open':3 }, // 3x RG champion
   alcaraz:   { 'roland garros':4, 'french open':4, 'wimbledon':3, 'us open':2, 'madrid':3, 'barcelona':2 },
-  sinner:    { 'australian open':4, 'miami':2, 'us open':3, 'paris masters':2 },
+  sinner:    { 'australian open':4, 'miami':2, 'us open':3, 'paris masters':2, 'rome':2 }, // won Rome 2024 on clay
   zverev:    { 'roland garros':3, 'paris masters':3, 'hamburg':2, 'french open':3 },
   tsitsipas: { 'monte carlo':2, 'barcelona':2, 'lyon':2 }, // reduced — less consistent 2024-25
   medvedev:  { 'us open':3, 'paris masters':2, 'shanghai':2 },
@@ -1104,6 +1104,9 @@ const TOURNAMENT_AFFINITY = {
   navarro:   { 'wimbledon':2, 'us open':2 }, // rising 2024-25
   mboko:     { 'canadian open':2 }, // ranked #9 WTA 2025, hard-court specialist
   jabeur:    { 'wimbledon':2, 'roland garros':2 }, // reduced — injury history 2024
+  krejcikova:{ 'roland garros':3, 'french open':3 }, // 2021 RG champion
+  halep:     { 'roland garros':3, 'french open':3 }, // 2018 RG champion (if active)
+  kvitova:   { 'wimbledon':3 }, // 2x Wimbledon champion
 };
 
 // Players who significantly underperform their ranking as favorites.
@@ -1249,8 +1252,10 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   // 4. Nationality × surface affinity
   const c1 = rd1?.country || '', c2 = rd2?.country || '';
   if (surfLow.includes('clay')) {
-    if (CLAY_COUNTRIES.has(c1) && !CLAY_COUNTRIES.has(c2)) p1Score += 1;
-    else if (CLAY_COUNTRIES.has(c2) && !CLAY_COUNTRIES.has(c1)) p2Score += 1;
+    // Clay slam (Roland Garros) = +2; other clay events = +1
+    const clayBonus = tier === 'slam' ? 2 : 1;
+    if (CLAY_COUNTRIES.has(c1) && !CLAY_COUNTRIES.has(c2)) p1Score += clayBonus;
+    else if (CLAY_COUNTRIES.has(c2) && !CLAY_COUNTRIES.has(c1)) p2Score += clayBonus;
   } else if (surfLow.includes('grass') || surfLow.includes('indoor')) {
     if (GRASS_COUNTRIES.has(c1) && !GRASS_COUNTRIES.has(c2)) p1Score += 1;
     else if (GRASS_COUNTRIES.has(c2) && !GRASS_COUNTRIES.has(c1)) p2Score += 1;
@@ -1329,7 +1334,8 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
 
   // ── Decide pick ──
   const gap = Math.abs(p1Score - p2Score);
-  if (gap < 2) return ''; // too close, no pick
+  const minGap = tier === 'slam' ? 3 : 2; // slams have more upset potential
+  if (gap < minGap) return '';
 
   const winner = p1Score > p2Score ? 1 : 2;
   const pick   = winner === 1 ? l1 : l2;
