@@ -7199,10 +7199,10 @@ function buildDailyTicketIfNeeded() {
       const statLabel = (() => {
         const s = (p.stat || '').trim();
         if (!s || s === '-') return p.prop;
-        if (/^(OVER|UNDER)\s/i.test(s)) return `${p.prop}: ${s}`;  // "Points: OVER 28.5"
+        if (/^(OVER|UNDER)\s/i.test(s)) return s;  // just the line, e.g. "OVER 27.5"
         const ouMatch = s.match(/(OVER|UNDER)\s+[\d.]+\s+\w+/i);
-        if (ouMatch) return ouMatch[0];                              // extract "OVER 5.5 K" from composite
-        return p.prop;                                               // raw stat — show only the prop name
+        if (ouMatch) return ouMatch[0];              // extract "OVER 5.5 K" from composite
+        return p.prop;                               // raw stat — show only the prop name
       })();
       candidates.push({ id, score, sport: p.sport || 'other', type: 'player',
         pick: p.player, description: statLabel, matchup: p.gameMatchup || '', conf: p.conf || 1 });
@@ -7588,10 +7588,10 @@ function getPicksForTicket(type, date, allPicks) {
         .slice(0, 10)
         .map(([id, p]) => {
           if (p.type === 'player') {
-            const raw  = parseFloat(p.stat || 0);
+            const raw  = parseFloat(p.stat || 0) || parseFloat((p.stat||'').replace(/^(OVER|UNDER)\s+/i,'')) || 0;
             const line = toOULine(sp, p.prop, raw);
-            const abbr = PROP_ABBR[p.prop] || p.prop || 'PROP';
-            const desc = line !== null ? `OVER ${line} ${abbr}` : `${p.prop}: ${p.stat}`;
+            const abbr = PROP_ABBR[p.prop] || (p.prop||'PROP').replace(/\s+per\s+game/i,'').trim();
+            const desc = line !== null ? `OVER ${line} ${abbr}` : (p.stat||'').match(/^(OVER|UNDER)/i) ? p.stat : abbr;
             return { id, pick: lastName(p.player||p.team||''), description: desc, matchup: p.gameMatchup||p.matchup||'', conf: p.conf||1, sport: sp, propType:'player', result: p.result };
           }
           return toGame([id, p]);
@@ -7753,10 +7753,10 @@ function getSportPerGameTickets(date, allPicks, sport) {
       if (parts.length < 2) continue;
       const gid = parts[1];
       if (!games.has(gid)) games.set(gid, { gameId: gid, matchup: p.gameMatchup||gid, legs: [] });
-      const raw  = parseFloat(p.stat || 0);
+      const raw  = parseFloat(p.stat || 0) || parseFloat((p.stat||'').replace(/^(OVER|UNDER)\s+/i,'')) || 0;
       const line = toOULine(sport, p.prop, raw);
-      const abbr = abbrs[p.prop] || p.prop || 'PROP';
-      const desc = line !== null ? `OVER ${line} ${abbr}` : `${p.prop}: ${p.stat}`;
+      const abbr = abbrs[p.prop] || (p.prop||'PROP').replace(/\s+per\s+game/i,'').trim();
+      const desc = line !== null ? `OVER ${line} ${abbr}` : (p.stat||'').match(/^(OVER|UNDER)/i) ? p.stat : abbr;
       games.get(gid).legs.push({
         id, pick: lastName(p.player||''), description: desc,
         matchup:'', conf: p.conf||1, sport,
