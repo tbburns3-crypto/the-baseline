@@ -6999,33 +6999,99 @@ function isEveningGame(p) {
 
 // Split the already-built combined ticket into morning/evening based on game time.
 // Runs after buildDailyTicketIfNeeded — does not modify the combined ticket.
+// Shared: score all today's picks into a candidate list (same logic as buildDailyTicketIfNeeded)
+function _buildPickCandidates(allPicks, today) {
+  const TIER_BONUS  = { slam: 10, masters: 5, '500': 2, '250': 0, chal: -99, itf: -99 };
+  const SPORT_BONUS = { mlb: 3, nba: 3, nhl: 3, soccer: 3, golf: 3, wnba: 2, nfl: 2 };
+  const out = [];
+  for (const [id, p] of Object.entries(allPicks)) {
+    if (p.date !== today || id.includes('_fb_')) continue;
+    let score = p.conf || 1;
+    if (p.type === 'player') {
+      score += SPORT_BONUS[p.sport] || 1;
+      const s = (p.stat || '').trim();
+      const statLabel = (!s || s === '-') ? p.prop
+        : /^(OVER|UNDER)\s/i.test(s) ? s
+        : (s.match(/(OVER|UNDER)\s+[\d.]+\s+\w+/i)?.[0] || p.prop);
+      out.push({ id, score, sport: p.sport || 'other', type: 'player',
+        pick: p.player, description: statLabel, matchup: p.gameMatchup || '', conf: p.conf || 1 });
+    } else if (p.team) {
+      if ((p.conf || 0) < 1) continue;
+      const sport = p.sport || 'tennis';
+      score += sport === 'tennis' ? Math.max(0, TIER_BONUS[p.tier] ?? -99) : (SPORT_BONUS[sport] || 1);
+      out.push({ id, score, sport, type: 'game',
+        pick: p.team, description: p.matchup || '', matchup: p.matchup || '',
+        conf: p.conf || 1, tier: p.tier });
+    }
+  }
+  return out;
+}
+
+// Shared: pick top legs with max-2-per-sport and 1-slam-tennis limits
+function _selectTicketLegs(candidates) {
+  candidates.sort((a, b) => b.score - a.score);
+  const sportCount = {};
+  let slamCount = 0;
+  const legs = [];
+  for (const c of candidates) {
+    if ((sportCount[c.sport] || 0) >= 2) continue;
+    if (c.sport === 'tennis' && c.tier === 'slam' && slamCount >= 1) continue;
+    sportCount[c.sport] = (sportCount[c.sport] || 0) + 1;
+    if (c.sport === 'tennis' && c.tier === 'slam') slamCount++;
+    legs.push(c);
+    if (legs.length >= 10) break;
+  }
+  return legs.length >= 2 ? legs : null;
+}
+
+// Day ticket builds ONCE at first run each day (picks for games before 6pm ET).
+// Night ticket builds ONCE after 5pm ET (picks for games at/after 6pm ET).
+// After each ticket is built, only W/L updates can change it.
 function buildSplitTicketsIfNeeded() {
   const today = dateStrLocal();
-  if (localStorage.getItem('_split_v1') === today) {
-    if (!_morningTicketCache) {
-      try { _morningTicketCache = JSON.parse(localStorage.getItem(_MORN_TICKET_KEY) || 'null') || null; } catch {}
+
+  // Current hour in ET for night-ticket timing gate
+  let etHour = 0;
+  try {
+    const s = new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' });
+    etHour = parseInt(s) || 0;
+  } catch {}
+
+  const dayBuilt   = localStorage.getItem('_day_built_v1')   === today;
+  const nightBuilt = localStorage.getItem('_night_built_v1') === today;
+
+  // Restore caches from storage if not already in memory
+  if (dayBuilt && !_morningTicketCache) {
+    try { _morningTicketCache = JSON.parse(localStorage.getItem(_MORN_TICKET_KEY) || 'null') || null; } catch {}
+  }
+  if (nightBuilt && !_eveningTicketCache) {
+    try { _eveningTicketCache = JSON.parse(localStorage.getItem(_EVE_TICKET_KEY) || 'null') || null; } catch {}
+  }
+
+  if (dayBuilt && (nightBuilt || etHour < 17)) return;
+
+  const allPicks   = getPicks();
+  const candidates = _buildPickCandidates(allPicks, today);
+
+  if (!dayBuilt) {
+    const mornLegs = _selectTicketLegs(candidates.filter(c => !isEveningGame(allPicks[c.id] || {})));
+    if (mornLegs) {
+      const mo = { date: today, legs: mornLegs };
+      try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
+      _morningTicketCache = mo;
     }
-    if (!_eveningTicketCache) {
-      try { _eveningTicketCache = JSON.parse(localStorage.getItem(_EVE_TICKET_KEY) || 'null') || null; } catch {}
+    localStorage.setItem('_day_built_v1', today);
+  }
+
+  if (!nightBuilt && etHour >= 17) {
+    const eveLegs = _selectTicketLegs(candidates.filter(c => isEveningGame(allPicks[c.id] || {})));
+    if (eveLegs) {
+      const eo = { date: today, legs: eveLegs };
+      try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
+      _eveningTicketCache = eo;
     }
-    return;
+    localStorage.setItem('_night_built_v1', today);
   }
-  const ticket = getDailyTicket();
-  if (!ticket) return;
-  const allPicks = getPicks();
-  const mornLegs = ticket.legs.filter(l => !isEveningGame(allPicks[l.id] || {}));
-  const eveLegs  = ticket.legs.filter(l =>  isEveningGame(allPicks[l.id] || {}));
-  if (mornLegs.length) {
-    const mo = { date: today, legs: mornLegs };
-    try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
-    _morningTicketCache = mo;
-  }
-  if (eveLegs.length) {
-    const eo = { date: today, legs: eveLegs };
-    try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
-    _eveningTicketCache = eo;
-  }
-  localStorage.setItem('_split_v1', today);
 }
 
 function archiveYesterdayTicket() {
