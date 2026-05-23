@@ -7723,11 +7723,12 @@ function getMLBPerGameTickets(date, allPicks) {
       .filter(l => l._merit >= 0)
       .sort((a, b) => b._merit - a._merit);
 
-    // Deduplicate: keep only the best pick per player name
-    const seenPlayers = new Set();
+    // Deduplicate: block exact same player+prop appearing twice (different props for same player are fine)
+    const seenPlayerProps = new Set();
     const selected = props.filter(l => l._merit > 0).filter(l => {
-      if (seenPlayers.has(l.pick)) return false;
-      seenPlayers.add(l.pick);
+      const key = `${l.pick}|${l.propType}`;
+      if (seenPlayerProps.has(key)) return false;
+      seenPlayerProps.add(key);
       return true;
     });
     return [
