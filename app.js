@@ -7978,10 +7978,10 @@ function renderTicketsPage() {
     : (!showMLBAgg && mlbGamesWithLineups > 0 ? `<div class="tp-pending">⏳ Combined tickets need 3+ lineups — ${mlbGamesWithLineups}/3 posted so far. Checking automatically.</div>` : '');
 
   const mlbAggCards = showMLBAgg ? [
-    mlbHits.length ? renderTicketBlock('🎯 Hit Leaders', mlbHits, allPicks) : '',
-    mlbRBI.length  ? renderTicketBlock('⚡ RBI Leaders', mlbRBI,  allPicks) : '',
-    mlbHR.length   ? renderTicketBlock('💣 HR Threats',  mlbHR,   allPicks) : '',
-    mlbKs.length   ? renderTicketBlock('🔥 Strikeout Artists', mlbKs, allPicks) : '',
+    mlbHits.length ? renderTicketBlock('🎯 1+ Hits',        mlbHits, allPicks) : '',
+    mlbRBI.length  ? renderTicketBlock('⚡ 1+ RBI',         mlbRBI,  allPicks) : '',
+    mlbHR.length   ? renderTicketBlock('💣 To Hit HR',      mlbHR,   allPicks) : '',
+    mlbKs.length   ? renderTicketBlock('🔥 Pitcher Ks',     mlbKs,   allPicks) : '',
   ].filter(Boolean) : [];
 
   const toMLBCard = g => {
