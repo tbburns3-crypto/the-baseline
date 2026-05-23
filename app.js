@@ -7800,6 +7800,29 @@ function getLineupPendingMatchups(date, allPicks) {
     .map(([, p]) => p.matchup).filter(Boolean);
 }
 
+function cleanLegDesc(leg) {
+  const d = (leg.description || '').trim();
+  if (!d) return '';
+  if (/^(OVER|UNDER)\s+[\d.]/i.test(d)) return d;
+  const ouEmbed = d.match(/(OVER|UNDER)\s+[\d.]+\s+\w+/i);
+  if (ouEmbed) return ouEmbed[0];
+  // "27.9 Points", "5.7 Assists", "18.0 Points" → convert to bet line
+  const avgM = d.match(/^([\d.]+)\s+(.+)$/);
+  if (avgM) {
+    const n = parseFloat(avgM[1]);
+    const prop = avgM[2].trim();
+    const ABBRS = { Points:'PTS', Rebounds:'REB', Assists:'AST', Goals:'G', 'Goals+Assists':'GA',
+                    'Passing Yards':'PASS', 'Rushing Yards':'RUSH', 'Receiving Yards':'REC' };
+    const abbr = ABBRS[prop] || prop;
+    const line = toOULine(leg.sport || '', prop, n);
+    return line !== null ? `OVER ${line} ${abbr}` : abbr;
+  }
+  // "Goals leader", "Points leader" → drop "leader"
+  const leaderM = d.match(/^(.+?)\s+leader$/i);
+  if (leaderM) return leaderM[1];
+  return d;
+}
+
 function renderTicketBlock(title, legs, allPicks, footer = '') {
   const row = (leg, i) => {
     const live   = allPicks[leg.id] || {};
@@ -7810,8 +7833,9 @@ function renderTicketBlock(title, legs, allPicks, footer = '') {
     const dots   = '●'.repeat(conf) + '○'.repeat(3 - conf);
     const icon   = leg.icon || SPORT_ICONS[leg.sport] || '🏅';
     const match  = (leg.matchup || '').replace(/ @ /g, ' v ');
-    const pickLine = leg.description
-      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(leg.description)}</span>`
+    const desc   = cleanLegDesc(leg);
+    const pickLine = desc
+      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(desc)}</span>`
       : `<span class="sv-tk-pick">${esc(leg.pick)}</span>`;
     return `<div class="sv-tk-row${result==='win'?' sv-tk-win':result==='loss'?' sv-tk-loss':''}">
       <span class="sv-tk-num">${i+1}</span>
@@ -8035,8 +8059,9 @@ function renderSimpleView() {
     const dots  = '●'.repeat(conf) + '○'.repeat(3 - conf);
     const icon  = SPORT_ICONS[leg.sport] || '🏅';
     const match = (leg.matchup || '').replace(/ @ /g, ' v ');
-    const pickLine = leg.type === 'player'
-      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(leg.description)}</span>`
+    const svDesc   = cleanLegDesc(leg);
+    const pickLine = svDesc
+      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(svDesc)}</span>`
       : `<span class="sv-tk-pick">${esc(leg.pick)}</span>`;
     return `<div class="sv-tk-row${result==='win'?' sv-tk-win':result==='loss'?' sv-tk-loss':''}">
       <span class="sv-tk-num">${i+1}</span>
