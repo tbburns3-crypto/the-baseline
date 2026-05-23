@@ -691,10 +691,11 @@ async function loadFixtures(offset = 0) {
     for (const m of results) {
       S.matches.set(String(m.event_key), m);
       // Re-date any pick that was stamped with the wrong date (pre-fix migration)
+      // Only move dates forward — never pull a tomorrow pick back to today.
       if (m.event_date) {
         const pid = 'tn_' + m.event_key;
         const ex  = picks[pid];
-        if (ex && ex.result === null && ex.date !== m.event_date) {
+        if (ex && ex.result === null && ex.date !== m.event_date && m.event_date >= ex.date) {
           ex.date = m.event_date;
           picksDirty = true;
         }
@@ -1381,7 +1382,8 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   const injTag = (winner === 1 && p2Hurt) || (winner === 2 && p1Hurt) ? ' ⚕' : '';
   // force=true: re-evaluate pre-game picks on every preload as more data arrives.
   // recordPick guards against overwriting resolved (finished) matches.
-  recordPick(pickId, pick, matchup, 'tennis', conf, true, pickDate, tier);
+  // Store matchDate so Secret Ticket can filter without needing S.matches populated.
+  recordPick(pickId, pick, matchup, 'tennis', conf, true, pickDate, tier, { matchDate });
   return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
@@ -3854,10 +3856,11 @@ async function loadTennisPicksPage() {
       S.matches.set(String(m.event_key), m);
       inlineTennisPick(m);
       // Re-date any existing pick that was stamped with the wrong date.
+      // Only move dates forward — never pull a tomorrow pick back to today.
       if (m.event_date) {
         const pid = 'tn_' + m.event_key;
         const ex  = picks[pid];
-        if (ex && ex.result === null && ex.date !== m.event_date) {
+        if (ex && ex.result === null && ex.date !== m.event_date && m.event_date >= ex.date) {
           ex.date  = m.event_date;
           picksDirty = true;
         }
@@ -7077,8 +7080,9 @@ function _buildPickCandidates(allPicks, today) {
   const out = [];
   for (const [id, p] of Object.entries(allPicks)) {
     if (p.date !== today || id.includes('_fb_')) continue;
-    // Extra guard: tennis — verify actual match event_date isn't tomorrow
+    // Extra guard: tennis — check stored matchDate first; fall back to S.matches lookup
     if ((p.sport === 'tennis' || !p.sport) && id.startsWith('tn_')) {
+      if (p.matchDate && p.matchDate > today) continue;
       const m = S.matches.get(id.replace(/^tn_/, ''));
       if (m?.event_date && m.event_date > today) continue;
     }
@@ -7136,8 +7140,9 @@ function buildSecretTicket() {
     if (c.sport === 'tennis' && (c.tier === 'chal' || c.tier === 'itf')) return false;
     const p = allPicks[c.id];
     if (p?.prop === 'RunTotal') return false;
-    // Hard date check: tennis — verify via S.matches event_date
+    // Hard date check: tennis — check stored matchDate first; fall back to S.matches
     if (c.sport === 'tennis') {
+      if (p?.matchDate && p.matchDate > today) return false;
       const matchKey = c.id.replace(/^tn_/, '');
       const m = S.matches.get(matchKey);
       if (m?.event_date && m.event_date > today) return false;
