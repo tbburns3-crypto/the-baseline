@@ -7,9 +7,29 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>The Baseline — Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=186">
+  <link rel="stylesheet" href="style.css?v=187">
 </head>
 <body>
+
+  <!-- ── AUTH MODAL ── -->
+  <div id="auth-modal" class="auth-modal-overlay" onclick="if(event.target===this)closeAuthModal()">
+    <div class="auth-modal-box">
+      <button class="auth-modal-close" onclick="closeAuthModal()">✕</button>
+      <div class="auth-modal-brand">◉ THE BASELINE</div>
+      <h2 class="auth-modal-title">Sign In / Sign Up</h2>
+      <p class="auth-modal-desc">Enter your email and we'll send you a link — no password needed.</p>
+      <div id="auth-form">
+        <input type="email" id="auth-email-input" class="auth-email-input" placeholder="your@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')sendMagicLink()">
+        <button id="auth-submit-btn" class="auth-submit-btn" onclick="sendMagicLink()">Send Sign-In Link</button>
+      </div>
+      <div id="auth-sent" style="display:none">
+        <div class="auth-sent-icon">✉️</div>
+        <p class="auth-sent-msg">Check your inbox! We sent a sign-in link to <strong id="auth-sent-to"></strong></p>
+        <button class="auth-resend-link" onclick="showAuthForm()">Use a different email</button>
+      </div>
+      <div id="auth-error" class="auth-error-msg" style="display:none"></div>
+    </div>
+  </div>
 
   <!-- ── SIMPLE VIEW OVERLAY ── -->
   <div id="simple-view">
@@ -53,6 +73,13 @@
         <span id="conn-label">Connecting…</span>
       </div>
       <button id="refresh-btn" title="Refresh data">↻</button>
+      <div id="auth-control">
+        <button id="auth-signin-btn" class="auth-topbar-btn" onclick="openAuthModal()">Sign In</button>
+        <div id="auth-user-info" style="display:none">
+          <span id="auth-user-email" class="auth-user-email-chip"></span>
+          <button class="auth-signout-btn" onclick="signOut()">Sign Out</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -221,6 +248,7 @@
     </div><!-- /main-content -->
   </div><!-- /app-layout -->
 
-  <script src="app.js?v=186"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="app.js?v=187"></script>
 </body>
 </html>

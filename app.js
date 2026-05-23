@@ -7014,6 +7014,7 @@ let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 // written for a date, ignore-duplicates prevents any overwrite.
 const _SB_URL = 'https://xxbymjminigvhfetfvwe.supabase.co';
 const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4Ynltam1pbmlndmhmZXRmdndlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1NzA3ODYsImV4cCI6MjA5NTE0Njc4Nn0.oVz5wqtrOKeCEVhCGvuSsOHAEzsGEMjvaTYSnehPT1M';
+const _sbClient = supabase.createClient(_SB_URL, _SB_KEY);
 
 async function _sbGetTickets(date) {
   try {
@@ -7044,6 +7045,145 @@ async function _sbSaveTicket(date, slot, legs) {
       body: JSON.stringify(row)
     });
   } catch {}
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── AUTH STATE ───────────────────────────────────────────────────────────────
+let _currentUser     = null;
+let _currentUserRole = null;  // 'free' | 'paid' | 'admin' | null (not yet loaded)
+let _authReady       = false; // true after first onAuthStateChange fires
+
+function _hasFullAccess() {
+  return _currentUserRole === 'paid' || _currentUserRole === 'admin';
+}
+function _isAdmin() {
+  return _currentUserRole === 'admin';
+}
+
+async function _fetchUserRole(userId) {
+  try {
+    // Must use the user's session JWT so RLS (auth.uid() = id) passes
+    const { data: { session } } = await _sbClient.auth.getSession();
+    const token = session?.access_token || _SB_KEY;
+    const res = await fetch(
+      `${_SB_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=role&limit=1`,
+      { headers: { apikey: _SB_KEY, Authorization: `Bearer ${token}` } }
+    );
+    if (res.ok) {
+      const rows = await res.json();
+      _currentUserRole = rows?.[0]?.role || 'free';
+    } else {
+      _currentUserRole = 'free';
+    }
+  } catch {
+    _currentUserRole = 'free';
+  }
+  updateAuthUI();
+}
+
+function updateAuthUI() {
+  const signinBtn = document.getElementById('auth-signin-btn');
+  const userInfo  = document.getElementById('auth-user-info');
+  const emailChip = document.getElementById('auth-user-email');
+
+  if (_currentUser) {
+    if (signinBtn) signinBtn.style.display  = 'none';
+    if (userInfo)  userInfo.style.display   = 'flex';
+    if (emailChip) emailChip.textContent    = _currentUser.email || '';
+    // If now paid/admin and the simple view is still up from an auth gate, hide it
+    if (_hasFullAccess()) {
+      const sv = document.getElementById('simple-view');
+      if (sv?.classList.contains('sv-active')) {
+        const dismissed = localStorage.getItem('sv_dismissed');
+        if (dismissed === dateStrLocal()) {
+          // User had already dismissed today — respect that
+          document.body.classList.remove('simple-mode');
+          sv.classList.remove('sv-active');
+        }
+      }
+    }
+  } else {
+    if (signinBtn) signinBtn.style.display  = 'block';
+    if (userInfo)  userInfo.style.display   = 'none';
+    // Not signed in — ensure simple view is showing (only once auth state is confirmed)
+    if (_authReady) {
+      const sv = document.getElementById('simple-view');
+      if (sv && !sv.classList.contains('sv-active')) showSimpleView();
+    }
+  }
+
+  // Refresh Secret Ticket visibility if on tickets tab
+  if (S.sport === 'tickets') renderTicketsPage();
+}
+
+function initAuth() {
+  _sbClient.auth.onAuthStateChange(async (event, session) => {
+    _currentUser     = session?.user || null;
+    _currentUserRole = null;
+    _authReady       = true;
+
+    if (_currentUser) {
+      await _fetchUserRole(_currentUser.id);
+    } else {
+      updateAuthUI();
+    }
+
+    if (event === 'SIGNED_IN') {
+      closeAuthModal();
+    }
+  });
+}
+
+// ── AUTH MODAL FUNCTIONS ─────────────────────────────────────────────────────
+function openAuthModal() {
+  showAuthForm();
+  document.getElementById('auth-modal').classList.add('auth-open');
+  setTimeout(() => document.getElementById('auth-email-input')?.focus(), 60);
+}
+
+function closeAuthModal() {
+  document.getElementById('auth-modal').classList.remove('auth-open');
+}
+
+function showAuthForm() {
+  const btn = document.getElementById('auth-submit-btn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Send Sign-In Link'; }
+  document.getElementById('auth-form').style.display  = '';
+  document.getElementById('auth-sent').style.display  = 'none';
+  document.getElementById('auth-error').style.display = 'none';
+  const inp = document.getElementById('auth-email-input');
+  if (inp) inp.value = '';
+}
+
+async function sendMagicLink() {
+  const inp   = document.getElementById('auth-email-input');
+  const email = (inp?.value || '').trim();
+  if (!email) { inp?.focus(); return; }
+
+  const errEl = document.getElementById('auth-error');
+  errEl.style.display = 'none';
+  const btn = document.getElementById('auth-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+
+  try {
+    const { error } = await _sbClient.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: location.origin + location.pathname }
+    });
+    if (error) throw error;
+    document.getElementById('auth-form').style.display = 'none';
+    document.getElementById('auth-sent-to').textContent = email;
+    document.getElementById('auth-sent').style.display  = '';
+  } catch (err) {
+    errEl.textContent   = err.message || 'Something went wrong. Please try again.';
+    errEl.style.display = '';
+    if (btn) { btn.disabled = false; btn.textContent = 'Send Sign-In Link'; }
+  }
+}
+
+async function signOut() {
+  await _sbClient.auth.signOut();
+  // onAuthStateChange fires with SIGNED_OUT and handles state + UI update
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -8142,7 +8282,7 @@ function renderTicketsPage() {
   const fullDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   const grid     = (cards) => `<div class="tp-grid">${cards.join('')}</div>`;
 
-  const secretBtn = off === 0 ? `<button class="st-open-btn" onclick="showSecretTicket()">🔒 Secret Ticket</button>` : '';
+  const secretBtn = off === 0 && _isAdmin() ? `<button class="st-open-btn" onclick="showSecretTicket()">🔒 Secret Ticket</button>` : '';
   const dateNav = `<div class="tp-day-nav">
     <button class="tp-day-btn${off===-1?' tp-day-active':''}" onclick="_ticketDateOffset=-1;renderTicketsPage()">Yesterday</button>
     <button class="tp-day-btn${off===0?' tp-day-active':''}" onclick="_ticketDateOffset=0;renderTicketsPage()">Today</button>
@@ -8338,7 +8478,17 @@ function showSimpleView() {
   preloadPicksForSimpleView();
 }
 
-function hideSimpleView() {
+function hideSimpleView(bypassGate) {
+  // Gate only when we KNOW the user isn't paid/admin:
+  //   - definitely not signed in, OR
+  //   - signed in but role loaded and it's 'free'
+  // While role is still loading (_currentUserRole===null) or auth isn't ready, let them through.
+  const definitelyOut  = _authReady && !_currentUser;
+  const definitelyFree = _authReady && _currentUser && _currentUserRole !== null && !_hasFullAccess();
+  if (!bypassGate && (definitelyOut || definitelyFree)) {
+    openAuthModal();
+    return;
+  }
   document.body.classList.remove('simple-mode');
   document.getElementById('simple-view').classList.remove('sv-active');
   localStorage.setItem('sv_dismissed', dateStrLocal());
@@ -8487,10 +8637,9 @@ function init() {
   renderDateBar();
   const lastSport = localStorage.getItem('_baseline_sport') || 'tennis';
   switchSport(lastSport);
-  const svDismissed = localStorage.getItem('sv_dismissed');
-  if (svDismissed !== dateStrLocal()) {
-    showSimpleView();
-  }
+  // Always show simple view on load — initAuth will auto-hide for paid/admin who already dismissed today
+  showSimpleView();
+  initAuth();
 }
 
 init();
