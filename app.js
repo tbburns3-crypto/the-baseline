@@ -7134,16 +7134,32 @@ function buildSecretTicket() {
   const today    = dateStrLocal(0);
   const allPicks = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
-  // MLB only — no RunTotal, sorted by score (highest confidence first)
-  const strict = candidates.filter(c => {
-    if (c.sport !== 'mlb') return false;
+
+  // Score and filter MLB picks — use mlbPickMerit for player props
+  const scored = [];
+  for (const c of candidates) {
+    if (c.sport !== 'mlb') continue;
     const p = allPicks[c.id];
-    if (p?.prop === 'RunTotal') return false;
-    return true;
-  }).sort((a, b) => b.score - a.score);
+    if (!p) continue;
+    if (p.prop === 'RunTotal') continue;
+    if (c.type === 'player') {
+      const merit = mlbPickMerit(p.prop, p.stat || '', p.player || '');
+      if (merit < 0) continue; // below quality threshold
+      scored.push({ ...c, _stScore: merit + 10, _pickObj: p }); // +10 base so props rank above game picks
+    } else {
+      scored.push({ ...c, _stScore: (p.conf || 1) * 5, _pickObj: p });
+    }
+  }
+
+  // Sort by score desc; deduplicate: only 1 pick per player
+  scored.sort((a, b) => b._stScore - a._stScore);
+  const seenPlayers = new Set();
   const legs = [];
-  for (const c of strict) {
-    legs.push({ ...c, _pickObj: allPicks[c.id] });
+  for (const c of scored) {
+    const playerKey = c.type === 'player' ? (c._pickObj?.player || c.pick) : null;
+    if (playerKey && seenPlayers.has(playerKey)) continue;
+    if (playerKey) seenPlayers.add(playerKey);
+    legs.push(c);
     if (legs.length >= 10) break;
   }
   return legs;
@@ -7867,7 +7883,9 @@ function getMLBPerGameTickets(date, allPicks) {
       const plrName = p.prop === 'RunTotal' ? (p.player||'') : lastName(p.player||'');
       const kLine   = p.prop === 'K' ? (p.stat||'').match(/OVER\s+[\d.]+\s+K/)?.[0] : null;
       const desc    = kLine || PROP_LABELS[p.prop] || p.prop;
-      games.get(gid).legs.push({ id, pick: plrName, description: desc, matchup:'', conf: 2, sport:'mlb', propType: p.prop, result: p.result, icon: PROP_ICONS[p.prop]||'🏅' });
+      // _rawStat stores the original stat string so mlbPickMerit can parse real numbers,
+      // while description stays clean for display ("1+ Hits" vs ".385 vs 7HP,park1")
+      games.get(gid).legs.push({ id, pick: plrName, description: desc, _rawStat: p.stat||'', matchup:'', conf: 2, sport:'mlb', propType: p.prop, result: p.result, icon: PROP_ICONS[p.prop]||'🏅' });
     }
   }
 
@@ -7875,7 +7893,7 @@ function getMLBPerGameTickets(date, allPicks) {
     const gamePick = legs.find(l => l.propType === 'game');
     const props = legs
       .filter(l => l.propType !== 'game')
-      .map(l => ({ ...l, _merit: l.propType === 'game' ? 1000 : mlbPickMerit(l.propType, l.description, l.pick) }))
+      .map(l => ({ ...l, _merit: l.propType === 'game' ? 1000 : mlbPickMerit(l.propType, l._rawStat || l.description, l.pick) }))
       .filter(l => l._merit >= 0)
       .sort((a, b) => b._merit - a._merit);
 
