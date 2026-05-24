@@ -7155,6 +7155,9 @@ function updateAuthUI() {
     if (manageBtn) manageBtn.style.display = _hasFullAccess() ? '' : 'none';
     const adminLink = document.getElementById('admin-topbar-link');
     if (adminLink) adminLink.style.display = _isAdmin() ? '' : 'none';
+    // Re-enable Full App button if it was in "Checking…" state
+    const fullBtn = document.querySelector('.sv-full-btn');
+    if (fullBtn && fullBtn.disabled) { fullBtn.disabled = false; fullBtn.textContent = 'Full App →'; }
     // Paid/admin: always go straight to the full app
     if (_hasFullAccess()) {
       const sv = document.getElementById('simple-view');
@@ -7290,6 +7293,13 @@ async function signOut() {
 }
 
 // ── UPGRADE MODAL ────────────────────────────────────────────────────────────
+// Opens admin panel in a named window — reuses the same tab on repeat clicks,
+// never spawns duplicate tabs.
+function openAdminPanel(e) {
+  if (e) e.preventDefault();
+  window.open('admin.html', 'baseline-admin');
+}
+
 function openUpgradeModal() {
   document.getElementById('upgrade-modal').classList.add('auth-open');
 }
@@ -8664,7 +8674,9 @@ function hideSimpleView(bypassGate) {
       openAuthModal();
       return;
     } else if (_currentUser && _currentUserRole === null) {
-      // Role still loading — updateAuthUI will auto-dismiss once it arrives
+      // Role still loading — show feedback and auto-dismiss once role arrives
+      const btn = document.querySelector('.sv-full-btn');
+      if (btn && !btn.disabled) { btn.disabled = true; btn.textContent = 'Checking…'; }
       return;
     } else {
       openUpgradeModal();

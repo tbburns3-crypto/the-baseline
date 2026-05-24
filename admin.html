@@ -119,7 +119,7 @@
     <div class="adm-brand"><span>◉</span> THE BASELINE <span class="adm-badge">ADMIN</span></div>
     <div class="adm-bar-right">
       <a href="https://dashboard.stripe.com" target="_blank" class="adm-btn">💳 Stripe Dashboard</a>
-      <a href="index.html" target="_blank" class="adm-btn">← App</a>
+      <a href="index.html" class="adm-btn">← App</a>
       <button class="adm-btn adm-btn-danger" onclick="doSignOut()">Sign Out</button>
     </div>
   </header>
@@ -431,6 +431,11 @@
     }
 
     init();
+
+    // Refresh user list when tab becomes visible again (e.g. switching back from the app)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && _session) loadUsers();
+    });
   </script>
 </body>
 </html>
