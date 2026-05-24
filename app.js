@@ -2420,6 +2420,11 @@ function switchSport(sport) {
 }
 
 function switchView(view) {
+  // Gate picks tab — free/unauthenticated users see upgrade modal, stay on current view
+  if (view === 'picks' && !_hasFullAccess()) {
+    openUpgradeModal();
+    return;
+  }
   S.view = view;
   document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
   document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
@@ -7158,6 +7163,13 @@ function updateAuthUI() {
     // Re-enable Full App button if it was in "Checking…" state
     const fullBtn = document.querySelector('.sv-full-btn');
     if (fullBtn && fullBtn.disabled) { fullBtn.disabled = false; fullBtn.textContent = 'Full App →'; }
+    // Banned users: lock the simple view with a suspension notice
+    if (_currentUserRole === 'banned') {
+      if (fullBtn) { fullBtn.style.display = 'none'; }
+      const svContent = document.getElementById('sv-content');
+      if (svContent) svContent.innerHTML = `<div class="sv-empty" style="color:#ff5252;font-size:1rem">Your account has been suspended.<br><span style="font-size:.8rem;color:#888">Contact support if you believe this is an error.</span></div>`;
+      return;
+    }
     // Paid/admin: always go straight to the full app
     if (_hasFullAccess()) {
       const sv = document.getElementById('simple-view');
@@ -7329,17 +7341,21 @@ async function startCheckout(plan) {
       return;
     }
 
+    const ctrl = new AbortController();
+    const tmo  = setTimeout(() => ctrl.abort(), 15000);
     const res = await fetch(`${_SB_URL}/functions/v1/create-checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ plan }),
+      signal: ctrl.signal,
     });
+    clearTimeout(tmo);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     if (!data.url)  throw new Error('No checkout URL returned — please try again');
-    window.location.href = data.url; // success: navigate to Stripe
+    window.location.href = data.url;
   } catch (err) {
-    showErr('Could not start checkout: ' + err.message);
+    showErr(err.name === 'AbortError' ? 'Request timed out — please try again' : 'Could not start checkout: ' + err.message);
   }
 }
 
@@ -7349,15 +7365,19 @@ async function openPortal() {
   const btn = document.getElementById('auth-manage-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
   try {
+    const ctrl = new AbortController();
+    const tmo  = setTimeout(() => ctrl.abort(), 15000);
     const res = await fetch(`${_SB_URL}/functions/v1/create-portal`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      signal: ctrl.signal,
     });
+    clearTimeout(tmo);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     if (data.url) window.location.href = data.url;
   } catch (err) {
-    alert('Could not open subscription manager: ' + err.message);
+    alert(err.name === 'AbortError' ? 'Request timed out — please try again' : 'Could not open subscription manager: ' + err.message);
     if (btn) { btn.disabled = false; btn.textContent = 'Manage Sub'; }
   }
 }
@@ -8670,11 +8690,13 @@ function hideSimpleView(bypassGate) {
   if (!bypassGate) {
     if (_hasFullAccess()) {
       // fall through to dismiss
+    } else if (_currentUserRole === 'banned') {
+      return; // banned users stay on simple view, which shows a suspension notice
     } else if (_authReady && !_currentUser) {
       openAuthModal();
       return;
     } else if (_currentUser && _currentUserRole === null) {
-      // Role still loading — show feedback and auto-dismiss once role arrives
+      // Role still loading — show feedback, updateAuthUI will auto-dismiss once role arrives
       const btn = document.querySelector('.sv-full-btn');
       if (btn && !btn.disabled) { btn.disabled = true; btn.textContent = 'Checking…'; }
       return;
@@ -8837,9 +8859,9 @@ function init() {
   renderDateBar();
   const lastSport = localStorage.getItem('_baseline_sport') || 'tennis';
   switchSport(lastSport);
-  // Strip any internal URL params (_r = hard reload, checkout = Stripe return)
-  if (location.search) history.replaceState({}, '', location.pathname);
+  // Read params BEFORE stripping — replaceState changes location.search immediately
   const _ckParam = new URLSearchParams(location.search).get('checkout');
+  if (location.search) history.replaceState({}, '', location.pathname);
   if (_ckParam === 'success') {
     const _banner = document.createElement('div');
     _banner.className = 'checkout-activating';

@@ -239,8 +239,11 @@
 
       // Verify admin role via edge function (source of truth)
       try {
+        const ctrl = new AbortController();
+        setTimeout(() => ctrl.abort(), 15000);
         const res = await fetch(`${SB_URL}/functions/v1/admin-users`, {
-          headers: { Authorization: `Bearer ${session.access_token}` }
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          signal: ctrl.signal,
         });
         if (res.status === 401 || res.status === 403) {
           showGate(`<h2>Access Denied</h2><p>Admin account required.</p><br><a href="index.html" target="_blank" class="adm-btn">← Back to App</a>`);
@@ -249,6 +252,8 @@
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         _session = session;
+        // Write role cache so the main app skips the fetch on next load
+        try { localStorage.setItem('_usr_role_v1', JSON.stringify({ id: session.user.id, role: 'admin' })); } catch {}
         showPanel();
         renderUsersData(data.users || []);
       } catch (e) {
@@ -316,14 +321,17 @@
     async function loadUsers() {
       document.getElementById('adm-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#888"><div class="adm-spinner" style="margin:0 auto 10px"></div>Loading…</td></tr>';
       try {
+        const ctrl = new AbortController();
+        setTimeout(() => ctrl.abort(), 15000);
         const res = await fetch(`${SB_URL}/functions/v1/admin-users`, {
-          headers: { Authorization: `Bearer ${_session.access_token}` }
+          headers: { Authorization: `Bearer ${_session.access_token}` },
+          signal: ctrl.signal,
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         renderUsersData(data.users || []);
       } catch (err) {
-        document.getElementById('adm-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#ff5252">Error: ${err.message}</td></tr>`;
+        document.getElementById('adm-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#ff5252">Error: ${err.name === 'AbortError' ? 'Request timed out — try refreshing' : err.message}</td></tr>`;
       }
     }
 
