@@ -7287,31 +7287,37 @@ function closeUpgradeModal() {
 }
 
 async function startCheckout(plan) {
-  const { data: { session } } = await _sbClient.auth.getSession();
-  if (!session) {
-    openAuthModal(); // open sign-in ON TOP — upgrade modal stays open behind it
-    return;
-  }
-
+  // Disable button immediately — everything else is inside try so it always re-enables on failure
   const btn = document.getElementById(`checkout-btn-${plan}`);
-  if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
+  const origText = btn ? btn.textContent : 'Subscribe';
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+
+  const showErr = msg => {
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
+    const errEl = document.getElementById('upgrade-modal-error');
+    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; setTimeout(() => { errEl.style.display = 'none'; }, 6000); }
+    else alert(msg);
+  };
 
   try {
+    const { data: { session } } = await _sbClient.auth.getSession();
+    if (!session) {
+      if (btn) { btn.disabled = false; btn.textContent = origText; }
+      openAuthModal(); // sign-in slides in on top; upgrade modal stays behind it
+      return;
+    }
 
     const res = await fetch(`${_SB_URL}/functions/v1/create-checkout`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ plan }),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    if (data.url) window.location.href = data.url;
+    if (!data.url)  throw new Error('No checkout URL returned — please try again');
+    window.location.href = data.url; // success: navigate to Stripe
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Subscribe'; }
-    alert('Could not start checkout: ' + err.message);
+    showErr('Could not start checkout: ' + err.message);
   }
 }
 

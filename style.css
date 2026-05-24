@@ -2672,6 +2672,7 @@ body.simple-mode #app-layout { display: none !important; }
 }
 .plan-btn-featured:hover { opacity: .88; background: var(--accent); }
 .upgrade-fine { font-size: .75rem; color: var(--text-muted); text-align: center; margin: 0; }
+.upgrade-error-msg { background: rgba(255,80,80,.12); border: 1px solid rgba(255,80,80,.3); color: #ff8080; border-radius: 8px; padding: 10px 14px; font-size: .8rem; text-align: center; margin-bottom: 10px; }
 
 /* Post-payment activating banner */
 .checkout-activating {
