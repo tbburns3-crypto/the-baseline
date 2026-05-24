@@ -7118,8 +7118,25 @@ function updateAuthUI() {
   // Refresh Secret Ticket visibility if on tickets tab
   if (S.sport === 'tickets') renderTicketsPage();
 
+  // Update sign-in status shown inside the simple view header
+  updateSvAuthBar();
+
   // If user clicked Full App before auth settled, process it now
   if (_pendingHide) hideSimpleView();
+}
+
+function updateSvAuthBar() {
+  const bar = document.getElementById('sv-auth-bar');
+  if (!bar) return;
+  if (!_authReady) { bar.innerHTML = ''; return; }
+  if (!_currentUser) {
+    bar.innerHTML = `<button class="sv-auth-btn" onclick="openAuthModal()">Sign In</button>`;
+  } else {
+    const email = _currentUser.email || '';
+    const short = email.length > 22 ? email.slice(0, 20) + '…' : email;
+    const subBtn = _hasFullAccess() ? '' : `<button class="sv-subscribe-btn" onclick="openUpgradeModal()">Subscribe</button>`;
+    bar.innerHTML = `<span class="sv-signed-chip">● ${short}</span>${subBtn}`;
+  }
 }
 
 function initAuth() {
