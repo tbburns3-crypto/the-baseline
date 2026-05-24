@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>The Baseline | Admin</title>
   <style>
     :root {
@@ -247,7 +250,7 @@
       const btn = document.getElementById('adm-otp-btn');
       btn.disabled = true; btn.textContent = 'Sending…';
       document.getElementById('adm-login-err').textContent = '';
-      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
       if (error) {
         document.getElementById('adm-login-err').textContent = error.message;
         btn.disabled = false; btn.textContent = 'Send Code';
