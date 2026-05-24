@@ -7090,16 +7090,13 @@ function updateAuthUI() {
     if (signinBtn) signinBtn.style.display  = 'none';
     if (userInfo)  userInfo.style.display   = 'flex';
     if (emailChip) emailChip.textContent    = _currentUser.email || '';
-    // If now paid/admin and the simple view is still up from an auth gate, hide it
+    // Paid/admin: always go straight to the full app
     if (_hasFullAccess()) {
       const sv = document.getElementById('simple-view');
       if (sv?.classList.contains('sv-active')) {
-        const dismissed = localStorage.getItem('sv_dismissed');
-        if (dismissed === dateStrLocal()) {
-          // User had already dismissed today - respect that
-          document.body.classList.remove('simple-mode');
-          sv.classList.remove('sv-active');
-        }
+        document.body.classList.remove('simple-mode');
+        sv.classList.remove('sv-active');
+        localStorage.setItem('sv_dismissed', dateStrLocal());
       }
     }
   } else {
