@@ -7,9 +7,41 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>The Baseline | Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=191">
+  <link rel="stylesheet" href="style.css?v=192">
 </head>
 <body>
+
+  <!-- ── UPGRADE MODAL ── -->
+  <div id="upgrade-modal" class="auth-modal-overlay" onclick="if(event.target===this)closeUpgradeModal()">
+    <div class="upgrade-modal-box">
+      <button class="auth-modal-close" onclick="closeUpgradeModal()">✕</button>
+      <div class="auth-modal-brand">◉ THE BASELINE</div>
+      <h2 class="upgrade-title">Unlock Full Access</h2>
+      <p class="upgrade-desc">Daily picks across every sport, live scores, MLB player props, and more.</p>
+      <div class="upgrade-plans">
+        <div class="upgrade-plan">
+          <div class="plan-label">Weekly</div>
+          <div class="plan-price">$7.99<span class="plan-per">/week</span></div>
+          <div class="plan-note">Flexible, cancel anytime</div>
+          <button id="checkout-btn-weekly" class="plan-btn" onclick="startCheckout('weekly')">Subscribe</button>
+        </div>
+        <div class="upgrade-plan upgrade-plan-featured">
+          <div class="plan-best">Best Value</div>
+          <div class="plan-label">Yearly</div>
+          <div class="plan-price">$199<span class="plan-per">/year</span></div>
+          <div class="plan-save">$16.58/mo - Save 45%</div>
+          <button id="checkout-btn-yearly" class="plan-btn plan-btn-featured" onclick="startCheckout('yearly')">Subscribe</button>
+        </div>
+        <div class="upgrade-plan">
+          <div class="plan-label">Monthly</div>
+          <div class="plan-price">$29.99<span class="plan-per">/mo</span></div>
+          <div class="plan-note">Most popular</div>
+          <button id="checkout-btn-monthly" class="plan-btn" onclick="startCheckout('monthly')">Subscribe</button>
+        </div>
+      </div>
+      <p class="upgrade-fine">Secure checkout via Stripe. Cancel anytime.</p>
+    </div>
+  </div>
 
   <!-- ── AUTH MODAL ── -->
   <div id="auth-modal" class="auth-modal-overlay" onclick="if(event.target===this)closeAuthModal()">
@@ -253,6 +285,6 @@
   </div><!-- /app-layout -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=191"></script>
+  <script src="app.js?v=192"></script>
 </body>
 </html>

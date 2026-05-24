@@ -7208,6 +7208,47 @@ async function signOut() {
   await _sbClient.auth.signOut();
   // onAuthStateChange fires with SIGNED_OUT and handles state + UI update
 }
+
+// ── UPGRADE MODAL ────────────────────────────────────────────────────────────
+function openUpgradeModal() {
+  document.getElementById('upgrade-modal').classList.add('auth-open');
+}
+function closeUpgradeModal() {
+  document.getElementById('upgrade-modal').classList.remove('auth-open');
+}
+
+async function startCheckout(plan) {
+  const btn = document.getElementById(`checkout-btn-${plan}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
+
+  try {
+    const { data: { session } } = await _sbClient.auth.getSession();
+    if (!session) throw new Error('Not signed in');
+
+    const res = await fetch(`${_SB_URL}/functions/v1/create-checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ plan }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (data.url) window.location.href = data.url;
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Subscribe'; }
+    alert('Could not start checkout: ' + err.message);
+  }
+}
+
+async function _pollForPaidRole(attempts) {
+  attempts = attempts || 0;
+  if (attempts > 8) return; // give up after ~16s
+  await _fetchUserRole(_currentUser?.id);
+  if (_hasFullAccess()) return; // done
+  setTimeout(() => _pollForPaidRole(attempts + 1), 2000);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _TICKET_KEY         = '_baseline_ticket_v10';
@@ -8508,10 +8549,8 @@ function hideSimpleView(bypassGate) {
   // While role is still loading (_currentUserRole===null) or auth isn't ready, let them through.
   const definitelyOut  = _authReady && !_currentUser;
   const definitelyFree = _authReady && _currentUser && _currentUserRole !== null && !_hasFullAccess();
-  if (!bypassGate && (definitelyOut || definitelyFree)) {
-    openAuthModal();
-    return;
-  }
+  if (!bypassGate && definitelyOut)  { openAuthModal();    return; }
+  if (!bypassGate && definitelyFree) { openUpgradeModal(); return; }
   document.body.classList.remove('simple-mode');
   document.getElementById('simple-view').classList.remove('sv-active');
   localStorage.setItem('sv_dismissed', dateStrLocal());
@@ -8660,9 +8699,25 @@ function init() {
   renderDateBar();
   const lastSport = localStorage.getItem('_baseline_sport') || 'tennis';
   switchSport(lastSport);
+  // Handle return from Stripe Checkout
+  const _ckParam = new URLSearchParams(location.search).get('checkout');
+  if (_ckParam === 'success') {
+    history.replaceState({}, '', location.pathname);
+    const _banner = document.createElement('div');
+    _banner.className = 'checkout-activating';
+    _banner.textContent = 'Payment received - activating your subscription...';
+    document.body.appendChild(_banner);
+    setTimeout(() => _banner.remove(), 8000);
+  }
+
   // Always show simple view on load - initAuth will auto-hide for paid/admin who already dismissed today
   showSimpleView();
   initAuth();
+
+  // If returning from payment, poll until role flips to paid
+  if (_ckParam === 'success') {
+    setTimeout(() => { if (_currentUser) _pollForPaidRole(); }, 2000);
+  }
 }
 
 init();

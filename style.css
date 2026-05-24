@@ -2602,6 +2602,72 @@ body.simple-mode #app-layout { display: none !important; }
 }
 .auth-signout-btn:hover { border-color: #ff6b6b; color: #ff6b6b; }
 
+/* ── UPGRADE MODAL ── */
+.upgrade-modal-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px 28px 28px;
+  width: 100%; max-width: 560px;
+  position: relative;
+  box-shadow: 0 8px 40px rgba(0,0,0,.5);
+}
+.upgrade-title { font-size: 1.5rem; font-weight: 800; margin: 0 0 8px; color: var(--text); }
+.upgrade-desc  { font-size: .88rem; color: var(--text-muted); margin: 0 0 26px; line-height: 1.5; }
+.upgrade-plans {
+  display: grid; grid-template-columns: 1fr 1.12fr 1fr;
+  gap: 12px; margin-bottom: 20px;
+}
+.upgrade-plan {
+  background: rgba(255,255,255,.04); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 14px 18px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  position: relative;
+}
+.upgrade-plan-featured {
+  background: rgba(0,230,118,.06);
+  border-color: var(--accent);
+  transform: scaleY(1.02);
+}
+.plan-best {
+  background: var(--accent); color: #000;
+  font-size: .68rem; font-weight: 800; letter-spacing: .06em;
+  padding: 2px 10px; border-radius: 20px; margin-bottom: 4px;
+}
+.plan-label { font-size: .8rem; font-weight: 700; color: var(--text-muted); letter-spacing: .06em; text-transform: uppercase; }
+.plan-price  { font-size: 1.6rem; font-weight: 800; color: var(--text); line-height: 1.1; }
+.plan-per    { font-size: .78rem; font-weight: 500; color: var(--text-muted); }
+.plan-save   { font-size: .72rem; color: var(--accent); font-weight: 700; }
+.plan-note   { font-size: .72rem; color: var(--text-muted); }
+.plan-btn {
+  width: 100%; margin-top: 8px; padding: 10px;
+  background: rgba(255,255,255,.08); border: 1px solid var(--border);
+  color: var(--text); font-weight: 700; font-size: .85rem;
+  border-radius: 8px; cursor: pointer; transition: background .15s;
+}
+.plan-btn:hover    { background: rgba(255,255,255,.14); }
+.plan-btn:disabled { opacity: .5; cursor: default; }
+.plan-btn-featured {
+  background: var(--accent); border-color: var(--accent); color: #000;
+}
+.plan-btn-featured:hover { opacity: .88; background: var(--accent); }
+.upgrade-fine { font-size: .75rem; color: var(--text-muted); text-align: center; margin: 0; }
+
+/* Post-payment activating banner */
+.checkout-activating {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--bg-card); border: 1px solid var(--accent);
+  color: var(--text); padding: 12px 24px; border-radius: 10px;
+  font-size: .9rem; font-weight: 600; z-index: 9998;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4);
+}
+
+@media (max-width: 540px) {
+  .upgrade-plans { grid-template-columns: 1fr; }
+  .upgrade-plan-featured { transform: none; }
+  .upgrade-modal-box { padding: 24px 16px 20px; }
+}
+
 /* Simple-view lock message for non-paid users */
 .sv-lock-msg {
   text-align: center; padding: 24px 20px;
