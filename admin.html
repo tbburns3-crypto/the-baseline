@@ -223,41 +223,43 @@
     }
 
     // ── INIT ──
-    // Uses the admin-users edge function as the auth gate — it already verifies
-    // admin role server-side, so a successful response means access is granted.
+    // Checks admin role via the profiles REST API (same fast call app.js uses),
+    // then loads the user list via the edge function separately.
     async function init() {
       let session = null;
       try {
         const { data } = await sb.auth.getSession();
         session = data?.session || null;
-      } catch (e) {
+      } catch {
         showLoginForm();
         return;
       }
 
       if (!session) { showLoginForm(); return; }
 
-      // Verify admin role via edge function (source of truth)
+      // Verify admin role via profiles table (fast, no cold-start)
       try {
         const ctrl = new AbortController();
-        setTimeout(() => ctrl.abort(), 15000);
-        const res = await fetch(`${SB_URL}/functions/v1/admin-users`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-          signal: ctrl.signal,
-        });
-        if (res.status === 401 || res.status === 403) {
-          showGate(`<h2>Access Denied</h2><p>Admin account required.</p><br><a href="index.html" target="_blank" class="adm-btn">← Back to App</a>`);
+        const tmo = setTimeout(() => ctrl.abort(), 8000);
+        const res = await fetch(
+          `${SB_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(session.user.id)}&select=role&limit=1`,
+          { headers: { apikey: SB_KEY, Authorization: `Bearer ${session.access_token}` }, signal: ctrl.signal }
+        );
+        clearTimeout(tmo);
+        if (!res.ok) throw new Error(`Profile fetch failed (${res.status})`);
+        const rows = await res.json();
+        const role = rows?.[0]?.role;
+        if (role !== 'admin') {
+          showGate(`<h2>Access Denied</h2><p>Admin account required.</p><br><a href="index.html" class="adm-btn">← Back to App</a>`);
           return;
         }
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
         _session = session;
-        // Write role cache so the main app skips the fetch on next load
         try { localStorage.setItem('_usr_role_v1', JSON.stringify({ id: session.user.id, role: 'admin' })); } catch {}
         showPanel();
-        renderUsersData(data.users || []);
+        loadUsers();
       } catch (e) {
-        showGate(`<h2>Error</h2><p>${e.message}</p><br><button onclick="init()" class="adm-btn">Retry</button>`);
+        const msg = e.name === 'AbortError' ? 'Request timed out — check your connection.' : e.message;
+        showGate(`<h2>Error</h2><p>${msg}</p><br><button onclick="init()" class="adm-btn">Retry</button>`);
       }
     }
 
@@ -304,10 +306,11 @@
       await init();
     }
 
-    // ── AUTH STATE — only used to catch magic-link redirects ──
+    // Magic-link redirects: re-run init after sign-in settles
     sb.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session && !_session) {
-        init();
+        // Small delay so the session is fully written before init reads it
+        setTimeout(init, 200);
       }
     });
 
@@ -419,8 +422,9 @@
     }
 
     // ── SIGN OUT ──
-    async function doSignOut() {
-      await sb.auth.signOut();
+    function doSignOut() {
+      localStorage.removeItem('_usr_role_v1');
+      sb.auth.signOut().catch(() => {});
       window.location.href = 'index.html';
     }
 
