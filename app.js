@@ -6054,30 +6054,62 @@ function renderGolfRow(p, round) {
   </div>`;
 }
 
-// ── GOLF 3-BALL PICKS ─────────────────────────────────────────
+// ── GOLF 2-BALL PICKS ─────────────────────────────────────────
 function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const players = group.players.slice(0, 3);
   if (players.length < 2) return '';
 
-  const getSA   = p => { const s = p.statistics?.find(x => ['SA','AVG','scoringAverage'].includes(x.abbreviation||x.name)); return s ? parseFloat(s.displayValue) || 0 : 0; };
-  const getOWGR = p => { const s = p.statistics?.find(x => /owgr|world.*rank|ranking/i.test(x.abbreviation||x.name||'')); return s ? parseInt(s.displayValue) || 0 : 0; };
-  const getTodayNum = p => { const t = p.linescores?.[round-1]?.displayValue; return t ? (t === 'E' ? 0 : parseInt(t) || 0) : null; };
-  // Strokes Gained Total or Tee-to-Green - ESPN abbreviations vary by tour
-  const getSGT  = p => { const s = p.statistics?.find(x => /^sg.?t$|strokes.gained.total|sg.*tee|sgt$/i.test(x.abbreviation||x.name||'')); return s ? parseFloat(s.displayValue) : null; };
-  const getSGApp= p => { const s = p.statistics?.find(x => /sg.?app|approach|sga$/i.test(x.abbreviation||x.name||'')); return s ? parseFloat(s.displayValue) : null; };
+  // ── Stat extractors — broad regex to catch ESPN's varying abbreviation formats ──
+  const getSA = p => {
+    const s = p.statistics?.find(x => /^(SA|AVG|scoringAverage|scoring.avg|avg)$/i.test(x.abbreviation||x.name||''));
+    return s ? parseFloat(s.displayValue) || 0 : 0;
+  };
+  const getOWGR = p => {
+    const s = p.statistics?.find(x => /owgr|world.*rank|worldRank|officialWorld/i.test(x.abbreviation||x.name||''));
+    return s ? parseInt(s.displayValue) || 0 : 0;
+  };
+  const getTodayNum = p => {
+    const t = p.linescores?.[round-1]?.displayValue;
+    return t ? (t === 'E' ? 0 : parseInt(t) || 0) : null;
+  };
+  // SG: Total — ESPN uses sgTotal, SGT, sg:total, strokesGainedTotal, SG:T
+  const getSGT = p => {
+    const s = p.statistics?.find(x => /^(sgt|sg[:\-.]?t(otal)?|strokesGainedTotal|sg.*tee.*green)$/i.test(x.abbreviation||x.name||''));
+    return s ? parseFloat(s.displayValue) : null;
+  };
+  // SG: Approach — sgApp, SGA, sg:app, strokesGainedApproach
+  const getSGApp = p => {
+    const s = p.statistics?.find(x => /^(sga|sg[:\-.]?app(roach)?|strokesGainedApp)$/i.test(x.abbreviation||x.name||''));
+    return s ? parseFloat(s.displayValue) : null;
+  };
+  // Greens In Regulation % — reliable backup when SG unavailable
+  const getGIR = p => {
+    const s = p.statistics?.find(x => /^(gir|greens?(InReg)?|girPct)$/i.test(x.abbreviation||x.name||''));
+    return s ? parseFloat(s.displayValue) : null;
+  };
+  // Putts per round — lower = better
+  const getPutts = p => {
+    const s = p.statistics?.find(x => /^(putts?PerRound|ppr|avgPutts?)$/i.test(x.abbreviation||x.name||''));
+    return s ? parseFloat(s.displayValue) : null;
+  };
 
   const avgSA = players.reduce((s,p) => s + (getSA(p)||70), 0) / players.length;
+  const avgGIR = (() => {
+    const vals = players.map(p => getGIR(p)).filter(v => v !== null);
+    return vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+  })();
+  const avgPutts = (() => {
+    const vals = players.map(p => getPutts(p)).filter(v => v !== null);
+    return vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
+  })();
 
   // Determine group state BEFORE scoring so we know if pick should be locked
   const statuses     = players.map(p => playerRoundStatus(p, round));
   const groupStarted = statuses.some(s => s === 'live' || s === 'finished');
   const pickId       = normGolfPickId(eventId, group.time, group.nine, group.overrideIdx, group.overrideDate);
-  // Fallback IDs for picks recorded before the overrideIdx scheme was added
-  const ttPickId  = normGolfPickId(eventId, group.time, group.nine);
-  const oldPickId = group.time ? `golf_${eventId}_${group.time.replace(/\D/g,'')}` : null;
+  const ttPickId     = normGolfPickId(eventId, group.time, group.nine);
+  const oldPickId    = group.time ? `golf_${eventId}_${group.time.replace(/\D/g,'')}` : null;
   const allPicksNow2 = getPicks();
-  // Validate any stored pick against the group's players to prevent ID collisions
-  // from two groups that share the same tee time + nine from showing the wrong name.
   const groupLastNames = players.map(p =>
     (p.athlete?.shortName || p.athlete?.displayName || '').split(' ').pop().toLowerCase()
   );
@@ -6091,71 +6123,83 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
     || (oldPickId ? validatePick(allPicksNow2[oldPickId]) : null);
 
   const scored = players.map(p => {
-    const sa    = getSA(p);
-    const owgr  = getOWGR(p);
-    const pos   = parseInt(p.order) || 999;
+    const sa       = getSA(p);
+    const owgr     = getOWGR(p);
+    const pos      = parseInt(p.order) || 999;
     const todayNum = getTodayNum(p);
+    const gir      = getGIR(p);
+    const putts    = getPutts(p);
     let score = 0;
     const factors = [];
 
-    // 1. OWGR world ranking - best global quality signal
+    // 1. OWGR world ranking
     const owgrPts = owgr > 0 && owgr <= 5 ? 4 : owgr <= 15 ? 3 : owgr <= 40 ? 2 : owgr <= 100 ? 1 : 0;
     if (owgrPts > 0) { score += owgrPts; factors.push(`W${owgr}`); }
 
-    // 2. Tournament leaderboard position - how they're performing this week
+    // 2. Tournament leaderboard position
     const posPts = pos <= 3 ? 5 : pos <= 10 ? 4 : pos <= 25 ? 3 : pos <= 50 ? 2 : pos <= 80 ? 1 : 0;
     if (posPts > 0 && pos < 999) { score += posPts; factors.push(`#${pos}`); }
 
-    // 3. Season scoring average vs group - long-run quality
+    // 3. Season scoring average vs group
     if (sa > 0 && avgSA > 0) {
       const diff = sa - avgSA;
-      if (diff < -0.4) { score += 2; factors.push(`${sa.toFixed(1)} avg`); }
-      else if (diff < 0) { score += 1; factors.push(`${sa.toFixed(1)} avg`); }
+      if (diff < -0.5) { score += 3; factors.push(`${sa.toFixed(1)} avg`); }
+      else if (diff < -0.2) { score += 2; factors.push(`${sa.toFixed(1)} avg`); }
+      else if (diff < 0)    { score += 1; factors.push(`${sa.toFixed(1)} avg`); }
     }
 
-    // 4. Previous rounds - form this week + trajectory
+    // 4. Previous rounds — weight most recent round 2x, older rounds 1x
     const roundScores = [];
     for (let r = 1; r < round; r++) {
       const rv = p.linescores?.[r - 1]?.displayValue;
       if (!rv || rv === '-') continue;
       const rn = rv === 'E' ? 0 : parseInt(rv);
-      if (!isNaN(rn)) roundScores.push(rn);
+      if (!isNaN(rn)) roundScores.push({ score: rn, weight: r === round - 1 ? 2 : 1 });
     }
-    // Under-par rounds
-    const underParRounds = roundScores.filter(n => n < 0).length;
-    if (underParRounds >= 2) { score += 2; factors.push(`${underParRounds}× under`); }
-    else if (underParRounds === 1) { score += 1; factors.push('prev. under'); }
-    // Trajectory: improving round-over-round (each round better than the last)
+    const underParWeighted = roundScores.filter(r => r.score < 0).reduce((a,r) => a + r.weight, 0);
+    if (underParWeighted >= 3)     { score += 3; factors.push(`${roundScores.filter(r=>r.score<0).length}× under`); }
+    else if (underParWeighted >= 2){ score += 2; factors.push(`${roundScores.filter(r=>r.score<0).length}× under`); }
+    else if (underParWeighted >= 1){ score += 1; factors.push('prev. under'); }
+    // Trajectory: most recent round better than the one before
     if (roundScores.length >= 2) {
-      const improving = roundScores.every((n, i) => i === 0 || n < roundScores[i - 1]);
-      const declining  = roundScores.every((n, i) => i === 0 || n > roundScores[i - 1]);
-      if (improving) { score += 2; factors.push('↑ trending'); }
-      else if (declining) { score -= 1; factors.push('↓ fading'); }
+      const last = roundScores[roundScores.length - 1].score;
+      const prev = roundScores[roundScores.length - 2].score;
+      if (last < prev - 1) { score += 2; factors.push('↑ trending'); }
+      else if (last > prev + 1) { score -= 1; factors.push('↓ fading'); }
     }
 
-    // 5. Strokes Gained - most predictive stat in golf when available
+    // 5. Strokes Gained — most predictive stat; broad regex catches ESPN variations
     const sgt  = getSGT(p);
     const sgApp = getSGApp(p);
-    // SG: Total - overall value above field average
     if (sgt !== null) {
-      if (sgt >= 2.0)       { score += 4; factors.push(`SGT +${sgt.toFixed(1)}`); }
-      else if (sgt >= 1.0)  { score += 3; factors.push(`SGT +${sgt.toFixed(1)}`); }
-      else if (sgt >= 0.3)  { score += 2; factors.push(`SGT +${sgt.toFixed(1)}`); }
-      else if (sgt >= 0)    { score += 1; }
-      else if (sgt < -1.0)  { score -= 1; }
+      if (sgt >= 2.0)      { score += 4; factors.push(`SGT +${sgt.toFixed(1)}`); }
+      else if (sgt >= 1.0) { score += 3; factors.push(`SGT +${sgt.toFixed(1)}`); }
+      else if (sgt >= 0.3) { score += 2; factors.push(`SGT +${sgt.toFixed(1)}`); }
+      else if (sgt >= 0)   { score += 1; }
+      else if (sgt < -1.0) { score -= 1; }
     }
-    // SG: Approach - iron quality, most stable round-to-round predictor
-    if (sgApp !== null && sgt === null) { // only use if SGT not already counted
+    if (sgApp !== null && sgt === null) {
       if (sgApp >= 1.5)      { score += 3; factors.push(`SGA +${sgApp.toFixed(1)}`); }
       else if (sgApp >= 0.5) { score += 2; factors.push(`SGA +${sgApp.toFixed(1)}`); }
       else if (sgApp >= 0)   { score += 1; }
     }
 
-    // Live round score intentionally excluded - using it shifts the pick to whoever
-    // is hot at that moment and causes the displayed pick to change mid-round.
-    // Picks are based on pre-round data only. todayNum still captured for display.
+    // 6. GIR % — greens in regulation is reliable when SG isn't available
+    if (gir !== null && avgGIR !== null) {
+      const girDiff = gir - avgGIR;
+      if (girDiff >= 8)      { score += 2; factors.push(`GIR ${gir.toFixed(0)}%`); }
+      else if (girDiff >= 4) { score += 1; factors.push(`GIR ${gir.toFixed(0)}%`); }
+      else if (girDiff < -6) { score -= 1; }
+    }
 
-    const total = p.score || 'E';
+    // 7. Putts per round — fewer putts = better; lower is better
+    if (putts !== null && avgPutts !== null) {
+      const puttDiff = putts - avgPutts;
+      if (puttDiff < -0.5)    { score += 1; factors.push(`${putts.toFixed(1)} putts`); }
+      else if (puttDiff > 0.5){ score -= 1; }
+    }
+
+    const total    = p.score || 'E';
     const totalNum = total === 'E' ? 0 : parseInt(total) || 0;
     return { p, score, factors, sa, pos, total, totalNum, todayNum };
   });
@@ -6164,8 +6208,9 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const winner = scored[0];
   const pickName = winner.p.athlete?.shortName || winner.p.athlete?.displayName || '?';
 
+  // 2-ball confidence: lower thresholds since it's head-to-head not 3-way
   const gap  = winner.score - (scored[1]?.score || 0);
-  const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
+  const conf = gap >= 3 ? 3 : gap >= 1 ? 2 : 1;
 
   // Record pick regardless of group state - force=false means existing picks are never overwritten.
   // This ensures tickets show golf picks even when the user first opens the app mid/post-round.
@@ -6266,7 +6311,7 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
     ));
 
     let html = '';
-    const note = '<div class="pc-data-note">3-ball picks · world ranking · scoring avg · tournament position</div>';
+    const note = '<div class="pc-data-note">2-ball picks · world ranking · scoring avg · GIR · SG when available</div>';
 
     for (let i = 0; i < GOLF_TOURS.length; i++) {
       if (results[i].status !== 'fulfilled') continue;
@@ -7514,7 +7559,7 @@ function showSecretTicket() {
   document.body.appendChild(modal);
 }
 
-// Day ticket builds ONCE at first run each day (picks for games before 6pm ET).
+// Day ticket builds ONCE after 1am ET each day (allows time to input golf picks first).
 // Night ticket builds ONCE after 5pm ET (picks for games at/after 6pm ET).
 // Supabase sync: first device to build each day saves to DB; all others load it.
 // After each ticket is built, only W/L updates can change it.
@@ -7527,6 +7572,9 @@ async function buildSplitTicketsIfNeeded() {
     etHour = parseInt(s) || 0;
   } catch {}
 
+  const dayAllowed   = etHour >= 1;  // wait until 1am ET so golf picks can be added first
+  const nightAllowed = etHour >= 17;
+
   let dayBuilt   = localStorage.getItem('_day_built_v1')   === today;
   let nightBuilt = localStorage.getItem('_night_built_v1') === today;
 
@@ -7538,8 +7586,8 @@ async function buildSplitTicketsIfNeeded() {
     try { _eveningTicketCache = JSON.parse(localStorage.getItem(_EVE_TICKET_KEY) || 'null') || null; } catch {}
   }
 
-  // ── Supabase sync: pull shared ticket if this device hasn't built yet ──
-  if (!dayBuilt || (!nightBuilt && etHour >= 17)) {
+  // ── Supabase sync: pull admin-saved ticket regardless of time ──
+  if (!dayBuilt || (!nightBuilt && nightAllowed)) {
     const sbData = await _sbGetTickets(today);
     if (sbData?.morn && !dayBuilt) {
       const mo = { date: today, legs: sbData.morn };
@@ -7548,7 +7596,7 @@ async function buildSplitTicketsIfNeeded() {
       localStorage.setItem('_day_built_v1', today);
       dayBuilt = true;
     }
-    if (sbData?.eve && !nightBuilt && etHour >= 17) {
+    if (sbData?.eve && !nightBuilt && nightAllowed) {
       const eo = { date: today, legs: sbData.eve };
       try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
       _eveningTicketCache = eo;
@@ -7557,30 +7605,31 @@ async function buildSplitTicketsIfNeeded() {
     }
   }
 
-  if (dayBuilt && (nightBuilt || etHour < 17)) return;
+  if (dayBuilt && (nightBuilt || !nightAllowed)) return;
 
   // ── No shared ticket found - this device is first to build ──
   const allPicks   = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
 
-  if (!dayBuilt) {
+  // Day ticket: only auto-build after 1am ET so golf picks have time to be entered
+  if (!dayBuilt && dayAllowed) {
     const mornLegs = _selectTicketLegs(candidates.filter(c => !isEveningGame(allPicks[c.id] || {})));
     if (mornLegs) {
       const mo = { date: today, legs: mornLegs };
       try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
       _morningTicketCache = mo;
-      _sbSaveTicket(today, 'day', mornLegs); // fire-and-forget; first-build-wins in DB
+      _sbSaveTicket(today, 'day', mornLegs);
     }
     localStorage.setItem('_day_built_v1', today);
   }
 
-  if (!nightBuilt && etHour >= 17) {
+  if (!nightBuilt && nightAllowed) {
     const eveLegs = _selectTicketLegs(candidates.filter(c => isEveningGame(allPicks[c.id] || {})));
     if (eveLegs) {
       const eo = { date: today, legs: eveLegs };
       try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
       _eveningTicketCache = eo;
-      _sbSaveTicket(today, 'night', eveLegs); // fire-and-forget
+      _sbSaveTicket(today, 'night', eveLegs);
     }
     localStorage.setItem('_night_built_v1', today);
   }
