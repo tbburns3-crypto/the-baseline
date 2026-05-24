@@ -8446,7 +8446,7 @@ function cleanLegDesc(leg) {
   return d;
 }
 
-function renderTicketBlock(title, legs, allPicks, footer = '') {
+function renderTicketBlock(title, legs, allPicks, footer = '', ticketDate = '') {
   const row = (leg, i) => {
     const live   = allPicks[leg.id] || {};
     const result = live.result ?? leg.result ?? null;
@@ -8473,8 +8473,11 @@ function renderTicketBlock(title, legs, allPicks, footer = '') {
   const wins   = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
   const losses = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'loss').length;
   const statusLine = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
+  const datePill = ticketDate ? (() => {
+    try { return `<span class="tk-date-pill">${new Date(ticketDate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}</span>`; } catch { return ''; }
+  })() : '';
   return `<div class="sv-ticket">
-    <div class="sv-ticket-hdr">${esc(title)} - ${legs.length} Leg${legs.length!==1?'s':''} ${statusLine}</div>
+    <div class="sv-ticket-hdr">${esc(title)} - ${legs.length} Leg${legs.length!==1?'s':''} ${datePill} ${statusLine}</div>
     <div class="sv-ticket-list">${legs.map(row).join('')}</div>
     ${footer}
   </div>`;
@@ -8506,8 +8509,8 @@ function renderTicketsPage() {
     let etHr = 0;
     try { etHr = parseInt(new Date().toLocaleString('en-US', { hour:'numeric', hour12:false, timeZone:'America/New_York' })) || 0; } catch {}
     const cards = [];
-    if (morn?.legs?.length) cards.push(renderTicketBlock('🌤 Day Ticket', morn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
-    if (eve?.legs?.length)  cards.push(renderTicketBlock('🌙 Night Ticket', eve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+    if (morn?.legs?.length) cards.push(renderTicketBlock('🌤 Day Ticket', morn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks, '', morn.date));
+    if (eve?.legs?.length)  cards.push(renderTicketBlock('🌙 Night Ticket', eve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks, '', eve.date));
     else if (!eve) cards.push(`<div class="sv-ticket sv-ticket-pending"><div class="sv-ticket-hdr">🌙 Night Ticket</div><div class="sv-pending-msg">Check back after 5:00 PM ET for tonight's picks</div></div>`);
     if (cards.length) {
       todayPicksHTML = `<div class="tp-sport-section">
@@ -8525,14 +8528,14 @@ function renderTicketsPage() {
       const ystEve  = JSON.parse(localStorage.getItem(_YST_EVE_TICKET_KEY)  || 'null');
       const cards = [];
       if (ystMorn?.date === date && ystMorn.legs?.length)
-        cards.push(renderTicketBlock('🌤 Day Ticket', ystMorn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+        cards.push(renderTicketBlock('🌤 Day Ticket', ystMorn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks, '', ystMorn.date));
       if (ystEve?.date === date && ystEve.legs?.length)
-        cards.push(renderTicketBlock('🌙 Night Ticket', ystEve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+        cards.push(renderTicketBlock('🌙 Night Ticket', ystEve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks, '', ystEve.date));
       if (!cards.length) {
         // Fall back to combined yesterday ticket
         const yst = JSON.parse(localStorage.getItem(_YST_TICKET_KEY) || 'null');
         if (yst?.date === date && yst.legs?.length)
-          cards.push(renderTicketBlock('🎫 Daily Ticket', yst.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks));
+          cards.push(renderTicketBlock('🎫 Daily Ticket', yst.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks, '', yst.date));
       }
       if (cards.length) {
         ystTicketHTML = `<div class="tp-sport-section">
