@@ -7030,20 +7030,9 @@ function filterSidebar(q) {
 }
 
 // ── REFRESH ──────────────────────────────────────────────────
-async function refresh() {
-  const btn = document.getElementById('refresh-btn');
-  btn.style.transform = 'rotate(360deg)';
-  btn.style.transition = 'transform 0.5s';
-  setTimeout(() => { btn.style.transform = ''; btn.style.transition = ''; }, 500);
-
-  S.matches.clear();
-  if (S.sport === 'tennis') {
-    await loadFixtures(S.dateOffset);
-    wsDisconnect(); wsConnect();
-  } else {
-    if (S.view === 'scores') loadOtherScores(S.sport);
-    else loadOtherStandings(S.sport);
-  }
+// Hard reload: picks up new JS/CSS code AND refreshes all live data
+function refresh() {
+  window.location.replace(window.location.pathname + '?_r=' + Date.now());
 }
 
 
@@ -7139,6 +7128,8 @@ function updateAuthUI() {
     if (emailChip) emailChip.textContent    = _currentUser.email || '';
     const manageBtn = document.getElementById('auth-manage-btn');
     if (manageBtn) manageBtn.style.display = _hasFullAccess() ? '' : 'none';
+    const adminLink = document.getElementById('admin-topbar-link');
+    if (adminLink) adminLink.style.display = _isAdmin() ? '' : 'none';
     // Paid/admin: always go straight to the full app
     if (_hasFullAccess()) {
       const sv = document.getElementById('simple-view');
@@ -7153,31 +7144,30 @@ function updateAuthUI() {
     if (userInfo)  userInfo.style.display   = 'none';
     const manageBtn = document.getElementById('auth-manage-btn');
     if (manageBtn) manageBtn.style.display = 'none';
-    // Not signed in - ensure simple view is showing (only once auth state is confirmed)
+    const adminLink = document.getElementById('admin-topbar-link');
+    if (adminLink) adminLink.style.display = 'none';
     if (_authReady) {
       const sv = document.getElementById('simple-view');
       if (sv && !sv.classList.contains('sv-active')) showSimpleView();
     }
   }
 
-  // Refresh Secret Ticket visibility if on tickets tab
   if (S.sport === 'tickets') renderTicketsPage();
-
-  // Update sign-in status shown inside the simple view header
   updateSvAuthBar();
 }
 
 function updateSvAuthBar() {
   const bar = document.getElementById('sv-auth-bar');
   if (!bar) return;
-  if (!_authReady) return; // leave existing content while auth loads
+  if (!_authReady) return;
   if (!_currentUser) {
     bar.innerHTML = `<button class="sv-auth-btn" onclick="openAuthModal()">Sign In</button>`;
   } else {
     const email = _currentUser.email || '';
-    const short = email.length > 22 ? email.slice(0, 20) + '…' : email;
-    const subBtn = _hasFullAccess() ? '' : `<button class="sv-subscribe-btn" onclick="openUpgradeModal()">Subscribe</button>`;
-    bar.innerHTML = `<span class="sv-signed-chip">● ${short}</span>${subBtn}`;
+    const short = email.length > 18 ? email.slice(0, 16) + '…' : email;
+    const subBtn   = _hasFullAccess() ? '' : `<button class="sv-subscribe-btn" onclick="openUpgradeModal()">Subscribe</button>`;
+    const adminBtn = _isAdmin() ? `<a href="admin.html" class="sv-admin-btn">⚙ Admin</a>` : '';
+    bar.innerHTML = `<span class="sv-signed-chip">● ${short}</span>${subBtn}${adminBtn}<button class="sv-signout-small" onclick="signOut()">Sign Out</button>`;
   }
 }
 
@@ -8804,11 +8794,9 @@ function init() {
   renderDateBar();
   const lastSport = localStorage.getItem('_baseline_sport') || 'tennis';
   switchSport(lastSport);
-  // Handle return from Stripe Checkout
+  // Strip any internal URL params (_r = hard reload, checkout = Stripe return)
+  if (location.search) history.replaceState({}, '', location.pathname);
   const _ckParam = new URLSearchParams(location.search).get('checkout');
-  if (_ckParam === 'success' || _ckParam === 'cancel') {
-    history.replaceState({}, '', location.pathname);
-  }
   if (_ckParam === 'success') {
     const _banner = document.createElement('div');
     _banner.className = 'checkout-activating';

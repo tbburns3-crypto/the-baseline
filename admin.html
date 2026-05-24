@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Baseline | Admin</title>
+  <style>
+    :root {
+      --bg: #0d0d0f; --bg-card: #161618; --bg-2: #111113;
+      --border: rgba(255,255,255,.1); --text: #f0f0f0; --text-muted: #888;
+      --accent: #00e676; --danger: #ff5252; --warn: #ffd740; --info: #40c4ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+    /* ── TOPBAR ── */
+    .adm-bar { background: var(--bg-2); border-bottom: 1px solid var(--border); padding: 0 20px; height: 52px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 100; }
+    .adm-brand { font-size: .95rem; font-weight: 800; letter-spacing: .1em; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .adm-brand span { color: var(--accent); font-size: 1.2rem; }
+    .adm-badge { background: rgba(255,200,0,.15); border: 1px solid rgba(255,200,0,.3); color: #ffd700; border-radius: 5px; padding: 2px 8px; font-size: .68rem; font-weight: 700; letter-spacing: .05em; }
+    .adm-bar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .adm-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; padding: 5px 12px; font-size: .75rem; cursor: pointer; text-decoration: none; display: inline-block; }
+    .adm-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .adm-btn-danger { border-color: rgba(255,82,82,.4); color: var(--danger); }
+    .adm-btn-danger:hover { border-color: var(--danger); background: rgba(255,82,82,.08); }
+
+    /* ── LAYOUT ── */
+    .adm-body { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+
+    /* ── STATS ROW ── */
+    .adm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+    .adm-stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+    .adm-stat-val { font-size: 1.8rem; font-weight: 800; line-height: 1; }
+    .adm-stat-lbl { font-size: .72rem; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .06em; }
+    .stat-total .adm-stat-val { color: var(--text); }
+    .stat-paid  .adm-stat-val { color: var(--accent); }
+    .stat-free  .adm-stat-val { color: var(--text-muted); }
+    .stat-ban   .adm-stat-val { color: var(--danger); }
+
+    /* ── TOOLBAR ── */
+    .adm-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .adm-search { flex: 1; min-width: 180px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 8px 12px; font-size: .85rem; outline: none; }
+    .adm-search:focus { border-color: var(--accent); }
+    .adm-filter-btn { background: none; border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; padding: 6px 12px; font-size: .75rem; cursor: pointer; }
+    .adm-filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,230,118,.08); }
+
+    /* ── TABLE ── */
+    .adm-table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .adm-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .adm-table th { background: var(--bg-2); color: var(--text-muted); font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    .adm-table td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.05); vertical-align: middle; }
+    .adm-table tr:last-child td { border-bottom: none; }
+    .adm-table tr:hover td { background: rgba(255,255,255,.02); }
+    .adm-email { font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .adm-date { color: var(--text-muted); font-size: .75rem; white-space: nowrap; }
+
+    /* ── ROLE BADGES ── */
+    .role-badge { display: inline-block; border-radius: 4px; padding: 2px 8px; font-size: .68rem; font-weight: 700; letter-spacing: .04em; }
+    .role-paid   { background: rgba(0,230,118,.15); color: var(--accent); border: 1px solid rgba(0,230,118,.3); }
+    .role-free   { background: rgba(255,255,255,.06); color: var(--text-muted); border: 1px solid rgba(255,255,255,.12); }
+    .role-admin  { background: rgba(255,200,0,.15); color: #ffd700; border: 1px solid rgba(255,200,0,.3); }
+    .role-banned { background: rgba(255,82,82,.15); color: var(--danger); border: 1px solid rgba(255,82,82,.3); }
+
+    /* ── ROLE ACTIONS ── */
+    .adm-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+    .role-btn { border: 1px solid var(--border); background: none; color: var(--text-muted); border-radius: 5px; padding: 3px 9px; font-size: .7rem; cursor: pointer; transition: .12s; }
+    .role-btn:hover { background: rgba(255,255,255,.06); color: var(--text); }
+    .role-btn-ban { border-color: rgba(255,82,82,.35); color: var(--danger); }
+    .role-btn-ban:hover { background: rgba(255,82,82,.1); }
+    .role-btn-paid { border-color: rgba(0,230,118,.35); color: var(--accent); }
+    .role-btn-paid:hover { background: rgba(0,230,118,.08); }
+    .role-btn-free { }
+    .role-btn-unban { border-color: rgba(64,196,255,.35); color: var(--info); }
+    .role-btn-unban:hover { background: rgba(64,196,255,.08); }
+    .role-btn-loading { opacity: .5; pointer-events: none; }
+
+    /* ── STRIPE LINK ── */
+    .stripe-link { color: var(--text-muted); font-size: .72rem; text-decoration: none; }
+    .stripe-link:hover { color: var(--accent); }
+
+    /* ── EMPTY / ERROR / LOADING ── */
+    .adm-center { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    .adm-center h2 { color: var(--danger); margin-bottom: 10px; }
+    .adm-spinner { width: 32px; height: 32px; border: 3px solid rgba(255,255,255,.1); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── TOAST ── */
+    #adm-toast { position: fixed; bottom: 20px; right: 20px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: .82rem; display: none; z-index: 9999; }
+    #adm-toast.show { display: block; animation: fadeIn .2s; }
+    #adm-toast.toast-ok  { border-color: rgba(0,230,118,.4); color: var(--accent); }
+    #adm-toast.toast-err { border-color: rgba(255,82,82,.4); color: var(--danger); }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+    @media (max-width: 700px) {
+      .adm-stats { grid-template-columns: repeat(2,1fr); }
+      .adm-table th:nth-child(3), .adm-table td:nth-child(3),
+      .adm-table th:nth-child(4), .adm-table td:nth-child(4) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="adm-bar">
+    <div class="adm-brand"><span>◉</span> THE BASELINE <span class="adm-badge">ADMIN</span></div>
+    <div class="adm-bar-right">
+      <a href="https://dashboard.stripe.com" target="_blank" class="adm-btn">💳 Stripe Dashboard</a>
+      <a href="index.html" class="adm-btn">← App</a>
+      <button class="adm-btn adm-btn-danger" onclick="doSignOut()">Sign Out</button>
+    </div>
+  </header>
+
+  <div class="adm-body">
+
+    <!-- Auth gate — replaced by content once verified -->
+    <div id="adm-auth-gate" class="adm-center">
+      <div class="adm-spinner"></div>
+      <p>Verifying access…</p>
+    </div>
+
+    <!-- Main panel (hidden until auth passes) -->
+    <div id="adm-panel" style="display:none">
+
+      <div class="adm-stats">
+        <div class="adm-stat stat-total"><div class="adm-stat-val" id="stat-total">–</div><div class="adm-stat-lbl">Total Users</div></div>
+        <div class="adm-stat stat-paid"> <div class="adm-stat-val" id="stat-paid">–</div> <div class="adm-stat-lbl">Paid</div></div>
+        <div class="adm-stat stat-free"> <div class="adm-stat-val" id="stat-free">–</div> <div class="adm-stat-lbl">Free</div></div>
+        <div class="adm-stat stat-ban">  <div class="adm-stat-val" id="stat-ban">–</div>  <div class="adm-stat-lbl">Banned</div></div>
+      </div>
+
+      <div class="adm-toolbar">
+        <input id="adm-search" class="adm-search" type="text" placeholder="Search by email…" oninput="renderTable()">
+        <button class="adm-filter-btn active" data-filter="all"    onclick="setFilter('all',this)">All</button>
+        <button class="adm-filter-btn"        data-filter="paid"   onclick="setFilter('paid',this)">Paid</button>
+        <button class="adm-filter-btn"        data-filter="free"   onclick="setFilter('free',this)">Free</button>
+        <button class="adm-filter-btn"        data-filter="banned" onclick="setFilter('banned',this)">Banned</button>
+        <button class="adm-filter-btn"        data-filter="admin"  onclick="setFilter('admin',this)">Admin</button>
+        <button class="adm-btn" onclick="loadUsers()" style="margin-left:auto">↻ Refresh</button>
+      </div>
+
+      <div class="adm-table-wrap">
+        <table class="adm-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Joined</th>
+              <th>Last Login</th>
+              <th>Stripe</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="adm-tbody">
+            <tr><td colspan="6" class="adm-center"><div class="adm-spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="adm-toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    const SB_URL = 'https://xxbymjminigvhfetfvwe.supabase.co';
+    const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4Ynltam1pbmlndmhmZXRmd3dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwOTgxNTMsImV4cCI6MjA2MjY3NDE1M30.VCbPNBskzFJEjAQGxRQtLZ8tUXNpIpBzRDTL3T4M1ls';
+    const sb = supabase.createClient(SB_URL, SB_KEY);
+
+    let _session = null;
+    let _allUsers = [];
+    let _filter   = 'all';
+
+    // ── INIT ──
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) { showError('Not signed in. Please sign in from the main app first.'); return; }
+
+      const { data: profile } = await sb.from('profiles').select('role').eq('id', session.user.id).single();
+      if (profile?.role !== 'admin') { showError('Access denied. Admin account required.'); return; }
+
+      _session = session;
+      document.getElementById('adm-auth-gate').style.display = 'none';
+      document.getElementById('adm-panel').style.display = 'block';
+      loadUsers();
+    }
+
+    function showError(msg) {
+      document.getElementById('adm-auth-gate').innerHTML = `<h2>Access Denied</h2><p>${msg}</p><br><a href="index.html" class="adm-btn">← Back to App</a>`;
+    }
+
+    // ── LOAD USERS ──
+    async function loadUsers() {
+      document.getElementById('adm-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#888"><div class="adm-spinner" style="margin:0 auto 10px"></div>Loading…</td></tr>';
+      try {
+        const res = await fetch(`${SB_URL}/functions/v1/admin-users`, {
+          headers: { Authorization: `Bearer ${_session.access_token}` }
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        _allUsers = data.users || [];
+        updateStats();
+        renderTable();
+      } catch (err) {
+        document.getElementById('adm-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#ff5252">Error: ${err.message}</td></tr>`;
+      }
+    }
+
+    // ── STATS ──
+    function updateStats() {
+      document.getElementById('stat-total').textContent = _allUsers.length;
+      document.getElementById('stat-paid').textContent  = _allUsers.filter(u => u.role === 'paid').length;
+      document.getElementById('stat-free').textContent  = _allUsers.filter(u => u.role === 'free').length;
+      document.getElementById('stat-ban').textContent   = _allUsers.filter(u => u.role === 'banned').length;
+    }
+
+    // ── FILTER ──
+    function setFilter(f, btn) {
+      _filter = f;
+      document.querySelectorAll('.adm-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderTable();
+    }
+
+    // ── RENDER TABLE ──
+    function renderTable() {
+      const q = (document.getElementById('adm-search').value || '').toLowerCase();
+      const rows = _allUsers.filter(u => {
+        if (_filter !== 'all' && u.role !== _filter) return false;
+        if (q && !u.email.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      if (!rows.length) {
+        document.getElementById('adm-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#888">No users found</td></tr>';
+        return;
+      }
+
+      document.getElementById('adm-tbody').innerHTML = rows.map(u => {
+        const joined   = u.created_at ? new Date(u.created_at).toLocaleDateString() : '–';
+        const lastLogin = u.last_sign_in ? new Date(u.last_sign_in).toLocaleDateString() : 'Never';
+        const stripeLink = u.stripe_customer_id
+          ? `<a class="stripe-link" href="https://dashboard.stripe.com/customers/${u.stripe_customer_id}" target="_blank">View ↗</a>`
+          : '<span style="color:#555">–</span>';
+        const actions = buildActions(u);
+        return `<tr>
+          <td><div class="adm-email" title="${esc(u.email)}">${esc(u.email)}</div></td>
+          <td><span class="role-badge role-${u.role}">${u.role.toUpperCase()}</span></td>
+          <td class="adm-date">${joined}</td>
+          <td class="adm-date">${lastLogin}</td>
+          <td>${stripeLink}</td>
+          <td><div class="adm-actions">${actions}</div></td>
+        </tr>`;
+      }).join('');
+    }
+
+    function buildActions(u) {
+      const isSelf = _session && u.id === _session.user.id;
+      if (isSelf) return '<span style="color:#555;font-size:.7rem">You</span>';
+      const btns = [];
+      if (u.role !== 'paid')    btns.push(`<button class="role-btn role-btn-paid"  onclick="setRole('${u.id}','paid')">→ Paid</button>`);
+      if (u.role !== 'free')    btns.push(`<button class="role-btn role-btn-free"  onclick="setRole('${u.id}','free')">→ Free</button>`);
+      if (u.role !== 'banned')  btns.push(`<button class="role-btn role-btn-ban"   onclick="setRole('${u.id}','banned')">🚫 Ban</button>`);
+      else                       btns.push(`<button class="role-btn role-btn-unban" onclick="setRole('${u.id}','free')">✓ Unban</button>`);
+      return btns.join('');
+    }
+
+    // ── SET ROLE ──
+    async function setRole(userId, role) {
+      const rowBtns = document.querySelectorAll(`[onclick*="'${userId}'"]`);
+      rowBtns.forEach(b => b.classList.add('role-btn-loading'));
+      try {
+        const res = await fetch(`${SB_URL}/functions/v1/admin-users`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_session.access_token}` },
+          body: JSON.stringify({ userId, role }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        // Update local state without a full reload
+        const user = _allUsers.find(u => u.id === userId);
+        if (user) user.role = role;
+        updateStats();
+        renderTable();
+        toast(`Role updated to ${role}`, 'ok');
+      } catch (err) {
+        rowBtns.forEach(b => b.classList.remove('role-btn-loading'));
+        toast('Error: ' + err.message, 'err');
+      }
+    }
+
+    // ── SIGN OUT ──
+    async function doSignOut() {
+      await sb.auth.signOut();
+      window.location.href = 'index.html';
+    }
+
+    // ── TOAST ──
+    let _toastTimer;
+    function toast(msg, type) {
+      const el = document.getElementById('adm-toast');
+      el.textContent = msg;
+      el.className = `show toast-${type}`;
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => { el.className = ''; }, 3000);
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    init();
+  </script>
+</body>
+</html>
