@@ -91,6 +91,18 @@
     #adm-toast.toast-err { border-color: rgba(255,82,82,.4); color: var(--danger); }
     @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 
+    /* ── SIGN-IN FORM ── */
+    .adm-login { max-width: 360px; margin: 80px auto 0; background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 36px 32px; text-align: center; }
+    .adm-login-title { font-size: 1.1rem; font-weight: 800; margin-bottom: 6px; }
+    .adm-login-sub { font-size: .8rem; color: var(--text-muted); margin-bottom: 24px; }
+    .adm-input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 14px; font-size: .9rem; outline: none; margin-bottom: 12px; }
+    .adm-input:focus { border-color: var(--accent); }
+    .adm-login-btn { width: 100%; background: var(--accent); color: #000; border: none; border-radius: 8px; padding: 11px; font-size: .9rem; font-weight: 700; cursor: pointer; }
+    .adm-login-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .adm-login-err { color: var(--danger); font-size: .78rem; margin-top: 10px; min-height: 18px; }
+    .adm-back-link { font-size: .75rem; color: var(--text-muted); margin-top: 16px; display: block; text-decoration: none; }
+    .adm-back-link:hover { color: var(--accent); }
+
     @media (max-width: 700px) {
       .adm-stats { grid-template-columns: repeat(2,1fr); }
       .adm-table th:nth-child(3), .adm-table td:nth-child(3),
@@ -111,10 +123,32 @@
 
   <div class="adm-body">
 
-    <!-- Auth gate — replaced by content once verified -->
+    <!-- Checking session spinner -->
     <div id="adm-auth-gate" class="adm-center">
       <div class="adm-spinner"></div>
       <p>Verifying access…</p>
+    </div>
+
+    <!-- Sign-in form (shown when no session) -->
+    <div id="adm-login" style="display:none">
+      <!-- Step 1: email -->
+      <div id="adm-login-email" class="adm-login">
+        <div class="adm-login-title">◉ Admin Sign In</div>
+        <p class="adm-login-sub">Enter your admin email to receive a sign-in code.</p>
+        <input id="adm-email-input" class="adm-input" type="email" placeholder="your@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')sendAdminOtp()">
+        <button id="adm-otp-btn" class="adm-login-btn" onclick="sendAdminOtp()">Send Code</button>
+        <div id="adm-login-err" class="adm-login-err"></div>
+        <a href="index.html" class="adm-back-link">← Back to app</a>
+      </div>
+      <!-- Step 2: code -->
+      <div id="adm-login-code" class="adm-login" style="display:none">
+        <div class="adm-login-title">◉ Check Your Email</div>
+        <p class="adm-login-sub">Enter the 6-digit code sent to <strong id="adm-code-email"></strong>.<br>Or click the link in the email — this page will sign in automatically.</p>
+        <input id="adm-code-input" class="adm-input" type="text" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')verifyAdminOtp()">
+        <button id="adm-verify-btn" class="adm-login-btn" onclick="verifyAdminOtp()">Sign In</button>
+        <div id="adm-code-err" class="adm-login-err"></div>
+        <button onclick="showAdminEmailStep()" style="background:none;border:none;color:var(--text-muted);font-size:.75rem;cursor:pointer;margin-top:14px;">Use a different email</button>
+      </div>
     </div>
 
     <!-- Main panel (hidden until auth passes) -->
@@ -172,21 +206,92 @@
 
     // ── INIT ──
     async function init() {
+      // Handle magic link token in URL
+      const hash = window.location.hash;
+      if (hash && (hash.includes('access_token') || hash.includes('type=magiclink') || hash.includes('type=email'))) {
+        history.replaceState({}, '', window.location.pathname);
+      }
+
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) { showError('Not signed in. Please sign in from the main app first.'); return; }
+      if (!session) {
+        document.getElementById('adm-auth-gate').style.display = 'none';
+        document.getElementById('adm-login').style.display = 'block';
+        return;
+      }
+      await enterPanel(session);
+    }
 
+    async function enterPanel(session) {
       const { data: profile } = await sb.from('profiles').select('role').eq('id', session.user.id).single();
-      if (profile?.role !== 'admin') { showError('Access denied. Admin account required.'); return; }
-
+      if (profile?.role !== 'admin') {
+        document.getElementById('adm-auth-gate').innerHTML = `<h2>Access Denied</h2><p>Admin account required.</p><br><a href="index.html" class="adm-btn">← Back to App</a>`;
+        return;
+      }
       _session = session;
       document.getElementById('adm-auth-gate').style.display = 'none';
+      document.getElementById('adm-login').style.display = 'none';
       document.getElementById('adm-panel').style.display = 'block';
       loadUsers();
     }
 
-    function showError(msg) {
-      document.getElementById('adm-auth-gate').innerHTML = `<h2>Access Denied</h2><p>${msg}</p><br><a href="index.html" class="adm-btn">← Back to App</a>`;
+    // ── OTP SIGN-IN ──
+    function showAdminEmailStep() {
+      document.getElementById('adm-login-email').style.display = 'block';
+      document.getElementById('adm-login-code').style.display  = 'none';
+      document.getElementById('adm-login-err').textContent = '';
     }
+
+    async function sendAdminOtp() {
+      const email = document.getElementById('adm-email-input').value.trim();
+      if (!email) return;
+      const btn = document.getElementById('adm-otp-btn');
+      btn.disabled = true; btn.textContent = 'Sending…';
+      document.getElementById('adm-login-err').textContent = '';
+      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+      if (error) {
+        document.getElementById('adm-login-err').textContent = error.message;
+        btn.disabled = false; btn.textContent = 'Send Code';
+        return;
+      }
+      document.getElementById('adm-code-email').textContent = email;
+      document.getElementById('adm-login-email').style.display = 'none';
+      document.getElementById('adm-login-code').style.display  = 'block';
+      btn.disabled = false; btn.textContent = 'Send Code';
+
+      // Poll for magic-link sign-in (user clicked email link in another tab)
+      const poll = setInterval(async () => {
+        const { data: { session } } = await sb.auth.getSession();
+        if (session) { clearInterval(poll); await enterPanel(session); }
+      }, 2000);
+      setTimeout(() => clearInterval(poll), 300000);
+    }
+
+    async function verifyAdminOtp() {
+      const email = document.getElementById('adm-email-input').value.trim();
+      const token = document.getElementById('adm-code-input').value.trim();
+      if (!token) return;
+      const btn = document.getElementById('adm-verify-btn');
+      btn.disabled = true; btn.textContent = 'Verifying…';
+      document.getElementById('adm-code-err').textContent = '';
+      const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
+      if (error) {
+        document.getElementById('adm-code-err').textContent = error.message;
+        btn.disabled = false; btn.textContent = 'Sign In';
+        return;
+      }
+      btn.disabled = false; btn.textContent = 'Sign In';
+      await enterPanel(data.session);
+    }
+
+    // ── AUTH STATE (handles magic link redirect) ──
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && !_session) {
+        document.getElementById('adm-auth-gate').style.display = 'block';
+        document.getElementById('adm-login').style.display = 'none';
+        document.getElementById('adm-auth-gate').innerHTML = '<div class="adm-spinner"></div><p>Verifying access…</p>';
+        await enterPanel(session);
+      }
+    });
 
     // ── LOAD USERS ──
     async function loadUsers() {
