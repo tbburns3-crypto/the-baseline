@@ -207,34 +207,53 @@
     let _allUsers = [];
     let _filter   = 'all';
 
-    // ── INIT ──
-    async function init() {
-      // Handle magic link token in URL
-      const hash = window.location.hash;
-      if (hash && (hash.includes('access_token') || hash.includes('type=magiclink') || hash.includes('type=email'))) {
-        history.replaceState({}, '', window.location.pathname);
-      }
-
-      const { data: { session } } = await sb.auth.getSession();
-      if (!session) {
-        document.getElementById('adm-auth-gate').style.display = 'none';
-        document.getElementById('adm-login').style.display = 'block';
-        return;
-      }
-      await enterPanel(session);
+    function showGate(msg) {
+      const g = document.getElementById('adm-auth-gate');
+      g.style.display = 'block';
+      g.innerHTML = msg;
     }
-
-    async function enterPanel(session) {
-      const { data: profile } = await sb.from('profiles').select('role').eq('id', session.user.id).single();
-      if (profile?.role !== 'admin') {
-        document.getElementById('adm-auth-gate').innerHTML = `<h2>Access Denied</h2><p>Admin account required.</p><br><a href="index.html" class="adm-btn">← Back to App</a>`;
-        return;
-      }
-      _session = session;
+    function showLoginForm() {
+      document.getElementById('adm-auth-gate').style.display = 'none';
+      document.getElementById('adm-login').style.display = 'block';
+    }
+    function showPanel() {
       document.getElementById('adm-auth-gate').style.display = 'none';
       document.getElementById('adm-login').style.display = 'none';
       document.getElementById('adm-panel').style.display = 'block';
-      loadUsers();
+    }
+
+    // ── INIT ──
+    // Uses the admin-users edge function as the auth gate — it already verifies
+    // admin role server-side, so a successful response means access is granted.
+    async function init() {
+      let session = null;
+      try {
+        const { data } = await sb.auth.getSession();
+        session = data?.session || null;
+      } catch (e) {
+        showLoginForm();
+        return;
+      }
+
+      if (!session) { showLoginForm(); return; }
+
+      // Verify admin role via edge function (source of truth)
+      try {
+        const res = await fetch(`${SB_URL}/functions/v1/admin-users`, {
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        if (res.status === 401 || res.status === 403) {
+          showGate(`<h2>Access Denied</h2><p>Admin account required.</p><br><a href="index.html" target="_blank" class="adm-btn">← Back to App</a>`);
+          return;
+        }
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        _session = session;
+        showPanel();
+        renderUsersData(data.users || []);
+      } catch (e) {
+        showGate(`<h2>Error</h2><p>${e.message}</p><br><button onclick="init()" class="adm-btn">Retry</button>`);
+      }
     }
 
     // ── OTP SIGN-IN ──
@@ -260,13 +279,6 @@
       document.getElementById('adm-login-email').style.display = 'none';
       document.getElementById('adm-login-code').style.display  = 'block';
       btn.disabled = false; btn.textContent = 'Send Code';
-
-      // Poll for magic-link sign-in (user clicked email link in another tab)
-      const poll = setInterval(async () => {
-        const { data: { session } } = await sb.auth.getSession();
-        if (session) { clearInterval(poll); await enterPanel(session); }
-      }, 2000);
-      setTimeout(() => clearInterval(poll), 300000);
     }
 
     async function verifyAdminOtp() {
@@ -283,20 +295,24 @@
         return;
       }
       btn.disabled = false; btn.textContent = 'Sign In';
-      await enterPanel(data.session);
+      // Re-run init now that we have a session
+      await init();
     }
 
-    // ── AUTH STATE (handles magic link redirect) ──
-    sb.auth.onAuthStateChange(async (event, session) => {
-      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session && !_session) {
-        document.getElementById('adm-auth-gate').style.display = 'block';
-        document.getElementById('adm-login').style.display = 'none';
-        document.getElementById('adm-auth-gate').innerHTML = '<div class="adm-spinner"></div><p>Verifying access…</p>';
-        await enterPanel(session);
+    // ── AUTH STATE — only used to catch magic-link redirects ──
+    sb.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session && !_session) {
+        init();
       }
     });
 
     // ── LOAD USERS ──
+    function renderUsersData(users) {
+      _allUsers = users;
+      updateStats();
+      renderTable();
+    }
+
     async function loadUsers() {
       document.getElementById('adm-tbody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#888"><div class="adm-spinner" style="margin:0 auto 10px"></div>Loading…</td></tr>';
       try {
@@ -305,9 +321,7 @@
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
-        _allUsers = data.users || [];
-        updateStats();
-        renderTable();
+        renderUsersData(data.users || []);
       } catch (err) {
         document.getElementById('adm-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#ff5252">Error: ${err.message}</td></tr>`;
       }
