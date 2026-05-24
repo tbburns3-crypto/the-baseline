@@ -8664,9 +8664,15 @@ function renderSimpleView() {
   try { etHour = parseInt(new Date().toLocaleString('en-US', { hour:'numeric', hour12:false, timeZone:'America/New_York' })) || 0; } catch {}
 
   if (!morn && !eve) {
-    el.innerHTML = _svPreloadDone
-      ? `<div class="sv-empty">Not enough picks today. Visit the Scores tabs to load games first.</div>`
-      : `<div class="sv-empty"><div class="spinner" style="margin:0 auto 10px"></div>Building today's tickets…</div>`;
+    let msg = '';
+    if (!_svPreloadDone) {
+      msg = `<div class="spinner" style="margin:0 auto 10px"></div>Building today's tickets…`;
+    } else if (etHour < 1) {
+      msg = `Today's ticket will be posted after 1 AM ET once all picks are confirmed.`;
+    } else {
+      msg = `Today's ticket hasn't been posted yet. Check back soon.`;
+    }
+    el.innerHTML = `<div class="sv-empty">${msg}</div>`;
     return;
   }
 
