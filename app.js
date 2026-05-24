@@ -7096,9 +7096,19 @@ function _isAdmin() {
   return _currentUserRole === 'admin';
 }
 
+const _ROLE_CACHE_KEY = '_usr_role_v1';
+
 async function _fetchUserRole(userId) {
+  // Apply cached role immediately so UI doesn't block while fetching
   try {
-    // Must use the user's session JWT so RLS (auth.uid() = id) passes
+    const cached = JSON.parse(localStorage.getItem(_ROLE_CACHE_KEY) || 'null');
+    if (cached?.id === userId) {
+      _currentUserRole = cached.role;
+      updateAuthUI();
+    }
+  } catch {}
+
+  try {
     const { data: { session } } = await _sbClient.auth.getSession();
     const token = session?.access_token || _SB_KEY;
     const res = await fetch(
@@ -7108,11 +7118,12 @@ async function _fetchUserRole(userId) {
     if (res.ok) {
       const rows = await res.json();
       _currentUserRole = rows?.[0]?.role || 'free';
+      localStorage.setItem(_ROLE_CACHE_KEY, JSON.stringify({ id: userId, role: _currentUserRole }));
     } else {
-      _currentUserRole = 'free';
+      if (_currentUserRole === null) _currentUserRole = 'free';
     }
   } catch {
-    _currentUserRole = 'free';
+    if (_currentUserRole === null) _currentUserRole = 'free';
   }
   updateAuthUI();
 }
@@ -7128,6 +7139,8 @@ function updateAuthUI() {
     if (emailChip) emailChip.textContent    = _currentUser.email || '';
     const manageBtn = document.getElementById('auth-manage-btn');
     if (manageBtn) manageBtn.style.display = _hasFullAccess() ? '' : 'none';
+    const adminLink = document.getElementById('admin-topbar-link');
+    if (adminLink) adminLink.style.display = _isAdmin() ? '' : 'none';
     // Paid/admin: always go straight to the full app
     if (_hasFullAccess()) {
       const sv = document.getElementById('simple-view');
@@ -7258,8 +7271,8 @@ async function verifyOtpCode() {
 }
 
 async function signOut() {
+  localStorage.removeItem(_ROLE_CACHE_KEY);
   await _sbClient.auth.signOut();
-  // onAuthStateChange fires with SIGNED_OUT and handles state + UI update
 }
 
 // ── UPGRADE MODAL ────────────────────────────────────────────────────────────
@@ -8631,13 +8644,16 @@ function showSimpleView() {
 
 function hideSimpleView(bypassGate) {
   if (!bypassGate) {
-    // Only let them through if we KNOW they have full access
     if (_hasFullAccess()) {
       // fall through to dismiss
+    } else if (_authReady && !_currentUser) {
+      openAuthModal();
+      return;
+    } else if (_currentUser && _currentUserRole === null) {
+      // Role still loading — updateAuthUI will auto-dismiss once it arrives
+      return;
     } else {
-      // Show the appropriate modal immediately — never silently return
-      if (_authReady && !_currentUser) openAuthModal();
-      else openUpgradeModal(); // covers loading state, free user, anything else
+      openUpgradeModal();
       return;
     }
   }
