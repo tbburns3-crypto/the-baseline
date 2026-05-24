@@ -7125,7 +7125,7 @@ function updateAuthUI() {
 function updateSvAuthBar() {
   const bar = document.getElementById('sv-auth-bar');
   if (!bar) return;
-  if (!_authReady) { bar.innerHTML = ''; return; }
+  if (!_authReady) return; // leave existing content while auth loads
   if (!_currentUser) {
     bar.innerHTML = `<button class="sv-auth-btn" onclick="openAuthModal()">Sign In</button>`;
   } else {
@@ -7238,13 +7238,13 @@ function openUpgradeModal() {
 }
 function closeUpgradeModal() {
   document.getElementById('upgrade-modal').classList.remove('auth-open');
+  updateSvAuthBar(); // always refresh bar when modal closes
 }
 
 async function startCheckout(plan) {
   const { data: { session } } = await _sbClient.auth.getSession();
   if (!session) {
-    closeUpgradeModal();
-    openAuthModal();
+    openAuthModal(); // open sign-in ON TOP — upgrade modal stays open behind it
     return;
   }
 
