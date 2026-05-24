@@ -7032,13 +7032,15 @@ async function _sbGetTickets(date) {
 async function _sbSaveTicket(date, slot, legs) {
   // slot: 'day' | 'night' - stored as separate rows so no UPDATE needed
   try {
+    const { data: { session } } = await _sbClient.auth.getSession();
+    if (!session) return; // must be signed in as admin to write tickets
     const row = slot === 'day'
       ? { date: date + '_day',   morn_legs: legs, eve_legs: null }
       : { date: date + '_night', morn_legs: null, eve_legs: legs };
     await fetch(`${_SB_URL}/rest/v1/baseline_tickets`, {
       method: 'POST',
       headers: {
-        apikey: _SB_KEY, Authorization: `Bearer ${_SB_KEY}`,
+        apikey: _SB_KEY, Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
         Prefer: 'resolution=ignore-duplicates'  // first build wins - never overwrites
       },
