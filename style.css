@@ -2601,6 +2601,13 @@ body.simple-mode #app-layout { display: none !important; }
   transition: border-color .12s, color .12s;
 }
 .auth-signout-btn:hover { border-color: #ff6b6b; color: #ff6b6b; }
+.auth-manage-btn {
+  background: none; border: 1px solid rgba(255,255,255,.12);
+  color: var(--text-muted); border-radius: 5px;
+  padding: 3px 8px; font-size: .68rem; cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.auth-manage-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ── UPGRADE MODAL ── */
 .upgrade-modal-box {

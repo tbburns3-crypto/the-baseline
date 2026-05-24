@@ -41,6 +41,16 @@ Deno.serve(async (req) => {
       .eq('stripe_customer_id', sub.customer as string)
   }
 
+  if (event.type === 'customer.subscription.updated') {
+    const sub = event.data.object as Stripe.Subscription
+    const active = sub.status === 'active' || sub.status === 'trialing'
+    if (!active) {
+      await supabase.from('profiles')
+        .update({ role: 'free' })
+        .eq('stripe_customer_id', sub.customer as string)
+    }
+  }
+
   return new Response(JSON.stringify({ received: true }), {
     headers: { 'Content-Type': 'application/json' },
   })

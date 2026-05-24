@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>The Baseline | Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=192">
+  <link rel="stylesheet" href="style.css?v=193">
 </head>
 <body>
 
@@ -39,7 +39,11 @@
           <button id="checkout-btn-monthly" class="plan-btn" onclick="startCheckout('monthly')">Subscribe</button>
         </div>
       </div>
-      <p class="upgrade-fine">Secure checkout via Stripe. Cancel anytime.</p>
+      <p class="upgrade-fine">Secure checkout via Stripe. Cancel anytime.<br>
+        <a href="terms.html" target="_blank" style="color:#555;font-size:11px;">Terms of Service</a>
+        &nbsp;&middot;&nbsp;
+        <a href="privacy.html" target="_blank" style="color:#555;font-size:11px;">Privacy Policy</a>
+      </p>
     </div>
   </div>
 
@@ -113,6 +117,7 @@
         <button id="auth-signin-btn" class="auth-topbar-btn" onclick="openAuthModal()">Sign In</button>
         <div id="auth-user-info" style="display:none">
           <span id="auth-user-email" class="auth-user-email-chip"></span>
+          <button id="auth-manage-btn" class="auth-manage-btn" onclick="openPortal()" style="display:none">Manage Sub</button>
           <button class="auth-signout-btn" onclick="signOut()">Sign Out</button>
         </div>
       </div>
@@ -285,6 +290,6 @@
   </div><!-- /app-layout -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=192"></script>
+  <script src="app.js?v=193"></script>
 </body>
 </html>

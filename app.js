@@ -7090,6 +7090,8 @@ function updateAuthUI() {
     if (signinBtn) signinBtn.style.display  = 'none';
     if (userInfo)  userInfo.style.display   = 'flex';
     if (emailChip) emailChip.textContent    = _currentUser.email || '';
+    const manageBtn = document.getElementById('auth-manage-btn');
+    if (manageBtn) manageBtn.style.display = _hasFullAccess() ? '' : 'none';
     // Paid/admin: always go straight to the full app
     if (_hasFullAccess()) {
       const sv = document.getElementById('simple-view');
@@ -7102,6 +7104,8 @@ function updateAuthUI() {
   } else {
     if (signinBtn) signinBtn.style.display  = 'block';
     if (userInfo)  userInfo.style.display   = 'none';
+    const manageBtn = document.getElementById('auth-manage-btn');
+    if (manageBtn) manageBtn.style.display = 'none';
     // Not signed in - ensure simple view is showing (only once auth state is confirmed)
     if (_authReady) {
       const sv = document.getElementById('simple-view');
@@ -7218,12 +7222,17 @@ function closeUpgradeModal() {
 }
 
 async function startCheckout(plan) {
+  const { data: { session } } = await _sbClient.auth.getSession();
+  if (!session) {
+    closeUpgradeModal();
+    openAuthModal();
+    return;
+  }
+
   const btn = document.getElementById(`checkout-btn-${plan}`);
   if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
 
   try {
-    const { data: { session } } = await _sbClient.auth.getSession();
-    if (!session) throw new Error('Not signed in');
 
     const res = await fetch(`${_SB_URL}/functions/v1/create-checkout`, {
       method: 'POST',
@@ -7239,6 +7248,25 @@ async function startCheckout(plan) {
   } catch (err) {
     if (btn) { btn.disabled = false; btn.textContent = 'Subscribe'; }
     alert('Could not start checkout: ' + err.message);
+  }
+}
+
+async function openPortal() {
+  const { data: { session } } = await _sbClient.auth.getSession();
+  if (!session) return;
+  const btn = document.getElementById('auth-manage-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
+  try {
+    const res = await fetch(`${_SB_URL}/functions/v1/create-portal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (data.url) window.location.href = data.url;
+  } catch (err) {
+    alert('Could not open subscription manager: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Manage Sub'; }
   }
 }
 
@@ -8543,14 +8571,12 @@ function showSimpleView() {
 }
 
 function hideSimpleView(bypassGate) {
-  // Gate only when we KNOW the user isn't paid/admin:
-  //   - definitely not signed in, OR
-  //   - signed in but role loaded and it's 'free'
-  // While role is still loading (_currentUserRole===null) or auth isn't ready, let them through.
-  const definitelyOut  = _authReady && !_currentUser;
-  const definitelyFree = _authReady && _currentUser && _currentUserRole !== null && !_hasFullAccess();
-  if (!bypassGate && definitelyOut)  { openAuthModal();    return; }
-  if (!bypassGate && definitelyFree) { openUpgradeModal(); return; }
+  if (!bypassGate) {
+    if (!_authReady) return;                               // auth still initializing
+    if (_currentUser && _currentUserRole === null) return; // role still fetching
+    if (!_currentUser)      { openAuthModal();    return; }
+    if (!_hasFullAccess())  { openUpgradeModal(); return; }
+  }
   document.body.classList.remove('simple-mode');
   document.getElementById('simple-view').classList.remove('sv-active');
   localStorage.setItem('sv_dismissed', dateStrLocal());
@@ -8701,8 +8727,10 @@ function init() {
   switchSport(lastSport);
   // Handle return from Stripe Checkout
   const _ckParam = new URLSearchParams(location.search).get('checkout');
-  if (_ckParam === 'success') {
+  if (_ckParam === 'success' || _ckParam === 'cancel') {
     history.replaceState({}, '', location.pathname);
+  }
+  if (_ckParam === 'success') {
     const _banner = document.createElement('div');
     _banner.className = 'checkout-activating';
     _banner.textContent = 'Payment received - activating your subscription...';

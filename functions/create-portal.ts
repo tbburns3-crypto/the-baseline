@@ -11,12 +11,6 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const PRICE_IDS: Record<string, string> = {
-  weekly:  'price_1TaQcNA9SWTJVWGtDGufDvxL',
-  monthly: 'price_1TaQcNA9SWTJVWGtHpwEwUZQ',
-  yearly:  'price_1TaQcNA9SWTJVWGtzsIFabSe',
-}
-
 const APP_URL = 'https://tbburns3-crypto.github.io/the-baseline/'
 
 Deno.serve(async (req) => {
@@ -28,28 +22,27 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
     const { data: { user }, error } = await supabase.auth.getUser(
       authHeader.replace('Bearer ', '')
     )
     if (error || !user) throw new Error('Unauthorized')
 
-    const { plan } = await req.json()
-    const priceId = PRICE_IDS[plan]
-    if (!priceId) throw new Error('Invalid plan')
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('stripe_customer_id')
+      .eq('id', user.id)
+      .single()
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: APP_URL + '?checkout=success',
-      cancel_url:  APP_URL + '?checkout=cancel',
-      customer_email: user.email,
-      client_reference_id: user.id,
+    if (!profile?.stripe_customer_id) throw new Error('No active subscription found')
+
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: profile.stripe_customer_id,
+      return_url: APP_URL,
     })
 
-    return new Response(JSON.stringify({ url: session.url }), {
+    return new Response(JSON.stringify({ url: portalSession.url }), {
       headers: { ...CORS, 'Content-Type': 'application/json' },
     })
   } catch (err) {
