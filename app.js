@@ -7128,8 +7128,6 @@ function updateAuthUI() {
     if (emailChip) emailChip.textContent    = _currentUser.email || '';
     const manageBtn = document.getElementById('auth-manage-btn');
     if (manageBtn) manageBtn.style.display = _hasFullAccess() ? '' : 'none';
-    const adminLink = document.getElementById('admin-topbar-link');
-    if (adminLink) adminLink.style.display = _isAdmin() ? '' : 'none';
     // Paid/admin: always go straight to the full app
     if (_hasFullAccess()) {
       const sv = document.getElementById('simple-view');
@@ -7144,8 +7142,6 @@ function updateAuthUI() {
     if (userInfo)  userInfo.style.display   = 'none';
     const manageBtn = document.getElementById('auth-manage-btn');
     if (manageBtn) manageBtn.style.display = 'none';
-    const adminLink = document.getElementById('admin-topbar-link');
-    if (adminLink) adminLink.style.display = 'none';
     if (_authReady) {
       const sv = document.getElementById('simple-view');
       if (sv && !sv.classList.contains('sv-active')) showSimpleView();
@@ -7165,9 +7161,8 @@ function updateSvAuthBar() {
   } else {
     const email = _currentUser.email || '';
     const short = email.length > 18 ? email.slice(0, 16) + '…' : email;
-    const subBtn   = _hasFullAccess() ? '' : `<button class="sv-subscribe-btn" onclick="openUpgradeModal()">Subscribe</button>`;
-    const adminBtn = _isAdmin() ? `<a href="admin.html" class="sv-admin-btn">⚙ Admin</a>` : '';
-    bar.innerHTML = `<span class="sv-signed-chip">● ${short}</span>${subBtn}${adminBtn}<button class="sv-signout-small" onclick="signOut()">Sign Out</button>`;
+    const subBtn = _hasFullAccess() ? '' : `<button class="sv-subscribe-btn" onclick="openUpgradeModal()">Subscribe</button>`;
+    bar.innerHTML = `<span class="sv-signed-chip">● ${short}</span>${subBtn}<button class="sv-signout-small" onclick="signOut()">Sign Out</button>`;
   }
 }
 
