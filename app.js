@@ -7117,6 +7117,9 @@ function updateAuthUI() {
 
   // Refresh Secret Ticket visibility if on tickets tab
   if (S.sport === 'tickets') renderTicketsPage();
+
+  // If user clicked Full App before auth settled, process it now
+  if (_pendingHide) hideSimpleView();
 }
 
 function initAuth() {
@@ -8572,31 +8575,19 @@ function showSimpleView() {
   preloadPicksForSimpleView();
 }
 
+let _pendingHide = false; // set when user clicked Full App before auth/role settled
+
 function hideSimpleView(bypassGate) {
   if (!bypassGate) {
-    // Auth or role not settled yet — show a loading state and retry
     if (!_authReady || (_currentUser && _currentUserRole === null)) {
-      const btn = document.querySelector('.sv-full-btn');
-      if (btn && !btn._waiting) {
-        btn._waiting = true;
-        const orig = btn.textContent;
-        btn.textContent = 'Loading…';
-        btn.disabled = true;
-        const iv = setInterval(() => {
-          if (_authReady && !(_currentUser && _currentUserRole === null)) {
-            clearInterval(iv);
-            btn._waiting = false;
-            btn.textContent = orig;
-            btn.disabled = false;
-            hideSimpleView();
-          }
-        }, 200);
-      }
+      _pendingHide = true; // process automatically once auth settles
       return;
     }
+    _pendingHide = false;
     if (!_currentUser)      { openAuthModal();    return; }
     if (!_hasFullAccess())  { openUpgradeModal(); return; }
   }
+  _pendingHide = false;
   document.body.classList.remove('simple-mode');
   document.getElementById('simple-view').classList.remove('sv-active');
   localStorage.setItem('sv_dismissed', dateStrLocal());
@@ -8760,6 +8751,8 @@ function init() {
 
   // Always show simple view on load - initAuth will auto-hide for paid/admin who already dismissed today
   showSimpleView();
+  // Returning from a cancelled checkout: auto-show subscribe screen once auth settles
+  if (_ckParam === 'cancel') _pendingHide = true;
   initAuth();
 
   // If returning from payment, poll until role flips to paid
