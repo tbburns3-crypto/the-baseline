@@ -371,7 +371,7 @@ function updatePicksDisplay() {
     }
   }
 
-  // Banner — always visible, shows this sport's record only
+  // Banner - always visible, shows this sport's record only
   const banner  = document.getElementById('picks-banner');
   const pbWins  = document.getElementById('pb-wins');
   const pbLoss  = document.getElementById('pb-losses');
@@ -388,8 +388,8 @@ function updatePicksDisplay() {
     if (pbBreak) pbBreak.textContent = sportPend.length ? `+${sportPend.length} active` : '';
     banner.className = sPct >= 55 ? 'pb-hot' : sPct <= 40 ? 'pb-cold' : '';
   } else if (sportPend.length) {
-    pbWins.textContent = '—';
-    pbLoss.textContent = '—';
+    pbWins.textContent = '-';
+    pbLoss.textContent = '-';
     pbPct.textContent  = `${sportPend.length} active`;
     if (pbBreak) pbBreak.textContent = '';
     banner.className = '';
@@ -477,7 +477,7 @@ function fmtTimeTZ(iso) {
 function dateStr(offset = 0) {
   return dateStrLocal(offset); // use user-chosen TZ for all date math
 }
-// Tennis API uses UTC dates — use this for all tennis fetches and event_date comparisons
+// Tennis API uses UTC dates - use this for all tennis fetches and event_date comparisons
 function dateStrUTC(offset = 0) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + offset);
@@ -507,7 +507,7 @@ function fmtTime12(t) {
   const ampm = h >= 12 ? 'PM' : 'AM';
   return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
-// Tennis event_time is "HH:MM" UTC — convert to user's selected timezone
+// Tennis event_time is "HH:MM" UTC - convert to user's selected timezone
 function fmtTennisTime(date, time) {
   if (!time) return '';
   try {
@@ -684,14 +684,14 @@ async function tennisFetch(method, params = {}) {
 async function loadFixtures(offset = 0) {
   showLoading('matches-area', 'Loading matches…');
   try {
-    const d = dateStrLocal(offset); // use user TZ — tennis date bar matches the user's "today"
+    const d = dateStrLocal(offset); // use user TZ - tennis date bar matches the user's "today"
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
     const picks = getPicks();
     let picksDirty = false;
     for (const m of results) {
       S.matches.set(String(m.event_key), m);
       // Re-date any pick that was stamped with the wrong date (pre-fix migration)
-      // Only move dates forward — never pull a tomorrow pick back to today.
+      // Only move dates forward - never pull a tomorrow pick back to today.
       if (m.event_date) {
         const pid = 'tn_' + m.event_key;
         const ex  = picks[pid];
@@ -705,7 +705,7 @@ async function loadFixtures(offset = 0) {
     renderMatches(results);
     renderOverview(results);
     renderSidebar(results);
-    // Picks just got recorded — refresh simple view if it's open
+    // Picks just got recorded - refresh simple view if it's open
     if (document.getElementById('simple-view')?.classList.contains('sv-active')) renderSimpleView();
   } catch (err) {
     console.error('Fixtures error:', err);
@@ -776,7 +776,7 @@ async function loadRankings() {
   }
 }
 
-// Background-only rank load — no UI, just fills S.rankIndex then re-runs picks for cached matches.
+// Background-only rank load - no UI, just fills S.rankIndex then re-runs picks for cached matches.
 // Called on tennis tab open so ranking-based picks generate without waiting for the user to visit Rankings.
 async function preloadRankIndex() {
   if (S.rankIndex.size > 0) return;
@@ -798,7 +798,7 @@ async function preloadRankIndex() {
       });
     }
 
-    // Supplement with ESPN tennis rankings — updated much more frequently than api-tennis.com.
+    // Supplement with ESPN tennis rankings - updated much more frequently than api-tennis.com.
     // api-tennis.com standings can lag weeks behind real rankings for fast-rising players.
     // We use last-name + first-initial matching to cross-reference, then update any entry
     // where ESPN shows a significantly better (lower number) rank.
@@ -823,7 +823,7 @@ async function preloadRankIndex() {
             if (espnLast && entryLast && espnLast === entryLast &&
                 (!espnInit || !entryInit || espnInit === entryInit)) {
               if (espnRank < entry.rank) {
-                // ESPN has this player ranked higher — use it (with synthetic points so ratio logic works)
+                // ESPN has this player ranked higher - use it (with synthetic points so ratio logic works)
                 entry.rank   = espnRank;
                 entry.points = Math.max(entry.points, Math.round(15000 - espnRank * 130));
               }
@@ -841,7 +841,7 @@ async function preloadRankIndex() {
     // Re-run pick generation for all already-cached matches now that rankings are available
     for (const m of S.matches.values()) inlineTennisPick(m);
     updatePicksDisplay();
-  } catch { /* silent — rankings are best-effort for pick generation */ }
+  } catch { /* silent - rankings are best-effort for pick generation */ }
 }
 
 // Fetch ESPN ATP + WTA news and build _tennisInjuryMap from injury/withdrawal headlines.
@@ -886,7 +886,7 @@ async function loadTennisInjuryNews() {
       for (const m of S.matches.values()) inlineTennisPick(m);
       updatePicksDisplay();
     }
-  } catch { /* silent — injury data is best-effort */ }
+  } catch { /* silent - injury data is best-effort */ }
 }
 
 // ── WEBSOCKET ────────────────────────────────────────────────
@@ -1107,7 +1107,7 @@ function tennisRound(m) {
 const CLAY_COUNTRIES  = new Set(['ESP','ARG','ITA','FRA','CHL','COL','PER','URU','BRA','AUT','SUI','MON','SVK']);
 const GRASS_COUNTRIES = new Set(['AUS','GBR','USA','GER','CAN','RSA','NZL','SWE']);
 
-// Tournament-specific affinity — last name (lowercase) → partial tournament name → strength (1-4)
+// Tournament-specific affinity - last name (lowercase) → partial tournament name → strength (1-4)
 // Updated 2025: reflect current form, post-surgery players, new top-10 entrants
 const TOURNAMENT_AFFINITY = {
   // ATP
@@ -1115,7 +1115,7 @@ const TOURNAMENT_AFFINITY = {
   alcaraz:   { 'roland garros':4, 'french open':4, 'wimbledon':3, 'us open':2, 'madrid':3, 'barcelona':2 },
   sinner:    { 'australian open':4, 'miami':2, 'us open':3, 'paris masters':2, 'rome':2 }, // won Rome 2024 on clay
   zverev:    { 'roland garros':3, 'paris masters':3, 'hamburg':2, 'french open':3 },
-  tsitsipas: { 'monte carlo':2, 'barcelona':2, 'lyon':2 }, // reduced — less consistent 2024-25
+  tsitsipas: { 'monte carlo':2, 'barcelona':2, 'lyon':2 }, // reduced - less consistent 2024-25
   medvedev:  { 'us open':3, 'paris masters':2, 'shanghai':2 },
   ruud:      { 'roland garros':3, 'french open':3, 'rome':2, 'monte carlo':2, 'barcelona':2 },
   rublev:    { 'monte carlo':3, 'hamburg':2, 'madrid':2 },
@@ -1132,7 +1132,7 @@ const TOURNAMENT_AFFINITY = {
   andreeva:  { 'roland garros':2, 'french open':2 }, // rising 2024-25, solid clay results
   navarro:   { 'wimbledon':2, 'us open':2 }, // rising 2024-25
   mboko:     { 'canadian open':2 }, // ranked #9 WTA 2025, hard-court specialist
-  jabeur:    { 'wimbledon':2, 'roland garros':2 }, // reduced — injury history 2024
+  jabeur:    { 'wimbledon':2, 'roland garros':2 }, // reduced - injury history 2024
   krejcikova:{ 'roland garros':3, 'french open':3 }, // 2021 RG champion
   halep:     { 'roland garros':3, 'french open':3 }, // 2018 RG champion (if active)
   kvitova:   { 'wimbledon':3 }, // 2x Wimbledon champion
@@ -1251,10 +1251,10 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   const p1Hurt = p1Inj && !p1Inj.returning;
   const p2Hurt = p2Inj && !p2Inj.returning;
 
-  // ── Multi-factor scoring — same model as buildTennisPrediction ──
+  // ── Multi-factor scoring - same model as buildTennisPrediction ──
   let p1Score = 0, p2Score = 0;
 
-  // 1. Injury (decisive — injured player heavily penalised)
+  // 1. Injury (decisive - injured player heavily penalised)
   if (p1Hurt) p1Score -= 8;
   if (p2Hurt) p2Score -= 8;
 
@@ -1342,7 +1342,7 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
     if (p1Recent[0]?.event_date === todayStr && p2Recent[0]?.event_date !== todayStr) p2Score += 1;
     else if (p2Recent[0]?.event_date === todayStr && p1Recent[0]?.event_date !== todayStr) p1Score += 1;
 
-    // Recent retirement — players who retired in last 10 matches get a penalty
+    // Recent retirement - players who retired in last 10 matches get a penalty
     if (hadRecentRetirement(p1Recent, p1key)) p1Score -= 2;
     if (hadRecentRetirement(p2Recent, p2key)) p2Score -= 2;
 
@@ -1353,7 +1353,7 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
     if (str2 >= 4) p2Score += 2; else if (str2 >= 2) p2Score += 1; else if (str2 <= -3) p2Score -= 1;
   }
 
-  // 7. Player volatility — known high-variance players score lower as favorites
+  // 7. Player volatility - known high-variance players score lower as favorites
   p1Score += PLAYER_VOLATILITY[l1.toLowerCase()] || 0;
   p2Score += PLAYER_VOLATILITY[l2.toLowerCase()] || 0;
 
@@ -1435,7 +1435,7 @@ function buildMatchRow(m, idSuffix = '') {
   const p1serve = serve === '1' ? '<span class="serve-dot">●</span>' : '';
   const p2serve = serve === '2' ? '<span class="serve-dot">●</span>' : '';
 
-  // Seed tags — show [N] for seeded players; rank # for unseeded (when rankIndex loaded)
+  // Seed tags - show [N] for seeded players; rank # for unseeded (when rankIndex loaded)
   const s1 = parseInt(m.event_first_player_seed)  || 0;
   const s2 = parseInt(m.event_second_player_seed) || 0;
   const s1tag = s1 ? `<span class="player-seed">[${s1}]</span>` : (() => {
@@ -1447,11 +1447,11 @@ function buildMatchRow(m, idSuffix = '') {
     return ri ? `<span class="player-rank">#${ri.rank}</span>` : '';
   })();
 
-  // Last name only in row — cleaner scanning; full name shown in detail panel
+  // Last name only in row - cleaner scanning; full name shown in detail panel
   const p1Display = lastName(m.event_first_player  || '-');
   const p2Display = lastName(m.event_second_player || '-');
 
-  // Player row classes — winner bold-green, loser dimmed
+  // Player row classes - winner bold-green, loser dimmed
   const p1Cls = p1Won ? 'player p1 match-winner' : p2Won ? 'player p1 match-loser' : `player p1 ${serve==='1'?'serving':''}`;
   const p2Cls = p2Won ? 'player p2 match-winner' : p1Won ? 'player p2 match-loser' : `player p2 ${serve==='2'?'serving':''}`;
 
@@ -1459,7 +1459,7 @@ function buildMatchRow(m, idSuffix = '') {
   const key = esc(m.event_key);
   const pid = idSuffix ? `${key}-${idSuffix}` : key;
 
-  const _pickResult = inlineTennisPick(m); // always call — records pick as side effect (idempotent)
+  const _pickResult = inlineTennisPick(m); // always call - records pick as side effect (idempotent)
   const pickHTML    = (!live && !finished) ? _pickResult : ''; // only display for upcoming
   // Resolve stored pick once result is known
   if (finished && m.event_winner) {
@@ -1782,7 +1782,7 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   if (taff1 > taff2) { p1Score += Math.min(3, Math.ceil((taff1-taff2)/2)); factors.push({ win: true, label: 'Tournament history', detail: `${l1} specialist here`, side: 1 }); }
   else if (taff2 > taff1) { p2Score += Math.min(3, Math.ceil((taff2-taff1)/2)); factors.push({ win: true, label: 'Tournament history', detail: `${l2} specialist here`, side: 2 }); }
 
-  // Fatigue: last match was yesterday — possible carry-over fatigue
+  // Fatigue: last match was yesterday - possible carry-over fatigue
   const ystStr = dateStrLocal(-1);
   const p1Tired = p1Recent.length > 0 && p1Recent[0].event_date === ystStr;
   const p2Tired = p2Recent.length > 0 && p2Recent[0].event_date === ystStr;
@@ -1810,7 +1810,7 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   else if (str2 >= 2)  { p2Score += 1; factors.push({ win: true, label: 'Winning form', detail: `${l2} won last ${str2}`, side: 2 }); }
   else if (str2 <= -3) { p2Score -= 1; factors.push({ win: true, label: 'Cold streak', detail: `${l2} lost last ${Math.abs(str2)}`, side: 1 }); }
 
-  // Player volatility — known high-variance players score lower
+  // Player volatility - known high-variance players score lower
   const vt1 = PLAYER_VOLATILITY[lastName(p1Name).toLowerCase()] || 0;
   const vt2 = PLAYER_VOLATILITY[lastName(p2Name).toLowerCase()] || 0;
   if (vt1 < 0) { p1Score += vt1; factors.push({ win: true, label: 'Volatility', detail: `${l1} known for inconsistency`, side: 2 }); }
@@ -1853,7 +1853,7 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     else if (aw1 !== aw2)                          leanName = aw1 > aw2 ? p1Name : p2Name;
     else if (fw1 >= 0 && fw2 >= 0 && fw1 !== fw2)  leanName = fw1 > fw2 ? p1Name : p2Name;
     const leanHTML = leanName ? ` <em class="gp-verdict-lean">(leaning towards ${esc(lastName(leanName))})</em>` : '';
-    verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup — too close to call${leanHTML}</div>`;
+    verdictHTML = `<div class="gp-pick-verdict gp-verdict-toss">Even matchup - too close to call${leanHTML}</div>`;
   }
 
   const pickSide = p1Score > p2Score ? 1 : p2Score > p1Score ? 2 : 0;
@@ -2407,7 +2407,7 @@ function switchSport(sport) {
     wsDisconnect(); wsConnect();
     loadFixtures(S.dateOffset);
     preloadRankIndex();    // fire-and-forget: fills S.rankIndex and re-runs picks once ready
-    loadTennisInjuryNews(); // fire-and-forget: ESPN news injury flags — re-runs picks once loaded
+    loadTennisInjuryNews(); // fire-and-forget: ESPN news injury flags - re-runs picks once loaded
   } else {
     wsDisconnect();
     if (sport === 'tickets') {
@@ -2670,7 +2670,7 @@ function gameRowState(g) {
   return { live, fin, periodLabel };
 }
 
-// Returns HTML for the best pick for an MLB game row — player prop if available, else game winner if confident.
+// Returns HTML for the best pick for an MLB game row - player prop if available, else game winner if confident.
 function getGameBestPickHTML(espnGameId, g) {
   const picks     = getPicks();
   const gid       = String(espnGameId);
@@ -2715,14 +2715,14 @@ function getGameBestPickHTML(espnGameId, g) {
   return '';
 }
 
-// Records pick + immediately resolves if game is finished. Pre-game only — never mid-game.
+// Records pick + immediately resolves if game is finished. Pre-game only - never mid-game.
 // dateOverride: pass dateStrLocal(1) when pre-loading tomorrow's games so picks get the right date.
 function autoRecordAndResolvePick(g, dateOverride = null) {
   if (!g.awayRec && !g.homeRec) return;
   const { fin, live } = gameRowState(g);
   if (!live && !fin) {
     const sc   = parseSeriesContext(g.series);
-    // Playoffs: home court worth more (crowd, refs, routines) — bump by extra 2%
+    // Playoffs: home court worth more (crowd, refs, routines) - bump by extra 2%
     const playoffMult = sc.isPlayoff ? 1.02 : 1.0;
     const boost    = (HOME_BOOST[g.sport] || 1.025) * playoffMult;
     const momentum = seriesMomentumAdj(sc, g.homeTeam, g.homeAbbr, g.awayTeam, g.awayAbbr);
@@ -2734,14 +2734,14 @@ function autoRecordAndResolvePick(g, dateOverride = null) {
     const total    = awayWPr + rawHome;
     let homeFrac   = rawHome / total;
 
-    // Blend with Vegas spread (50/50) — most predictive single signal available
+    // Blend with Vegas spread (50/50) - most predictive single signal available
     const spreadData = parseOddsSpread(g);
     if (spreadData) {
       const spreadHomeFrac = spreadData.isHomeFavored ? spreadData.spreadWP : 1 - spreadData.spreadWP;
       homeFrac = 0.5 * homeFrac + 0.5 * spreadHomeFrac;
     }
 
-    // Apply injury penalty — teams with confirmed Out players lose win probability
+    // Apply injury penalty - teams with confirmed Out players lose win probability
     const sp = g.sport || '';
     const homePenalty = _injuryPenalty.get(`${sp}:${(g.homeAbbr||'').toUpperCase()}`) || 0;
     const awayPenalty = _injuryPenalty.get(`${sp}:${(g.awayAbbr||'').toUpperCase()}`) || 0;
@@ -2777,7 +2777,7 @@ function inlineGamePick(g) {
   const { fin, live } = gameRowState(g);
   const stored = getPicks()[String(g.id)];
 
-  // Finished game — show W/L result against the stored pre-game pick
+  // Finished game - show W/L result against the stored pre-game pick
   if (fin) {
     if (!stored || stored.result === null) return '';
     return stored.result === 'win'
@@ -2785,13 +2785,13 @@ function inlineGamePick(g) {
       : `<span class="game-pick-inline pick-loss" title="Pick wrong">✗ ${esc(stored.team)}</span>`;
   }
 
-  // Live game — freeze the pre-game pick, never recalculate mid-game
+  // Live game - freeze the pre-game pick, never recalculate mid-game
   if (live) {
     if (!stored) return '';
     return `<span class="game-pick-inline pick-locked" title="Pre-game pick (locked)">→ ${esc(stored.team)}</span>`;
   }
 
-  // Pre-game — show smart win probability (with playoff context + rest/B2B)
+  // Pre-game - show smart win probability (with playoff context + rest/B2B)
   const sc       = parseSeriesContext(g.series);
   const playoffMult = sc.isPlayoff ? 1.02 : 1.0;
   const boost    = (HOME_BOOST[g.sport] || 1.025) * playoffMult;
@@ -2988,7 +2988,7 @@ function wpToConf(winPct) {
   const margin = Math.abs(winPct - 0.5);
   if (margin >= 0.18) return 2;  // 68%+ win probability
   if (margin >= 0.10) return 1;  // 60%+ win probability
-  return 0;                       // < 60% — too close to call, excluded from ticket
+  return 0;                       // < 60% - too close to call, excluded from ticket
 }
 
 // Rest-days win-probability multiplier. daysRest=1 means B2B (played yesterday).
@@ -3184,7 +3184,7 @@ function buildPickSection(awayName, homeName, opts) {
     factors.push({ label: 'Record', detail: `${esc(aShort)} ${awayRec||'-'} · ${esc(hShort)} ${homeRec||'-'}`, winner: w });
   } else { aScore += 0.15; hScore += 0.15; }
 
-  // 2. Home advantage (4% regular season, 6% playoffs — crowd + routine + refs)
+  // 2. Home advantage (4% regular season, 6% playoffs - crowd + routine + refs)
   const _sc = parseSeriesContext({ summary: seriesSummary });
   const homeCourtBoost = _sc.isPlayoff ? 0.06 : 0.04;
   hScore += homeCourtBoost;
@@ -3225,7 +3225,7 @@ function buildPickSection(awayName, homeName, opts) {
     }
   }
 
-  // 6. MLB pitcher ERA — starting pitcher is the single biggest game-by-game factor
+  // 6. MLB pitcher ERA - starting pitcher is the single biggest game-by-game factor
   if (awayERA !== null && homeERA !== null) {
     const ae = parseFloat(awayERA), he = parseFloat(homeERA);
     if (ae > 0 && he > 0) {
@@ -3297,7 +3297,7 @@ function buildPickSection(awayName, homeName, opts) {
   const fTotal = factors.filter(f => f.winner !== 'tie').length;
 
   const verdictHTML = gap < 0.025
-    ? `<div class="gp-pick-verdict gp-verdict-toss">🎲 Toss-up — too close to call <em class="gp-verdict-lean">(leaning towards ${esc(pickTeam)})</em></div>`
+    ? `<div class="gp-pick-verdict gp-verdict-toss">🎲 Toss-up - too close to call <em class="gp-verdict-lean">(leaning towards ${esc(pickTeam)})</em></div>`
     : `<div class="gp-pick-verdict">📌 ${gap > 0.14 ? 'Strong lean' : gap > 0.08 ? 'Lean' : 'Slight lean'}: <span class="gp-pick-team">${esc(pickTeam)}</span>${fTotal > 0 ? ` <span class="gp-pick-count">${fWins}/${fTotal} factors</span>` : ''}</div>`;
 
   const factorsHTML = factors.map(f => {
@@ -3362,7 +3362,7 @@ function buildMLBPreStats(leaders) {
     : '<div class="gp-no-lineup">Lineups not posted yet - check back closer to game time</div>';
 }
 
-// ── MLB PICKS PAGE — REAL MATCHUP ENGINE ─────────────────────
+// ── MLB PICKS PAGE - REAL MATCHUP ENGINE ─────────────────────
 
 function _windHRBonus(weather) {
   if (!weather?.wind) return { bonus: 0, label: '' };
@@ -3459,7 +3459,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const awayHand = awayPD?.pitchHand || null;
   const homeHand = homePD?.pitchHand || null;
 
-  // Pitcher rate stats — adjusted for recent form + bullpen drag + last start + rest
+  // Pitcher rate stats - adjusted for recent form + bullpen drag + last start + rest
   const LEAGUE_ERA = 4.20;
   const mlbCalOffset = getConfCalibration('mlb');
   const _pRates = (pd, teamERA) => {
@@ -3543,7 +3543,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const _pitWarn = (pd, rates, facingAbbr, pitName) => {
     if (!pitName || pitName === 'TBD') return '';
     const era = parseFloat(pd?.season?.era || 99);
-    if (era < 3.10 && rates.k9 > 9.0) return `⚠️ ${esc(lastName(pitName))} ${era.toFixed(2)} ERA · ${rates.k9.toFixed(1)} K/9 — tough day for ${esc(facingAbbr)} bats`;
+    if (era < 3.10 && rates.k9 > 9.0) return `⚠️ ${esc(lastName(pitName))} ${era.toFixed(2)} ERA · ${rates.k9.toFixed(1)} K/9 - tough day for ${esc(facingAbbr)} bats`;
     return '';
   };
   const warnAway = _pitWarn(awayPD, awayRates, homeAbbr, awayPName); // home batters face away pitcher
@@ -3749,7 +3749,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       for (const [b, prop] of [[aHit,'hit'],[hHit,'hit'],[aHR,'hr'],[hHR,'hr'],[aRBI,'rbi'],[hRBI,'rbi'],[aBB,'walk'],[hBB,'walk'],[aSB,'sb'],[hSB,'sb'],[aDbl,'dbl'],[hDbl,'dbl'],[aXBH,'xbh'],[hXBH,'xbh']]) {
         if (b) recordPlayerPick('plr_'+gKey+'_'+b.id+'_'+prop, 'mlb', b.name, propLabel(prop), statStr[prop](b), gameMatchup, gamePk);
       }
-      // Pitcher strikeout picks — record for high-K/9 arms (adjusted for form, rest, bullpen)
+      // Pitcher strikeout picks - record for high-K/9 arms (adjusted for form, rest, bullpen)
       const recKPick = (pd, pname, rates, side) => {
         if (!pd?.season) return;
         const ip = parseFloat(pd.season.inningsPitched || 0);
@@ -3765,7 +3765,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
       };
       recKPick(awayPD, awayPName, awayRates, 'away');
       recKPick(homePD, homePName, homeRates, 'home');
-      // Run total O/U — model projection vs official betting line
+      // Run total O/U - model projection vs official betting line
       if (oddsInfo?.overUnder && hasLineup && awayValid.length && homeValid.length) {
         const LEAGUE_OPS = 0.728, LEAGUE_RPG = 4.50;
         const parkRun    = PARK_RUN[homeAbbr] || 1.0;
@@ -3779,7 +3779,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
           `proj ${projTotalRuns} runs`, gameMatchup, gamePk);
       }
     } else if (fin) {
-      // Only grade picks once the game is truly final — never during live play
+      // Only grade picks once the game is truly final - never during live play
       resolvePlayerPicksForGame(gKey, gamePk);
       // Resolve run total pick once game is final
       const _rtKey = `runs_${gKey}`;
@@ -3857,7 +3857,7 @@ async function loadTennisPicksPage() {
       S.matches.set(String(m.event_key), m);
       inlineTennisPick(m);
       // Re-date any existing pick that was stamped with the wrong date.
-      // Only move dates forward — never pull a tomorrow pick back to today.
+      // Only move dates forward - never pull a tomorrow pick back to today.
       if (m.event_date) {
         const pid = 'tn_' + m.event_key;
         const ex  = picks[pid];
@@ -3996,7 +3996,7 @@ async function loadTennisPicksPage() {
   // Upcoming tab: all pending grouped by tournament
   const upcomingHTML = upcomingPicks.length
     ? `<div class="tp-tourn-list">${renderGroupsWithBadge(upcomingPicks)}</div>`
-    : '<div class="empty-state muted">No upcoming picks yet — visit Scores tab to generate.</div>';
+    : '<div class="empty-state muted">No upcoming picks yet - visit Scores tab to generate.</div>';
 
   // Results tab: grouped by date (most recent first), within each date by tournament
   const resolvedByDate = new Map();
@@ -4046,14 +4046,14 @@ async function loadTomorrowPreview() {
     const d = dateStrLocal(1);
     const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
 
-    // Only ATP/WTA singles with player keys — cap at 10 to limit API calls
+    // Only ATP/WTA singles with player keys - cap at 10 to limit API calls
     const eligible = results.filter(m => {
       const cat = matchCategory(m.event_type_type || '');
       return ['atp','wta'].includes(cat) && m.first_player_key && m.second_player_key;
     }).slice(0, 10);
 
     if (!eligible.length) {
-      area.innerHTML = '<div class="tp-empty">No tomorrow matches found yet — check back later today.</div>';
+      area.innerHTML = '<div class="tp-empty">No tomorrow matches found yet - check back later today.</div>';
       return;
     }
 
@@ -4065,7 +4065,7 @@ async function loadTomorrowPreview() {
     area.innerHTML = cards || '<div class="tp-empty">No analysis available.</div>';
   } catch (err) {
     const area2 = document.getElementById('tomorrow-preview-area');
-    if (area2) area2.innerHTML = `<div class="tp-empty">Could not load tomorrow's matches — ${esc(err.message)}</div>`;
+    if (area2) area2.innerHTML = `<div class="tp-empty">Could not load tomorrow's matches - ${esc(err.message)}</div>`;
   }
 }
 
@@ -4156,7 +4156,7 @@ function buildTomorrowPickCard(m) {
     else                {               factors.push({ label:'H2H',             detail:`Even ${aw1}–${aw2}`,      side:0 }); }
   }
 
-  // H2H on surface (weight 3 — most predictive)
+  // H2H on surface (weight 3 - most predictive)
   if (h2hSurf.length >= 2) {
     if (sw1 > sw2)      { p1Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l1} leads ${sw1}–${sw2}`, side:1 }); }
     else if (sw2 > sw1) { p2Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l2} leads ${sw2}–${sw1}`, side:2 }); }
@@ -4364,7 +4364,7 @@ function buildNBAPicksCard(g, summary) {
   }
 
   // Season leaders from game summary
-  // Match on displayName (ESPN uses 'Points', 'Rebounds', 'Assists' — not the name field)
+  // Match on displayName (ESPN uses 'Points', 'Rebounds', 'Assists' - not the name field)
   const catKey  = cat => (cat.displayName || cat.shortDisplayName || cat.name || '').toLowerCase();
   const isPoint = cat => catKey(cat).includes('point');
   const isReb   = cat => catKey(cat).includes('rebound');
@@ -4490,7 +4490,7 @@ async function loadOtherPicksPage(sport) {
 
     let summaryMap = new Map();
     if (isNBALeague) {
-      // Pre-fetch game summaries in parallel — contains season leaders per team
+      // Pre-fetch game summaries in parallel - contains season leaders per team
       const bPath = sport === 'wnba' ? 'basketball/wnba' : 'basketball/nba';
       const results = await Promise.allSettled(
         games.map(g => fetch(`https://site.api.espn.com/apis/site/v2/sports/${bPath}/summary?event=${g.id}`)
@@ -5611,7 +5611,7 @@ const GOLF_TOURS = [
 // When ESPN's tee-time grouping produces wrong 3-balls, set correct pairings here.
 // Key = ESPN event ID. Update date/round/groups each round from a screenshot.
 // Entries use last names; for duplicate last names use ESPN short-name format "F. Last".
-// Scores/stats still come from ESPN — only group membership changes.
+// Scores/stats still come from ESPN - only group membership changes.
 const GOLF_PAIRINGS_OVERRIDE = {
   '401811948': {
     date: '2026-05-23',
@@ -5657,7 +5657,7 @@ function formatTeeTime(raw) {
 function extractTeeTime(p, round) {
   const todayUTC = new Date().toISOString().slice(0, 10);
 
-  // 1. Current round's linescore statistics — most accurate, not overwritten
+  // 1. Current round's linescore statistics - most accurate, not overwritten
   if (round) {
     try {
       const roundLS = p.linescores?.[round - 1];
@@ -5672,7 +5672,7 @@ function extractTeeTime(p, round) {
     } catch {}
   }
 
-  // 2. Root p.teeTime — only trust it if it's today or earlier (not next-round pairing)
+  // 2. Root p.teeTime - only trust it if it's today or earlier (not next-round pairing)
   if (p.teeTime) {
     try {
       if (new Date(p.teeTime).toISOString().slice(0, 10) <= todayUTC) return p.teeTime;
@@ -5741,7 +5741,7 @@ function groupByTeeTime(players, round = 1, eventId = '') {
       const full  = norm(p.athlete?.displayName || '');
       const short = norm(p.athlete?.shortName   || '');
       const last  = full.split(' ').pop();
-      if (last)  lookup.set(last, p);   // may be overwritten by duplicate — short name wins
+      if (last)  lookup.set(last, p);   // may be overwritten by duplicate - short name wins
       if (full)  lookup.set(full, p);
       if (short) lookup.set(short, p);  // "t. kim" beats plain "kim"
     }
@@ -5890,7 +5890,7 @@ function renderGroupedLeaderboard(activeG, upcomingGroups, round) {
       ? `<span class="golf-thru-done">F</span>`
       : status === 'live'
       ? `<span class="golf-thru-live">● ${holes}</span>`
-      : `<span class="golf-thru-pre">—</span>`;
+      : `<span class="golf-thru-pre">-</span>`;
     const pos3 = parseInt(rawPos); const isTop3 = pos3 >= 1 && pos3 <= 3;
     const extraCls = (opts.cut ? ' golf-row-cut-player' : '') + (isTop3 ? ' golf-row-top3' : '');
     return `<div class="golf-player-row${extraCls}">
@@ -6020,7 +6020,7 @@ async function loadGolfLeaderboard() {
     setConn('connected', `Golf updated ${t} · refreshes every 30s`);
   } catch (err) {
     setConn('disconnected', 'Golf - update failed');
-    area.innerHTML = `<div class="pp-error" style="padding:16px">Could not load golf — ${esc(err.message)}</div>`;
+    area.innerHTML = `<div class="pp-error" style="padding:16px">Could not load golf - ${esc(err.message)}</div>`;
   }
 }
 
@@ -6062,7 +6062,7 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const getSA   = p => { const s = p.statistics?.find(x => ['SA','AVG','scoringAverage'].includes(x.abbreviation||x.name)); return s ? parseFloat(s.displayValue) || 0 : 0; };
   const getOWGR = p => { const s = p.statistics?.find(x => /owgr|world.*rank|ranking/i.test(x.abbreviation||x.name||'')); return s ? parseInt(s.displayValue) || 0 : 0; };
   const getTodayNum = p => { const t = p.linescores?.[round-1]?.displayValue; return t ? (t === 'E' ? 0 : parseInt(t) || 0) : null; };
-  // Strokes Gained Total or Tee-to-Green — ESPN abbreviations vary by tour
+  // Strokes Gained Total or Tee-to-Green - ESPN abbreviations vary by tour
   const getSGT  = p => { const s = p.statistics?.find(x => /^sg.?t$|strokes.gained.total|sg.*tee|sgt$/i.test(x.abbreviation||x.name||'')); return s ? parseFloat(s.displayValue) : null; };
   const getSGApp= p => { const s = p.statistics?.find(x => /sg.?app|approach|sga$/i.test(x.abbreviation||x.name||'')); return s ? parseFloat(s.displayValue) : null; };
 
@@ -6098,22 +6098,22 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
     let score = 0;
     const factors = [];
 
-    // 1. OWGR world ranking — best global quality signal
+    // 1. OWGR world ranking - best global quality signal
     const owgrPts = owgr > 0 && owgr <= 5 ? 4 : owgr <= 15 ? 3 : owgr <= 40 ? 2 : owgr <= 100 ? 1 : 0;
     if (owgrPts > 0) { score += owgrPts; factors.push(`W${owgr}`); }
 
-    // 2. Tournament leaderboard position — how they're performing this week
+    // 2. Tournament leaderboard position - how they're performing this week
     const posPts = pos <= 3 ? 5 : pos <= 10 ? 4 : pos <= 25 ? 3 : pos <= 50 ? 2 : pos <= 80 ? 1 : 0;
     if (posPts > 0 && pos < 999) { score += posPts; factors.push(`#${pos}`); }
 
-    // 3. Season scoring average vs group — long-run quality
+    // 3. Season scoring average vs group - long-run quality
     if (sa > 0 && avgSA > 0) {
       const diff = sa - avgSA;
       if (diff < -0.4) { score += 2; factors.push(`${sa.toFixed(1)} avg`); }
       else if (diff < 0) { score += 1; factors.push(`${sa.toFixed(1)} avg`); }
     }
 
-    // 4. Previous rounds — form this week + trajectory
+    // 4. Previous rounds - form this week + trajectory
     const roundScores = [];
     for (let r = 1; r < round; r++) {
       const rv = p.linescores?.[r - 1]?.displayValue;
@@ -6133,10 +6133,10 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
       else if (declining) { score -= 1; factors.push('↓ fading'); }
     }
 
-    // 5. Strokes Gained — most predictive stat in golf when available
+    // 5. Strokes Gained - most predictive stat in golf when available
     const sgt  = getSGT(p);
     const sgApp = getSGApp(p);
-    // SG: Total — overall value above field average
+    // SG: Total - overall value above field average
     if (sgt !== null) {
       if (sgt >= 2.0)       { score += 4; factors.push(`SGT +${sgt.toFixed(1)}`); }
       else if (sgt >= 1.0)  { score += 3; factors.push(`SGT +${sgt.toFixed(1)}`); }
@@ -6144,14 +6144,14 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
       else if (sgt >= 0)    { score += 1; }
       else if (sgt < -1.0)  { score -= 1; }
     }
-    // SG: Approach — iron quality, most stable round-to-round predictor
+    // SG: Approach - iron quality, most stable round-to-round predictor
     if (sgApp !== null && sgt === null) { // only use if SGT not already counted
       if (sgApp >= 1.5)      { score += 3; factors.push(`SGA +${sgApp.toFixed(1)}`); }
       else if (sgApp >= 0.5) { score += 2; factors.push(`SGA +${sgApp.toFixed(1)}`); }
       else if (sgApp >= 0)   { score += 1; }
     }
 
-    // Live round score intentionally excluded — using it shifts the pick to whoever
+    // Live round score intentionally excluded - using it shifts the pick to whoever
     // is hot at that moment and causes the displayed pick to change mid-round.
     // Picks are based on pre-round data only. todayNum still captured for display.
 
@@ -6167,7 +6167,7 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 4 ? 3 : gap >= 2 ? 2 : 1;
 
-  // Record pick regardless of group state — force=false means existing picks are never overwritten.
+  // Record pick regardless of group state - force=false means existing picks are never overwritten.
   // This ensures tickets show golf picks even when the user first opens the app mid/post-round.
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
   recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
@@ -6343,10 +6343,10 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           if (!groups.length && !upcomingGroups.length && !earlierPicks.length) continue;
 
           const preHdr = upcomingGroups.length > 0
-            ? `<div class="golf-group-status-hdr">⏰ Pre-Round — ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''}</div>` : '';
+            ? `<div class="golf-group-status-hdr">⏰ Pre-Round - ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''}</div>` : '';
 
           const earlierHTML = earlierPicks.length
-            ? `<div class="golf-group-status-hdr">⏳ Earlier Groups — picks locked pre-round</div>` +
+            ? `<div class="golf-group-status-hdr">⏳ Earlier Groups - picks locked pre-round</div>` +
               earlierPicks.map(([, p]) => {
                 const conf = p.conf || 1;
                 const dots = `<span class="tp-conf tp-conf-${conf}">${'●'.repeat(conf)}${'○'.repeat(3-conf)}</span>`;
@@ -6374,7 +6374,7 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           const nextRound = round + 1;
           const tmrwDateStr = dateStr(1); // "YYYY-MM-DD"
           // Only include teeTime values whose date portion is actually tomorrow.
-          // p.teeTime during an active round is today's time — filtering by date
+          // p.teeTime during an active round is today's time - filtering by date
           // prevents showing today's groups in the tomorrow tab.
           const teeMap = new Map();
           for (const p of allComp) {
@@ -7009,7 +7009,7 @@ const SPORT_LABELS = { tennis:'Tennis', mlb:'Baseball', nba:'NBA', wnba:'WNBA', 
 let _svPreloadedAt = 0;   // timestamp of last completed preload (0 = never)
 
 // ── SUPABASE SYNC ─────────────────────────────────────────────────────────────
-// Anon key is safe in frontend — read + insert only, protected by RLS.
+// Anon key is safe in frontend - read + insert only, protected by RLS.
 // Service role key is NEVER stored here. First-build-wins: once a ticket is
 // written for a date, ignore-duplicates prevents any overwrite.
 const _SB_URL = 'https://xxbymjminigvhfetfvwe.supabase.co';
@@ -7030,7 +7030,7 @@ async function _sbGetTickets(date) {
 }
 
 async function _sbSaveTicket(date, slot, legs) {
-  // slot: 'day' | 'night' — stored as separate rows so no UPDATE needed
+  // slot: 'day' | 'night' - stored as separate rows so no UPDATE needed
   try {
     const row = slot === 'day'
       ? { date: date + '_day',   morn_legs: legs, eve_legs: null }
@@ -7040,7 +7040,7 @@ async function _sbSaveTicket(date, slot, legs) {
       headers: {
         apikey: _SB_KEY, Authorization: `Bearer ${_SB_KEY}`,
         'Content-Type': 'application/json',
-        Prefer: 'resolution=ignore-duplicates'  // first build wins — never overwrites
+        Prefer: 'resolution=ignore-duplicates'  // first build wins - never overwrites
       },
       body: JSON.stringify(row)
     });
@@ -7096,7 +7096,7 @@ function updateAuthUI() {
       if (sv?.classList.contains('sv-active')) {
         const dismissed = localStorage.getItem('sv_dismissed');
         if (dismissed === dateStrLocal()) {
-          // User had already dismissed today — respect that
+          // User had already dismissed today - respect that
           document.body.classList.remove('simple-mode');
           sv.classList.remove('sv-active');
         }
@@ -7105,7 +7105,7 @@ function updateAuthUI() {
   } else {
     if (signinBtn) signinBtn.style.display  = 'block';
     if (userInfo)  userInfo.style.display   = 'none';
-    // Not signed in — ensure simple view is showing (only once auth state is confirmed)
+    // Not signed in - ensure simple view is showing (only once auth state is confirmed)
     if (_authReady) {
       const sv = document.getElementById('simple-view');
       if (sv && !sv.classList.contains('sv-active')) showSimpleView();
@@ -7219,7 +7219,7 @@ const _MORN_TICKET_KEY    = '_baseline_morn_v10';
 const _EVE_TICKET_KEY     = '_baseline_eve_v10';
 const _YST_MORN_TICKET_KEY = '_baseline_yst_morn_v10';
 const _YST_EVE_TICKET_KEY  = '_baseline_yst_eve_v10';
-let _dailyTicketCache   = null; // in-session lock — once set, never changes within this page load
+let _dailyTicketCache   = null; // in-session lock - once set, never changes within this page load
 let _morningTicketCache = null;
 let _eveningTicketCache = null;
 
@@ -7232,7 +7232,7 @@ function getDailyTicket() {
     if (!s) return null;
     const obj = JSON.parse(s);
     if (obj.date !== today) return null;
-    _dailyTicketCache = obj; // freeze in memory — can't be rebuilt for the rest of this session
+    _dailyTicketCache = obj; // freeze in memory - can't be rebuilt for the rest of this session
     return obj;
   } catch { return null; }
 }
@@ -7272,9 +7272,9 @@ function isEveningGame(p) {
 }
 
 // Split the already-built combined ticket into morning/evening based on game time.
-// Runs after buildDailyTicketIfNeeded — does not modify the combined ticket.
+// Runs after buildDailyTicketIfNeeded - does not modify the combined ticket.
 // Shared: score all today's picks into a candidate list (same logic as buildDailyTicketIfNeeded)
-// ITF events below ~$60k prize money — not covered by major sports apps.
+// ITF events below ~$60k prize money - not covered by major sports apps.
 // Match on "W15", "W25", "W35", "W40", "M15", "M25" anywhere in the tournament name.
 const _MINOR_ITF_RE = /\b[WM](?:15|25|35|40)\b/i;
 function isMinorITFEvent(matchup) {
@@ -7287,7 +7287,7 @@ function _buildPickCandidates(allPicks, today) {
   const out = [];
   for (const [id, p] of Object.entries(allPicks)) {
     if (p.date !== today || id.includes('_fb_')) continue;
-    // Extra guard: tennis — check stored matchDate first; fall back to S.matches lookup
+    // Extra guard: tennis - check stored matchDate first; fall back to S.matches lookup
     if ((p.sport === 'tennis' || !p.sport) && id.startsWith('tn_')) {
       if (p.matchDate && p.matchDate > today) continue;
       const m = S.matches.get(id.replace(/^tn_/, ''));
@@ -7307,7 +7307,7 @@ function _buildPickCandidates(allPicks, today) {
     } else if (p.team) {
       if ((p.conf || 0) < 1) continue;
       const sport = p.sport || 'tennis';
-      // Skip micro-level ITF events (W15, M15, W25, M25, W35, W40) — not in major sports apps
+      // Skip micro-level ITF events (W15, M15, W25, M25, W35, W40) - not in major sports apps
       if (sport === 'tennis' && p.tier === 'itf' && isMinorITFEvent(p.matchup)) continue;
       score += sport === 'tennis' ? (TIER_BONUS[p.tier] ?? 0) : (SPORT_BONUS[sport] || 1);
       out.push({ id, score, sport, type: 'game',
@@ -7341,7 +7341,7 @@ function buildSecretTicket() {
   const allPicks = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
 
-  // Score and filter MLB picks — use mlbPickMerit for player props
+  // Score and filter MLB picks - use mlbPickMerit for player props
   const scored = [];
   for (const c of candidates) {
     if (c.sport !== 'mlb') continue;
@@ -7474,7 +7474,7 @@ async function buildSplitTicketsIfNeeded() {
 
   if (dayBuilt && (nightBuilt || etHour < 17)) return;
 
-  // ── No shared ticket found — this device is first to build ──
+  // ── No shared ticket found - this device is first to build ──
   const allPicks   = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
 
@@ -7542,7 +7542,7 @@ function buildDailyTicketIfNeeded() {
         if (/^(OVER|UNDER)\s/i.test(s)) return s;  // just the line, e.g. "OVER 27.5"
         const ouMatch = s.match(/(OVER|UNDER)\s+[\d.]+\s+\w+/i);
         if (ouMatch) return ouMatch[0];              // extract "OVER 5.5 K" from composite
-        return p.prop;                               // raw stat — show only the prop name
+        return p.prop;                               // raw stat - show only the prop name
       })();
       candidates.push({ id, score, sport: p.sport || 'other', type: 'player',
         pick: p.player, description: statLabel, matchup: p.gameMatchup || '', conf: p.conf || 1 });
@@ -7561,7 +7561,7 @@ function buildDailyTicketIfNeeded() {
     }
   }
 
-  if (candidates.length < 5) return;   // not enough picks yet — wait for preload
+  if (candidates.length < 5) return;   // not enough picks yet - wait for preload
 
   candidates.sort((a, b) => b.score - a.score);
   const sportCount = {};
@@ -7569,7 +7569,7 @@ function buildDailyTicketIfNeeded() {
   const legs = [];
   for (const c of candidates) {
     if ((sportCount[c.sport] || 0) >= 2) continue;
-    // Only 1 slam tennis pick allowed — reserves the 2nd tennis slot for a non-slam
+    // Only 1 slam tennis pick allowed - reserves the 2nd tennis slot for a non-slam
     // (e.g. Kyrian Jacquet) so it isn't crowded out by multiple RG picks.
     if (c.sport === 'tennis' && c.tier === 'slam' && slamTennisCount >= 1) continue;
     sportCount[c.sport] = (sportCount[c.sport] || 0) + 1;
@@ -7622,7 +7622,7 @@ function fixGolfPickMatchupsFromOverride() {
 }
 
 
-// Silently fetch today's tennis matches and record picks — used by the preload
+// Silently fetch today's tennis matches and record picks - used by the preload
 // so tennis shows on the front page even if the user hasn't visited the Tennis tab.
 async function preloadTennisPicksQuiet() {
   try {
@@ -7637,7 +7637,7 @@ async function preloadTennisPicksQuiet() {
     ]);
 
     // Pre-fetch H2H for upcoming AND live main-draw matches so inlineTennisPick has form data.
-    // Limit to ATP/WTA — skip Challenger/ITF (too many, low value).
+    // Limit to ATP/WTA - skip Challenger/ITF (too many, low value).
     const isMainDraw = m => { const c = matchCategory(m.event_type || ''); return c === 'atp' || c === 'wta'; };
     const isUpcoming = m => !isLive(m.event_status) && !isFinished(m.event_status);
 
@@ -7667,7 +7667,7 @@ async function preloadTennisPicksQuiet() {
       }
     }
 
-    // Process tomorrow's matches — generate picks stamped with tomorrow's date
+    // Process tomorrow's matches - generate picks stamped with tomorrow's date
     for (const m of tomorrowMatches) {
       S.matches.set(String(m.event_key), m);
       inlineTennisPick(m, tomorrow);
@@ -7737,7 +7737,7 @@ async function preloadPicksForSimpleView() {
 
       const cfg = sportCfg[sport];
       if (cfg) {
-        // Max plausible per-game averages — anything above these is a season total, not per-game
+        // Max plausible per-game averages - anything above these is a season total, not per-game
         const PER_GAME_MAX = {
           nhl:  { goals: 1.5, assists: 2.5, points: 3.5 },
         };
@@ -7807,10 +7807,10 @@ async function preloadPicksForSimpleView() {
   try { await preloadTennisPicksQuiet(); } catch (e) {}
 
   // Fix any stored golf pick matchup strings using the manual override before
-  // the ticket reads them — ensures the ticket shows correct 3-ball groupings.
+  // the ticket reads them - ensures the ticket shows correct 3-ball groupings.
   fixGolfPickMatchupsFromOverride();
   archiveYesterdayTicket();
-  // All sports done — now build the ticket (all picks are in localStorage).
+  // All sports done - now build the ticket (all picks are in localStorage).
   // Do this AFTER all sports load so we score from the full candidate pool.
   buildDailyTicketIfNeeded();
   await buildSplitTicketsIfNeeded();
@@ -7821,7 +7821,7 @@ async function preloadPicksForSimpleView() {
 
 // ── TYPED TICKET HELPERS ──────────────────────────────────────
 
-// Merit score for an MLB player pick — used by both per-game and combined tickets.
+// Merit score for an MLB player pick - used by both per-game and combined tickets.
 // Parses the encoded stat string (set at pick-record time) for matchup context.
 // Returns -1 to exclude a pick below quality threshold; higher = better.
 function mlbPickMerit(propType, stat, pick) {
@@ -7832,7 +7832,7 @@ function mlbPickMerit(propType, stat, pick) {
     if (avg < 0.245) return -1;
     let score = avg * 1000;
     if (s.includes(' vs '))  score += 15;  // has platoon context
-    if (s.includes('due'))   score += 35;  // BABIP below avg — hits are coming
+    if (s.includes('due'))   score += 35;  // BABIP below avg - hits are coming
     if (s.includes('pitH↑')) score += 22;  // pitcher allows hits above average ERA
     if (s.includes('park↑')) score += 10;  // hit-friendly park
     return score;
@@ -7841,7 +7841,7 @@ function mlbPickMerit(propType, stat, pick) {
   if (propType === 'HR') {
     const hr   = parseFloat(s.match(/^(\d+)HR/)?.[1] || '0');
     const vsHR = parseFloat(s.match(/(\d+)vsHR/)?.[1] || '0');
-    // vs-pitcher HR history is the most powerful HR signal — lower the season-HR floor when present
+    // vs-pitcher HR history is the most powerful HR signal - lower the season-HR floor when present
     const minHR = vsHR >= 2 ? 3 : vsHR >= 1 ? 5 : 8;
     if (hr < minHR) return -1;
     let score = hr * 6;
@@ -7901,7 +7901,7 @@ function propDirection(sport, rawAvg, catName, teamAbbr, g) {
   const MIN_UNDER   = { points: 15, rebound: 7, assist: 5, goal: 0.4, passing: 200, rushing: 60, receiving: 50 };
   let score = 0;
 
-  // Rest / fatigue — strongest signal (B2B = played yesterday)
+  // Rest / fatigue - strongest signal (B2B = played yesterday)
   const rest = teamAbbr ? (_restDaysCache.get(`${sport}:${teamAbbr}`) ?? 3) : 3;
   if (rest <= 1) score -= 2;
   else if (rest >= 3) score += 1;
@@ -8036,7 +8036,7 @@ function getGolfSplitTickets(date, allPicks) {
   const ovEntry = Object.entries(GOLF_PAIRINGS_OVERRIDE).find(([, ov]) => ov.date === date);
   const [ovEventId, activeOv] = ovEntry || [null, null];
 
-  // Round 4 = everyone plays together — single ticket
+  // Round 4 = everyone plays together - single ticket
   if (activeOv?.round === 4) {
     return { early: entries.slice(0, 10).map(toGolfLeg), late: [], singleTicket: true };
   }
@@ -8233,9 +8233,9 @@ function getLineupPendingMatchups(date, allPicks) {
 function cleanLegDesc(leg) {
   const d = (leg.description || '').trim();
   if (!d) return '';
-  // "OVER 27.5 PTS" — already has abbreviation
+  // "OVER 27.5 PTS" - already has abbreviation
   if (/^(OVER|UNDER)\s+[\d.]+\s+\S/i.test(d)) return d;
-  // "OVER 27.5" — missing abbreviation; look up prop from stored pick and append it
+  // "OVER 27.5" - missing abbreviation; look up prop from stored pick and append it
   if (/^(OVER|UNDER)\s+[\d.]+\s*$/i.test(d)) {
     const stored = leg.id ? (getPicks()[leg.id] || null) : null;
     if (stored?.prop) {
@@ -8292,7 +8292,7 @@ function renderTicketBlock(title, legs, allPicks, footer = '') {
   const losses = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'loss').length;
   const statusLine = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
   return `<div class="sv-ticket">
-    <div class="sv-ticket-hdr">${esc(title)} — ${legs.length} Leg${legs.length!==1?'s':''} ${statusLine}</div>
+    <div class="sv-ticket-hdr">${esc(title)} - ${legs.length} Leg${legs.length!==1?'s':''} ${statusLine}</div>
     <div class="sv-ticket-list">${legs.map(row).join('')}</div>
     ${footer}
   </div>`;
@@ -8316,7 +8316,7 @@ function renderTicketsPage() {
     ${secretBtn}
   </div>`;
 
-  // ── Today's Picks — Morning / Evening split tickets ──
+  // ── Today's Picks - Morning / Evening split tickets ──
   let todayPicksHTML = '';
   if (off === 0) {
     const morn = getMorningTicket();
@@ -8335,7 +8335,7 @@ function renderTicketsPage() {
     }
   }
 
-  // ── Yesterday's Picks — Morning / Evening archived tickets ──
+  // ── Yesterday's Picks - Morning / Evening archived tickets ──
   let ystTicketHTML = '';
   if (off === -1) {
     try {
@@ -8380,8 +8380,8 @@ function renderTicketsPage() {
   const showMLBAgg = mlbGamesWithLineups >= 3;
 
   const pendingNote = pending.length
-    ? `<div class="tp-pending">⏳ Lineup pending: ${pending.map(m => esc(m)).join(' · ')}<br><span class="tp-pending-sub">Player prop picks fill in automatically once lineups post — they lock immediately when added${!showMLBAgg && mlbGamesWithLineups > 0 ? ` · Combined tickets unlock when 3+ lineups are in (${mlbGamesWithLineups}/3 so far)` : ''}</span></div>`
-    : (!showMLBAgg && mlbGamesWithLineups > 0 ? `<div class="tp-pending">⏳ Combined tickets need 3+ lineups — ${mlbGamesWithLineups}/3 posted so far. Checking automatically.</div>` : '');
+    ? `<div class="tp-pending">⏳ Lineup pending: ${pending.map(m => esc(m)).join(' · ')}<br><span class="tp-pending-sub">Player prop picks fill in automatically once lineups post - they lock immediately when added${!showMLBAgg && mlbGamesWithLineups > 0 ? ` · Combined tickets unlock when 3+ lineups are in (${mlbGamesWithLineups}/3 so far)` : ''}</span></div>`
+    : (!showMLBAgg && mlbGamesWithLineups > 0 ? `<div class="tp-pending">⏳ Combined tickets need 3+ lineups - ${mlbGamesWithLineups}/3 posted so far. Checking automatically.</div>` : '');
 
   const mlbAggCards = showMLBAgg ? [
     mlbHits.length    ? renderTicketBlock('🎯 1+ Hits',     mlbHits,    allPicks) : '',
@@ -8394,7 +8394,7 @@ function renderTicketsPage() {
 
   const toMLBCard = g => {
     const hasProps = g.legs.some(l => l.propType !== 'game');
-    const pendFt   = !hasProps ? `<div class="tp-game-pending">⏳ Lineup not yet posted — props update automatically</div>` : '';
+    const pendFt   = !hasProps ? `<div class="tp-game-pending">⏳ Lineup not yet posted - props update automatically</div>` : '';
     return renderTicketBlock(esc(g.matchup.replace(/ @ /g,' v ')), g.legs, allPicks, pendFt);
   };
   const mlbPerGameCards = mlbPerGame.map(toMLBCard);
@@ -8406,7 +8406,7 @@ function renderTicketsPage() {
     ${pendingNote}
     ${mlbAggCards.length ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(mlbAggCards)}` : ''}
     ${mlbPerGameSection}
-    ${!mlbHasAny ? `<div class="tp-sport-empty">No MLB picks yet${off===0?' — visit MLB Picks tab to load data':''}</div>` : ''}
+    ${!mlbHasAny ? `<div class="tp-sport-empty">No MLB picks yet${off===0?' - visit MLB Picks tab to load data':''}</div>` : ''}
   </div>`;
 
   // ── Tennis ──
@@ -8418,7 +8418,7 @@ function renderTicketsPage() {
   ].filter(Boolean);
   const tennisHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">🎾 Tennis</div>
-    ${tnCards.length ? grid(tnCards) : `<div class="tp-sport-empty">No tennis picks yet${off===0?' — visit the Tennis tab':''}</div>`}
+    ${tnCards.length ? grid(tnCards) : `<div class="tp-sport-empty">No tennis picks yet${off===0?' - visit the Tennis tab':''}</div>`}
   </div>`;
 
   // ── Golf ──
@@ -8432,7 +8432,7 @@ function renderTicketsPage() {
   }
   const golfHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">⛳ Golf</div>
-    ${golfCards.length ? grid(golfCards) : `<div class="tp-sport-empty">No golf picks yet${off===0?' — visit the Golf tab':''}</div>`}
+    ${golfCards.length ? grid(golfCards) : `<div class="tp-sport-empty">No golf picks yet${off===0?' - visit the Golf tab':''}</div>`}
   </div>`;
 
   // ── NBA ──
@@ -8445,7 +8445,7 @@ function renderTicketsPage() {
     <div class="tp-sport-hdr">🏀 NBA</div>
     ${nbaAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nbaAggCards)}` : ''}
     ${nbaPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nbaPerGameCards)}` : ''}
-    ${!nbaHasAny ? `<div class="tp-sport-empty">No NBA picks yet${off===0?' — visit the NBA tab':''}</div>` : ''}
+    ${!nbaHasAny ? `<div class="tp-sport-empty">No NBA picks yet${off===0?' - visit the NBA tab':''}</div>` : ''}
   </div>`;
 
   // ── WNBA ──
@@ -8458,7 +8458,7 @@ function renderTicketsPage() {
     <div class="tp-sport-hdr">🏀 WNBA</div>
     ${wnbaAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(wnbaAggCards)}` : ''}
     ${wnbaPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(wnbaPerGameCards)}` : ''}
-    ${!wnbaHasAny ? `<div class="tp-sport-empty">No WNBA picks yet${off===0?' — visit the WNBA tab':''}</div>` : ''}
+    ${!wnbaHasAny ? `<div class="tp-sport-empty">No WNBA picks yet${off===0?' - visit the WNBA tab':''}</div>` : ''}
   </div>`;
 
   // ── NHL ──
@@ -8471,7 +8471,7 @@ function renderTicketsPage() {
     <div class="tp-sport-hdr">🏒 NHL</div>
     ${nhlAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nhlAggCards)}` : ''}
     ${nhlPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nhlPerGameCards)}` : ''}
-    ${!nhlHasAny ? `<div class="tp-sport-empty">No NHL picks yet${off===0?' — visit the NHL tab':''}</div>` : ''}
+    ${!nhlHasAny ? `<div class="tp-sport-empty">No NHL picks yet${off===0?' - visit the NHL tab':''}</div>` : ''}
   </div>`;
 
   // ── NFL ──
@@ -8484,7 +8484,7 @@ function renderTicketsPage() {
     <div class="tp-sport-hdr">🏈 NFL</div>
     ${nflAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nflAggCards)}` : ''}
     ${nflPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nflPerGameCards)}` : ''}
-    ${!nflHasAny ? `<div class="tp-sport-empty">No NFL picks yet${off===0?' — NFL season runs Sep–Feb':''}</div>` : ''}
+    ${!nflHasAny ? `<div class="tp-sport-empty">No NFL picks yet${off===0?' - NFL season runs Sep–Feb':''}</div>` : ''}
   </div>`;
 
   el.innerHTML = `<div class="tp-page">
@@ -8574,7 +8574,7 @@ function renderSimpleView() {
     const losses = legs.filter(l => allPicks[l.id]?.result === 'loss').length;
     const status = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
     return `<div class="sv-ticket">
-      <div class="sv-ticket-hdr">${esc(label)} — ${legs.length} Leg${legs.length!==1?'s':''} ${status}</div>
+      <div class="sv-ticket-hdr">${esc(label)} - ${legs.length} Leg${legs.length!==1?'s':''} ${status}</div>
       <div class="sv-ticket-list">${legs.map(ticketRow).join('')}</div>
     </div>`;
   };
@@ -8663,7 +8663,7 @@ function init() {
   renderDateBar();
   const lastSport = localStorage.getItem('_baseline_sport') || 'tennis';
   switchSport(lastSport);
-  // Always show simple view on load — initAuth will auto-hide for paid/admin who already dismissed today
+  // Always show simple view on load - initAuth will auto-hide for paid/admin who already dismissed today
   showSimpleView();
   initAuth();
 }

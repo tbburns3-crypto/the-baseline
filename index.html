@@ -6,8 +6,8 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>The Baseline — Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=188">
+  <title>The Baseline | Live Scores</title>
+  <link rel="stylesheet" href="style.css?v=189">
 </head>
 <body>
 
@@ -19,7 +19,7 @@
       <!-- Step 1: email -->
       <div id="auth-step-email">
         <h2 class="auth-modal-title">Sign In / Sign Up</h2>
-        <p class="auth-modal-desc">Enter your email — we'll send a 6-digit code. No password needed.</p>
+        <p class="auth-modal-desc">Enter your email - we'll send a 6-digit code. No password needed.</p>
         <input type="email" id="auth-email-input" class="auth-email-input" placeholder="your@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')sendOtpCode()">
         <button id="auth-submit-btn" class="auth-submit-btn" onclick="sendOtpCode()">Send Code</button>
       </div>
@@ -145,22 +145,22 @@
         <div id="overview-cards">
           <div class="overview-card" data-cat="atp">
             <div class="ov-label">ATP</div>
-            <div class="ov-count" id="ov-atp-count">—</div>
+            <div class="ov-count" id="ov-atp-count">-</div>
             <div class="ov-live" id="ov-atp-live"></div>
           </div>
           <div class="overview-card" data-cat="wta">
             <div class="ov-label">WTA</div>
-            <div class="ov-count" id="ov-wta-count">—</div>
+            <div class="ov-count" id="ov-wta-count">-</div>
             <div class="ov-live" id="ov-wta-live"></div>
           </div>
           <div class="overview-card" data-cat="challenger">
             <div class="ov-label">Challenger</div>
-            <div class="ov-count" id="ov-chal-count">—</div>
+            <div class="ov-count" id="ov-chal-count">-</div>
             <div class="ov-live" id="ov-chal-live"></div>
           </div>
           <div class="overview-card" data-cat="itf">
             <div class="ov-label">ITF</div>
-            <div class="ov-count" id="ov-itf-count">—</div>
+            <div class="ov-count" id="ov-itf-count">-</div>
             <div class="ov-live" id="ov-itf-live"></div>
           </div>
         </div>
@@ -253,6 +253,6 @@
   </div><!-- /app-layout -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=188"></script>
+  <script src="app.js?v=189"></script>
 </body>
 </html>
