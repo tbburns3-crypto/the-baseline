@@ -7120,9 +7120,6 @@ function updateAuthUI() {
 
   // Update sign-in status shown inside the simple view header
   updateSvAuthBar();
-
-  // If user clicked Full App before auth settled, process it now
-  if (_pendingHide) hideSimpleView();
 }
 
 function updateSvAuthBar() {
@@ -8592,19 +8589,18 @@ function showSimpleView() {
   preloadPicksForSimpleView();
 }
 
-let _pendingHide = false; // set when user clicked Full App before auth/role settled
-
 function hideSimpleView(bypassGate) {
   if (!bypassGate) {
-    if (!_authReady || (_currentUser && _currentUserRole === null)) {
-      _pendingHide = true; // process automatically once auth settles
+    // Only let them through if we KNOW they have full access
+    if (_hasFullAccess()) {
+      // fall through to dismiss
+    } else {
+      // Show the appropriate modal immediately — never silently return
+      if (_authReady && !_currentUser) openAuthModal();
+      else openUpgradeModal(); // covers loading state, free user, anything else
       return;
     }
-    _pendingHide = false;
-    if (!_currentUser)      { openAuthModal();    return; }
-    if (!_hasFullAccess())  { openUpgradeModal(); return; }
   }
-  _pendingHide = false;
   document.body.classList.remove('simple-mode');
   document.getElementById('simple-view').classList.remove('sv-active');
   localStorage.setItem('sv_dismissed', dateStrLocal());
@@ -8768,9 +8764,9 @@ function init() {
 
   // Always show simple view on load - initAuth will auto-hide for paid/admin who already dismissed today
   showSimpleView();
-  // Returning from a cancelled checkout: auto-show subscribe screen once auth settles
-  if (_ckParam === 'cancel') _pendingHide = true;
   initAuth();
+  // Returning from a cancelled checkout: auto-reopen subscribe screen once auth has had time to settle
+  if (_ckParam === 'cancel') setTimeout(() => { if (!_hasFullAccess()) openUpgradeModal(); }, 1200);
 
   // If returning from payment, poll until role flips to paid
   if (_ckParam === 'success') {
