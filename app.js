@@ -8574,8 +8574,26 @@ function showSimpleView() {
 
 function hideSimpleView(bypassGate) {
   if (!bypassGate) {
-    if (!_authReady) return;                               // auth still initializing
-    if (_currentUser && _currentUserRole === null) return; // role still fetching
+    // Auth or role not settled yet — show a loading state and retry
+    if (!_authReady || (_currentUser && _currentUserRole === null)) {
+      const btn = document.querySelector('.sv-full-btn');
+      if (btn && !btn._waiting) {
+        btn._waiting = true;
+        const orig = btn.textContent;
+        btn.textContent = 'Loading…';
+        btn.disabled = true;
+        const iv = setInterval(() => {
+          if (_authReady && !(_currentUser && _currentUserRole === null)) {
+            clearInterval(iv);
+            btn._waiting = false;
+            btn.textContent = orig;
+            btn.disabled = false;
+            hideSimpleView();
+          }
+        }, 200);
+      }
+      return;
+    }
     if (!_currentUser)      { openAuthModal();    return; }
     if (!_hasFullAccess())  { openUpgradeModal(); return; }
   }

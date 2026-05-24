@@ -2591,8 +2591,14 @@ body.simple-mode #app-layout { display: none !important; }
 .auth-topbar-btn:hover { border-color: var(--accent); color: var(--accent); }
 #auth-user-info { display: flex; align-items: center; gap: 6px; }
 .auth-user-email-chip {
-  font-size: .68rem; color: var(--text-muted);
-  max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: .68rem; color: var(--text);
+  max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: rgba(74,222,128,.10); border: 1px solid rgba(74,222,128,.25);
+  border-radius: 12px; padding: 3px 8px 3px 6px;
+}
+.auth-user-email-chip::before {
+  content: '●'; color: #4ade80; font-size: .48rem;
+  margin-right: 4px; vertical-align: middle;
 }
 .auth-signout-btn {
   background: none; border: 1px solid rgba(255,255,255,.12);
@@ -2689,6 +2695,6 @@ body.simple-mode #app-layout { display: none !important; }
 }
 
 @media (max-width: 600px) {
-  .auth-user-email-chip { display: none; }
+  .auth-user-email-chip { max-width: 80px; font-size: .62rem; padding: 2px 6px 2px 5px; }
   .auth-modal-box { padding: 24px 18px 20px; }
 }
