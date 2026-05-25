@@ -7101,6 +7101,37 @@ async function _sbSaveTicket(date, slot, legs) {
     });
   } catch {}
 }
+
+// After admin signs in, push any locally-built tickets that never made it to Supabase.
+// This handles the race where buildSplitTicketsIfNeeded ran before auth completed.
+async function _trySyncTicketsToSupabase() {
+  const today = dateStrLocal();
+  try {
+    const sbData = await _sbGetTickets(today);
+    const morn = _morningTicketCache || JSON.parse(localStorage.getItem(_MORN_TICKET_KEY) || 'null');
+    const eve  = _eveningTicketCache || JSON.parse(localStorage.getItem(_EVE_TICKET_KEY)  || 'null');
+    if (morn?.date === today && !sbData?.morn) _sbSaveTicket(today, 'day',   morn.legs);
+    if (eve?.date  === today && !sbData?.eve)  _sbSaveTicket(today, 'night', eve.legs);
+  } catch {}
+}
+
+// Fetch yesterday's tickets from Supabase and cache them in localStorage.
+// Called during preload (so Yesterday tab works immediately) and on-demand when
+// the tab is clicked and localStorage is empty (e.g. first visit on this device).
+async function _fetchAndCacheYesterdayTickets(date) {
+  try {
+    const sbYst = await _sbGetTickets(date);
+    let changed = false;
+    if (sbYst?.morn) {
+      try { localStorage.setItem(_YST_MORN_TICKET_KEY, JSON.stringify({ date, legs: sbYst.morn })); changed = true; } catch {}
+    }
+    if (sbYst?.eve) {
+      try { localStorage.setItem(_YST_EVE_TICKET_KEY, JSON.stringify({ date, legs: sbYst.eve })); changed = true; } catch {}
+    }
+    if (changed && S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
+  } catch {}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── AUTH STATE ───────────────────────────────────────────────────────────────
@@ -7178,6 +7209,8 @@ function updateAuthUI() {
         sv.classList.remove('sv-active');
         localStorage.setItem('sv_dismissed', dateStrLocal());
       }
+      // Admin: push any locally-built tickets that haven't reached Supabase yet
+      if (_isAdmin()) _trySyncTicketsToSupabase();
     }
   } else {
     if (signinBtn) signinBtn.style.display  = 'block';
@@ -7681,6 +7714,20 @@ async function buildSplitTicketsIfNeeded() {
     }
     localStorage.setItem('_night_built_v1', today);
   }
+
+  // Pre-fetch yesterday from Supabase so the Yesterday tab works on any device
+  try {
+    const yesterday = dateStrLocal(-1);
+    const ystMornStored = JSON.parse(localStorage.getItem(_YST_MORN_TICKET_KEY) || 'null');
+    const ystEveStored  = JSON.parse(localStorage.getItem(_YST_EVE_TICKET_KEY)  || 'null');
+    if (ystMornStored?.date !== yesterday || ystEveStored?.date !== yesterday) {
+      const sbYst = await _sbGetTickets(yesterday);
+      if (sbYst?.morn && ystMornStored?.date !== yesterday)
+        try { localStorage.setItem(_YST_MORN_TICKET_KEY, JSON.stringify({ date: yesterday, legs: sbYst.morn })); } catch {}
+      if (sbYst?.eve && ystEveStored?.date !== yesterday)
+        try { localStorage.setItem(_YST_EVE_TICKET_KEY, JSON.stringify({ date: yesterday, legs: sbYst.eve })); } catch {}
+    }
+  } catch {}
 }
 
 function archiveYesterdayTicket() {
@@ -8542,6 +8589,13 @@ function renderTicketsPage() {
           <div class="tp-sport-hdr">🎫 Yesterday's Picks</div>
           ${grid(cards)}
         </div>`;
+      } else {
+        // Nothing in localStorage — kick off a Supabase fetch and show a loading state
+        ystTicketHTML = `<div class="tp-sport-section">
+          <div class="tp-sport-hdr">🎫 Yesterday's Picks</div>
+          <div style="text-align:center;padding:30px;color:#888">Loading yesterday's picks…</div>
+        </div>`;
+        _fetchAndCacheYesterdayTickets(date);
       }
     } catch {}
   }
