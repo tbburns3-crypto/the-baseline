@@ -56,6 +56,7 @@ let _tpTab          = 'upcoming'; // tennis picks active tab: 'upcoming' | 'resu
 let _golfPicksTab   = 'today';    // golf picks active tab: 'yesterday' | 'today' | 'tomorrow'
 let _svPreloadDone  = false;      // true after preloadPicksForSimpleView completes
 let _ticketDateOffset = 0;        // tickets tab date: -1=yesterday, 0=today, 1=tomorrow
+let _golfTournamentActive = false; // true only when ESPN confirms a live/pre-round golf event today
 
 // ── REST DAYS CACHE ──────────────────────────────────────────
 // Populated by populateRestDaysCache() during preload.
@@ -1364,7 +1365,7 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
 
   // ── Decide pick ──
   const gap = Math.abs(p1Score - p2Score);
-  const minGap = tier === 'slam' ? 3 : 2; // slams have more upset potential
+  const minGap = 2;
   if (gap < minGap) return '';
 
   const winner = p1Score > p2Score ? 1 : 2;
@@ -1383,7 +1384,7 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   // force=true: re-evaluate pre-game picks on every preload as more data arrives.
   // recordPick guards against overwriting resolved (finished) matches.
   // Store matchDate so Secret Ticket can filter without needing S.matches populated.
-  recordPick(pickId, pick, matchup, 'tennis', conf, true, pickDate, tier, { matchDate });
+  recordPick(pickId, pick, matchup, 'tennis', conf, true, pickDate, tier, { matchDate, bo5: isBestOf5(m) || undefined });
   return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
@@ -4246,12 +4247,12 @@ function buildTomorrowPickCard(m) {
     conf = Math.max(1, Math.min(3, conf + tennisCalOffset));
   }
 
-  // Record the pick with full analysis
+  // Record the pick with full analysis — pass tier, bo5, and match date so ticket scoring works correctly
   if (pickName && m.event_date && m.event_date >= dateStrLocal(0)) {
     const pickId  = 'tn_' + m.event_key;
     const surfTag = surface ? ` (${surface})` : '';
     const matchup = `${l1} vs ${l2}${surfTag}`;
-    recordPick(pickId, lastName(pickName), matchup, 'tennis', conf, true); // force=true: H2H analysis overrides inline seed pick
+    recordPick(pickId, lastName(pickName), matchup, 'tennis', conf, true, m.event_date, tier, { matchDate: m.event_date, bo5: bo5 || undefined });
   }
 
   // Confidence dots
@@ -6074,7 +6075,8 @@ function renderGolfRow(p, round) {
 }
 
 // ── GOLF 2-BALL PICKS ─────────────────────────────────────────
-function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
+// isFinal: tournament is complete — don't record picks (prevents stale picks appearing in today's ticket)
+function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId, isFinal = false) {
   const players = group.players.slice(0, 3);
   if (players.length < 2) return '';
 
@@ -6231,10 +6233,10 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId) {
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 3 ? 3 : gap >= 1 ? 2 : 1;
 
-  // Record pick regardless of group state - force=false means existing picks are never overwritten.
-  // This ensures tickets show golf picks even when the user first opens the app mid/post-round.
+  // Record pick only for active/in-progress tournaments — not for completed events from prior weeks.
+  // force=false means existing picks are never overwritten (locked pre-round picks stay intact).
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
-  recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+  if (!isFinal) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
 
   // Display: if group has started, show the stored pre-round pick at the top
   const storedLastName = (existingPick?.team || '').toLowerCase();
@@ -6383,6 +6385,10 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           </div>`;
 
         } else if (tab === 'today') {
+          const isFinal = state === 'post' || comp.status?.type?.completed;
+          // Mark tournament active only when there's a live or upcoming event today
+          if (!isFinal) _golfTournamentActive = true;
+
           const todayOv = GOLF_PAIRINGS_OVERRIDE[ev.id];
           const roundForGroups = (todayOv && todayOv.date === dateStrLocal(0)) ? todayOv.round : round;
           const { groups, upcomingGroups } = groupByTeeTime(allComp, roundForGroups, ev.id);
@@ -6428,9 +6434,9 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
 
           html += `<div class="golf-picks-section">
             <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${roundForGroups} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
-            ${groups.map(g => buildGolfGroupPickCard(g, roundForGroups, isLive, tour.key, ev.id)).join('')}
+            ${groups.map(g => buildGolfGroupPickCard(g, roundForGroups, isLive, tour.key, ev.id, isFinal)).join('')}
             ${preHdr}
-            ${upcomingGroups.map(g => buildGolfGroupPickCard(g, roundForGroups, isLive, tour.key, ev.id)).join('')}
+            ${upcomingGroups.map(g => buildGolfGroupPickCard(g, roundForGroups, isLive, tour.key, ev.id, isFinal)).join('')}
             ${earlierHTML}
           </div>`;
 
@@ -7102,7 +7108,7 @@ async function _sbSaveTicket(date, slot, legs) {
   } catch {}
 }
 
-// After admin signs in, push any locally-built tickets that never made it to Supabase.
+// After admin signs in, push any locally-built tickets that aren't yet in Supabase.
 // This handles the race where buildSplitTicketsIfNeeded ran before auth completed.
 let _ticketSyncedThisSession = false;
 async function _trySyncTicketsToSupabase() {
@@ -7348,7 +7354,16 @@ function openAdminPanel(e) {
   window.open('admin.html', 'baseline-admin');
 }
 
+function _resetCheckoutButtons() {
+  ['weekly', 'monthly', 'yearly'].forEach(plan => {
+    const btn = document.getElementById(`checkout-btn-${plan}`);
+    if (btn) { btn.disabled = false; btn.textContent = 'Subscribe'; }
+  });
+  const errEl = document.getElementById('upgrade-modal-error');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+}
 function openUpgradeModal() {
+  _resetCheckoutButtons();
   document.getElementById('upgrade-modal').classList.add('auth-open');
 }
 function closeUpgradeModal() {
@@ -7388,10 +7403,10 @@ async function startCheckout(plan) {
     clearTimeout(tmo);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    if (!data.url)  throw new Error('No checkout URL returned — please try again');
+    if (!data.url)  throw new Error('No checkout URL returned. Please try again.');
     window.location.href = data.url;
   } catch (err) {
-    showErr(err.name === 'AbortError' ? 'Request timed out — please try again' : 'Could not start checkout: ' + err.message);
+    showErr(err.name === 'AbortError' ? 'Request timed out. Please try again.' : 'Could not start checkout: ' + err.message);
   }
 }
 
@@ -7413,7 +7428,7 @@ async function openPortal() {
     if (data.error) throw new Error(data.error);
     if (data.url) window.location.href = data.url;
   } catch (err) {
-    alert(err.name === 'AbortError' ? 'Request timed out — please try again' : 'Could not open subscription manager: ' + err.message);
+    alert(err.name === 'AbortError' ? 'Request timed out. Please try again.' : 'Could not open subscription manager: ' + err.message);
     if (btn) { btn.disabled = false; btn.textContent = 'Manage Sub'; }
   }
 }
@@ -7471,7 +7486,7 @@ function getEveningTicket() {
   return null;
 }
 
-// Returns true if this pick is for a game that starts at/after 6pm ET
+// Returns true if this pick is for a game that starts at/after 5pm ET
 function isEveningGame(p) {
   const sport = p.sport || '';
   if (['tennis', 'golf', 'soccer'].includes(sport)) return false;
@@ -7481,7 +7496,7 @@ function isEveningGame(p) {
     const dt = new Date(gt);
     const utcH = dt.getUTCHours() + dt.getUTCMinutes() / 60;
     const etH  = (utcH - 4 + 24) % 24; // EDT = UTC-4 (close enough Apr–Nov)
-    return etH >= 18;
+    return etH >= 17; // 5pm ET cutoff: day ticket = before 5pm, night ticket = 5pm+
   } catch { return ['nba', 'wnba', 'nhl', 'nfl'].includes(sport); }
 }
 
@@ -7501,6 +7516,8 @@ function _buildPickCandidates(allPicks, today) {
   const out = [];
   for (const [id, p] of Object.entries(allPicks)) {
     if (p.date !== today || id.includes('_fb_')) continue;
+    // Skip golf picks when no active tournament is confirmed — prevents stale completed-event picks
+    if (p.sport === 'golf' && !_golfTournamentActive) continue;
     // Extra guard: tennis - check stored matchDate first; fall back to S.matches lookup
     if ((p.sport === 'tennis' || !p.sport) && id.startsWith('tn_')) {
       if (p.matchDate && p.matchDate > today) continue;
@@ -7526,26 +7543,17 @@ function _buildPickCandidates(allPicks, today) {
       score += sport === 'tennis' ? (TIER_BONUS[p.tier] ?? 0) : (SPORT_BONUS[sport] || 1);
       out.push({ id, score, sport, type: 'game',
         pick: p.team, description: p.matchup || '', matchup: p.matchup || '',
-        conf: p.conf || 1, tier: p.tier });
+        conf: p.conf || 1, tier: p.tier, bo5: p.bo5 || false });
     }
   }
   return out;
 }
 
-// Shared: pick top legs with max-2-per-sport and 1-slam-tennis limits
+// Pick the top-scoring legs — no per-sport or tier caps.
+// Best picks win regardless of sport mix (5 tennis picks is fine if they score highest).
 function _selectTicketLegs(candidates) {
   candidates.sort((a, b) => b.score - a.score);
-  const sportCount = {};
-  let slamCount = 0;
-  const legs = [];
-  for (const c of candidates) {
-    if ((sportCount[c.sport] || 0) >= 2) continue;
-    if (c.sport === 'tennis' && c.tier === 'slam' && slamCount >= 1) continue;
-    sportCount[c.sport] = (sportCount[c.sport] || 0) + 1;
-    if (c.sport === 'tennis' && c.tier === 'slam') slamCount++;
-    legs.push(c);
-    if (legs.length >= 10) break;
-  }
+  const legs = candidates.slice(0, 10);
   return legs.length >= 2 ? legs : null;
 }
 
@@ -7643,10 +7651,10 @@ function showSecretTicket() {
   document.body.appendChild(modal);
 }
 
-// Day ticket builds ONCE after 1am ET each day (allows time to input golf picks first).
-// Night ticket builds ONCE after 5pm ET (picks for games at/after 6pm ET).
-// Supabase sync: first device to build each day saves to DB; all others load it.
-// After each ticket is built, only W/L updates can change it.
+// Day ticket: built ONCE after 5am ET — locked immediately, never changes.
+// Night ticket: built ONCE at 5pm ET (games starting at/after 5pm) — locked immediately.
+// Supabase is canonical: first device to build pushes to DB; every other device reads it.
+// Once a ticket exists (locally or in Supabase) it is NEVER rebuilt or modified.
 async function buildSplitTicketsIfNeeded() {
   const today = dateStrLocal();
 
@@ -7656,13 +7664,13 @@ async function buildSplitTicketsIfNeeded() {
     etHour = parseInt(s) || 0;
   } catch {}
 
-  const dayAllowed   = etHour >= 1;  // wait until 1am ET so golf picks can be added first
-  const nightAllowed = etHour >= 17;
+  const dayAllowed   = etHour >= 5;  // wait until 5am ET — RG and other early picks are loaded by then
+  const nightAllowed = etHour >= 17; // night ticket unlocks at 5pm ET
 
   let dayBuilt   = localStorage.getItem('_day_built_v1')   === today;
   let nightBuilt = localStorage.getItem('_night_built_v1') === today;
 
-  // Restore caches from local storage if already built this device
+  // Restore in-memory caches from localStorage (avoids a full rebuild on same device)
   if (dayBuilt && !_morningTicketCache) {
     try { _morningTicketCache = JSON.parse(localStorage.getItem(_MORN_TICKET_KEY) || 'null') || null; } catch {}
   }
@@ -7670,9 +7678,7 @@ async function buildSplitTicketsIfNeeded() {
     try { _eveningTicketCache = JSON.parse(localStorage.getItem(_EVE_TICKET_KEY) || 'null') || null; } catch {}
   }
 
-  // ── Supabase is ALWAYS canonical — check every load so all devices converge ──
-  // Without this, Device A sets _day_built_v1 from its own local build and never
-  // re-reads Supabase, so it stays out of sync with Device B's canonical ticket.
+  // ── Supabase is always the source of truth — read every load so all devices converge ──
   const sbData = await _sbGetTickets(today);
   if (sbData?.morn) {
     const mo = { date: today, legs: sbData.morn };
@@ -7689,8 +7695,8 @@ async function buildSplitTicketsIfNeeded() {
     nightBuilt = true;
   }
 
-  if (dayBuilt && (nightBuilt || !nightAllowed)) {
-    // Already have canonical tickets — still pre-fetch yesterday before returning
+  // ── Yesterday pre-fetch (shared helper) ──
+  const prefetchYesterday = async () => {
     try {
       const yesterday = dateStrLocal(-1);
       const ystMornStored = JSON.parse(localStorage.getItem(_YST_MORN_TICKET_KEY) || 'null');
@@ -7703,21 +7709,24 @@ async function buildSplitTicketsIfNeeded() {
           try { localStorage.setItem(_YST_EVE_TICKET_KEY, JSON.stringify({ date: yesterday, legs: sbYst.eve })); } catch {}
       }
     } catch {}
-    return;
+  };
+
+  if (dayBuilt && (nightBuilt || !nightAllowed)) {
+    await prefetchYesterday();
+    return; // both tickets present — nothing to build
   }
 
-  // ── No shared ticket found - this device is first to build ──
+  // ── This device is first to build — compute from current picks and lock immediately ──
   const allPicks   = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
 
-  // Day ticket: only auto-build after 1am ET so golf picks have time to be entered
   if (!dayBuilt && dayAllowed) {
     const mornLegs = _selectTicketLegs(candidates.filter(c => !isEveningGame(allPicks[c.id] || {})));
     if (mornLegs) {
       const mo = { date: today, legs: mornLegs };
       try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
       _morningTicketCache = mo;
-      _sbSaveTicket(today, 'day', mornLegs);
+      _sbSaveTicket(today, 'day', mornLegs); // first write wins in Supabase
     }
     localStorage.setItem('_day_built_v1', today);
   }
@@ -7728,24 +7737,12 @@ async function buildSplitTicketsIfNeeded() {
       const eo = { date: today, legs: eveLegs };
       try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
       _eveningTicketCache = eo;
-      _sbSaveTicket(today, 'night', eveLegs);
+      _sbSaveTicket(today, 'night', eveLegs); // first write wins in Supabase
     }
     localStorage.setItem('_night_built_v1', today);
   }
 
-  // Pre-fetch yesterday from Supabase so the Yesterday tab works on any device
-  try {
-    const yesterday = dateStrLocal(-1);
-    const ystMornStored = JSON.parse(localStorage.getItem(_YST_MORN_TICKET_KEY) || 'null');
-    const ystEveStored  = JSON.parse(localStorage.getItem(_YST_EVE_TICKET_KEY)  || 'null');
-    if (ystMornStored?.date !== yesterday || ystEveStored?.date !== yesterday) {
-      const sbYst = await _sbGetTickets(yesterday);
-      if (sbYst?.morn && ystMornStored?.date !== yesterday)
-        try { localStorage.setItem(_YST_MORN_TICKET_KEY, JSON.stringify({ date: yesterday, legs: sbYst.morn })); } catch {}
-      if (sbYst?.eve && ystEveStored?.date !== yesterday)
-        try { localStorage.setItem(_YST_EVE_TICKET_KEY, JSON.stringify({ date: yesterday, legs: sbYst.eve })); } catch {}
-    }
-  } catch {}
+  await prefetchYesterday();
 }
 
 function archiveYesterdayTicket() {
@@ -7811,19 +7808,7 @@ function buildDailyTicketIfNeeded() {
   if (candidates.length < 5) return;   // not enough picks yet - wait for preload
 
   candidates.sort((a, b) => b.score - a.score);
-  const sportCount = {};
-  let slamTennisCount = 0;
-  const legs = [];
-  for (const c of candidates) {
-    if ((sportCount[c.sport] || 0) >= 2) continue;
-    // Only 1 slam tennis pick allowed - reserves the 2nd tennis slot for a non-slam
-    // (e.g. Kyrian Jacquet) so it isn't crowded out by multiple RG picks.
-    if (c.sport === 'tennis' && c.tier === 'slam' && slamTennisCount >= 1) continue;
-    sportCount[c.sport] = (sportCount[c.sport] || 0) + 1;
-    if (c.sport === 'tennis' && c.tier === 'slam') slamTennisCount++;
-    legs.push(c);
-    if (legs.length >= 10) break;
-  }
+  const legs = candidates.slice(0, 10);
 
   if (legs.length < 5) return;
 
@@ -7892,7 +7877,7 @@ async function preloadTennisPicksQuiet() {
     // already started by the time the user opens the app (e.g. Roland Garros morning).
     const needsH2H = [...todayMatches, ...tomorrowMatches]
       .filter(m => (isUpcoming(m) || isLive(m.event_status)) && isMainDraw(m) && m.first_player_key && m.second_player_key)
-      .slice(0, 25); // cap at 25 API calls
+      .slice(0, 50); // cap at 50 API calls
 
     await Promise.allSettled(needsH2H.map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
 
@@ -8522,9 +8507,10 @@ function renderTicketBlock(title, legs, allPicks, footer = '', ticketDate = '') 
     const icon   = leg.icon || SPORT_ICONS[leg.sport] || '🏅';
     const match  = (leg.matchup || '').replace(/ @ /g, ' v ');
     const desc   = cleanLegDesc(leg);
+    const bo5Tag = (leg.bo5 || live.bo5) ? ' <span class="tk-bo5-tag">BO5</span>' : '';
     const pickLine = desc
-      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(desc)}</span>`
-      : `<span class="sv-tk-pick">${esc(leg.pick)}</span>`;
+      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(desc)}${bo5Tag}</span>`
+      : `<span class="sv-tk-pick">${esc(leg.pick)}</span>${bo5Tag}`;
     return `<div class="sv-tk-row${result==='win'?' sv-tk-win':result==='loss'?' sv-tk-loss':''}">
       <span class="sv-tk-num">${i+1}</span>
       <span class="sv-tk-icon">${icon}</span>
@@ -8861,6 +8847,11 @@ function renderSimpleView() {
   el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>`;
 }
 
+// BFCache restore: reset checkout buttons that were disabled before navigating to Stripe
+window.addEventListener('pageshow', (evt) => {
+  if (evt.persisted) _resetCheckoutButtons();
+});
+
 // ── EVENT LISTENERS ──────────────────────────────────────────
 document.querySelectorAll('.sport-tab').forEach(t =>
   t.addEventListener('click', () => switchSport(t.dataset.sport)));
@@ -8929,11 +8920,27 @@ function init() {
     localStorage.setItem('_rebuild_v164b', '1');
   }
   // One-time v211: drop stale device-local built-flags so every device re-reads Supabase
-  // and converges on the canonical admin ticket instead of its own local build.
   if (!localStorage.getItem('_rebuild_v211')) {
     localStorage.removeItem('_day_built_v1');
     localStorage.removeItem('_night_built_v1');
     localStorage.setItem('_rebuild_v211', '1');
+  }
+  // One-time v213: clear both ticket flags so today's bad ticket is discarded on all devices
+  // and a fresh one is built after 5am ET with complete pick data
+  if (!localStorage.getItem('_rebuild_v213')) {
+    localStorage.removeItem('_day_built_v1');
+    localStorage.removeItem('_night_built_v1');
+    localStorage.removeItem(_MORN_TICKET_KEY);
+    localStorage.removeItem(_EVE_TICKET_KEY);
+    localStorage.setItem('_rebuild_v213', '1');
+  }
+  // One-time v216: clear ticket cache so slam picks with the fixed minGap=2 get included
+  if (!localStorage.getItem('_rebuild_v216')) {
+    localStorage.removeItem('_day_built_v1');
+    localStorage.removeItem('_night_built_v1');
+    localStorage.removeItem(_MORN_TICKET_KEY);
+    localStorage.removeItem(_EVE_TICKET_KEY);
+    localStorage.setItem('_rebuild_v216', '1');
   }
 
   clearOldPicks();
