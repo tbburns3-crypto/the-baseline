@@ -2760,9 +2760,9 @@ function autoRecordAndResolvePick(g, dateOverride = null) {
       const hSt = _nhlTeamStats.get(String(g.homeId || ''));
       const aSt = _nhlTeamStats.get(String(g.awayId || ''));
       if (hSt && aSt) {
-        const svAdj = (hSt.svPct - aSt.svPct) * 2.5;           // .01 SV% gap -> 2.5% WP
-        const ppAdj = (hSt.ppPct - aSt.ppPct) * 0.0012;        // 10 pp% gap -> 1.2% WP
-        const pkAdj = (hSt.pkPct - aSt.pkPct) * 0.0012;
+        const svAdj = (hSt.svPct - aSt.svPct) * 3.5;           // .01 SV% gap -> 3.5% WP (goalies decisive in playoffs)
+        const ppAdj = (hSt.ppPct - aSt.ppPct) * 0.0025;        // 6 pp% gap -> 1.5% WP (≈0.21 extra goals/game)
+        const pkAdj = (hSt.pkPct - aSt.pkPct) * 0.0020;        // PK slightly less impactful than PP offensively
         homeFrac = Math.max(0.10, Math.min(0.90, homeFrac + svAdj + ppAdj + pkAdj));
       }
     }
