@@ -2758,11 +2758,18 @@ function autoRecordAndResolvePick(g, dateOverride = null) {
     const total    = awayWPr + rawHome;
     let homeFrac   = rawHome / total;
 
-    // Blend with Vegas spread (50/50) - most predictive single signal available
+    // Vegas as a minor sanity check (20%) - our model drives 80% of the decision.
+    // When we disagree with Vegas by >15%, we trust our research and reduce confidence instead of blending.
     const spreadData = parseOddsSpread(g);
     if (spreadData) {
       const spreadHomeFrac = spreadData.isHomeFavored ? spreadData.spreadWP : 1 - spreadData.spreadWP;
-      homeFrac = 0.5 * homeFrac + 0.5 * spreadHomeFrac;
+      const disagreement = Math.abs(homeFrac - spreadHomeFrac);
+      if (disagreement > 0.15) {
+        // Strong disagreement: trust our model, note the divergence
+        homeFrac = 0.85 * homeFrac + 0.15 * spreadHomeFrac;
+      } else {
+        homeFrac = 0.80 * homeFrac + 0.20 * spreadHomeFrac;
+      }
     }
 
     // Apply injury penalty - teams with confirmed Out players lose win probability
@@ -3548,18 +3555,23 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const rawHome = homeWP * 1.03 * (0.5 + (homeMom - 0.5) * 0.4);
     const rawAway = awayWP        * (0.5 + (awayMom - 0.5) * 0.4);
     let homeFrac = (rawHome + rawAway) > 0 ? rawHome / (rawHome + rawAway) : 0.5;
-    // ERA gap: each 1.0 ERA difference shifts win probability ~4%
-    const ae = parseFloat(awayPD?.season?.era || 4.20);
-    const he = parseFloat(homePD?.season?.era || 4.20);
-    homeFrac = Math.max(0.10, Math.min(0.90, homeFrac + (ae - he) * 0.04));
-    // Last-start quality nudge (smaller weight than season ERA)
-    if (awayPD?.lastStartERA != null) homeFrac = Math.max(0.10, Math.min(0.90, homeFrac + (awayPD.lastStartERA - ae) * 0.015));
-    if (homePD?.lastStartERA != null) homeFrac = Math.max(0.10, Math.min(0.90, homeFrac - (homePD.lastStartERA - he) * 0.015));
-    // Blend 50/50 with Vegas spread when available
+    // Park-adjusted ERA: normalize pitcher ERA to neutral park before comparing
+    const homePark = PARK_RUN[espnGame.homeAbbr?.toUpperCase()] || 1.0;
+    const ae = parseFloat(awayPD?.season?.era || 4.20) / homePark;  // visiting pitcher faces this park
+    const he = parseFloat(homePD?.season?.era || 4.20) / homePark;  // home pitcher also adjusted
+    // ERA gap: each 1.0 ERA difference shifts win probability ~5%
+    homeFrac = Math.max(0.10, Math.min(0.90, homeFrac + (ae - he) * 0.05));
+    // Last-start quality nudge
+    if (awayPD?.lastStartERA != null) homeFrac = Math.max(0.10, Math.min(0.90, homeFrac + ((awayPD.lastStartERA / homePark) - ae) * 0.02));
+    if (homePD?.lastStartERA != null) homeFrac = Math.max(0.10, Math.min(0.90, homeFrac - ((homePD.lastStartERA / homePark) - he) * 0.02));
+    // Vegas as minor sanity check (20%) - our stats drive 80%
     const spreadData = parseOddsSpread(espnGame);
     if (spreadData) {
       const spreadHomeFrac = spreadData.isHomeFavored ? spreadData.spreadWP : 1 - spreadData.spreadWP;
-      homeFrac = 0.5 * homeFrac + 0.5 * spreadHomeFrac;
+      const disagreement = Math.abs(homeFrac - spreadHomeFrac);
+      homeFrac = disagreement > 0.15
+        ? 0.85 * homeFrac + 0.15 * spreadHomeFrac  // strong divergence: trust our model
+        : 0.80 * homeFrac + 0.20 * spreadHomeFrac;
     }
     const eraConf = wpToConf(homeFrac >= 0.5 ? homeFrac : 1 - homeFrac);
     if (eraConf >= 1) {
