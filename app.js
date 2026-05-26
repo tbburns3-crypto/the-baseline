@@ -7104,7 +7104,10 @@ async function _sbSaveTicket(date, slot, legs) {
 
 // After admin signs in, push any locally-built tickets that never made it to Supabase.
 // This handles the race where buildSplitTicketsIfNeeded ran before auth completed.
+let _ticketSyncedThisSession = false;
 async function _trySyncTicketsToSupabase() {
+  if (_ticketSyncedThisSession) return;
+  _ticketSyncedThisSession = true;
   const today = dateStrLocal();
   try {
     const sbData = await _sbGetTickets(today);
@@ -7667,26 +7670,41 @@ async function buildSplitTicketsIfNeeded() {
     try { _eveningTicketCache = JSON.parse(localStorage.getItem(_EVE_TICKET_KEY) || 'null') || null; } catch {}
   }
 
-  // ── Supabase sync: pull admin-saved ticket regardless of time ──
-  if (!dayBuilt || (!nightBuilt && nightAllowed)) {
-    const sbData = await _sbGetTickets(today);
-    if (sbData?.morn && !dayBuilt) {
-      const mo = { date: today, legs: sbData.morn };
-      try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
-      _morningTicketCache = mo;
-      localStorage.setItem('_day_built_v1', today);
-      dayBuilt = true;
-    }
-    if (sbData?.eve && !nightBuilt && nightAllowed) {
-      const eo = { date: today, legs: sbData.eve };
-      try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
-      _eveningTicketCache = eo;
-      localStorage.setItem('_night_built_v1', today);
-      nightBuilt = true;
-    }
+  // ── Supabase is ALWAYS canonical — check every load so all devices converge ──
+  // Without this, Device A sets _day_built_v1 from its own local build and never
+  // re-reads Supabase, so it stays out of sync with Device B's canonical ticket.
+  const sbData = await _sbGetTickets(today);
+  if (sbData?.morn) {
+    const mo = { date: today, legs: sbData.morn };
+    try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
+    _morningTicketCache = mo;
+    localStorage.setItem('_day_built_v1', today);
+    dayBuilt = true;
+  }
+  if (sbData?.eve && nightAllowed) {
+    const eo = { date: today, legs: sbData.eve };
+    try { localStorage.setItem(_EVE_TICKET_KEY, JSON.stringify(eo)); } catch {}
+    _eveningTicketCache = eo;
+    localStorage.setItem('_night_built_v1', today);
+    nightBuilt = true;
   }
 
-  if (dayBuilt && (nightBuilt || !nightAllowed)) return;
+  if (dayBuilt && (nightBuilt || !nightAllowed)) {
+    // Already have canonical tickets — still pre-fetch yesterday before returning
+    try {
+      const yesterday = dateStrLocal(-1);
+      const ystMornStored = JSON.parse(localStorage.getItem(_YST_MORN_TICKET_KEY) || 'null');
+      const ystEveStored  = JSON.parse(localStorage.getItem(_YST_EVE_TICKET_KEY)  || 'null');
+      if (ystMornStored?.date !== yesterday || ystEveStored?.date !== yesterday) {
+        const sbYst = await _sbGetTickets(yesterday);
+        if (sbYst?.morn && ystMornStored?.date !== yesterday)
+          try { localStorage.setItem(_YST_MORN_TICKET_KEY, JSON.stringify({ date: yesterday, legs: sbYst.morn })); } catch {}
+        if (sbYst?.eve && ystEveStored?.date !== yesterday)
+          try { localStorage.setItem(_YST_EVE_TICKET_KEY, JSON.stringify({ date: yesterday, legs: sbYst.eve })); } catch {}
+      }
+    } catch {}
+    return;
+  }
 
   // ── No shared ticket found - this device is first to build ──
   const allPicks   = getPicks();
@@ -8910,6 +8928,14 @@ function init() {
     if (changed) savePicks(picks);
     localStorage.setItem('_rebuild_v164b', '1');
   }
+  // One-time v211: drop stale device-local built-flags so every device re-reads Supabase
+  // and converges on the canonical admin ticket instead of its own local build.
+  if (!localStorage.getItem('_rebuild_v211')) {
+    localStorage.removeItem('_day_built_v1');
+    localStorage.removeItem('_night_built_v1');
+    localStorage.setItem('_rebuild_v211', '1');
+  }
+
   clearOldPicks();
   updatePicksDisplay();
   renderTZSelector();
