@@ -3501,6 +3501,33 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const parkHit   = PARK_HIT[homeAbbr] || 1.0;
   const windMult  = wind.bonus >= 2 ? 1.16 : wind.bonus === 1 ? 1.08 : wind.bonus <= -2 ? 0.85 : wind.bonus === -1 ? 0.93 : 1.0;
 
+  // ── ERA-informed team win pick (recorded for ticket) ──
+  if (!fin && !live) {
+    const awayWP = parseWinPct(espnGame.awayRec);
+    const homeWP = parseWinPct(espnGame.homeRec);
+    const rawHome = homeWP * 1.03 * (0.5 + (homeMom - 0.5) * 0.4);
+    const rawAway = awayWP        * (0.5 + (awayMom - 0.5) * 0.4);
+    let homeFrac = (rawHome + rawAway) > 0 ? rawHome / (rawHome + rawAway) : 0.5;
+    // ERA gap: each 1.0 ERA difference shifts win probability ~4%
+    const ae = parseFloat(awayPD?.season?.era || 4.20);
+    const he = parseFloat(homePD?.season?.era || 4.20);
+    homeFrac = Math.max(0.10, Math.min(0.90, homeFrac + (ae - he) * 0.04));
+    // Last-start quality nudge (smaller weight than season ERA)
+    if (awayPD?.lastStartERA != null) homeFrac = Math.max(0.10, Math.min(0.90, homeFrac + (awayPD.lastStartERA - ae) * 0.015));
+    if (homePD?.lastStartERA != null) homeFrac = Math.max(0.10, Math.min(0.90, homeFrac - (homePD.lastStartERA - he) * 0.015));
+    // Blend 50/50 with Vegas spread when available
+    const spreadData = parseOddsSpread(espnGame);
+    if (spreadData) {
+      const spreadHomeFrac = spreadData.isHomeFavored ? spreadData.spreadWP : 1 - spreadData.spreadWP;
+      homeFrac = 0.5 * homeFrac + 0.5 * spreadHomeFrac;
+    }
+    const eraConf = wpToConf(homeFrac >= 0.5 ? homeFrac : 1 - homeFrac);
+    if (eraConf >= 1) {
+      const short = (homeFrac >= 0.5 ? espnGame.homeTeam : espnGame.awayTeam).split(' ').pop();
+      recordPick(String(espnGame.id), short, gameMatchup, 'mlb', eraConf, true, null, '', { gameTime: espnGame.gameDate });
+    }
+  }
+
   // ── Compact pitcher line with recent-form trend ──
   const pitStr = (name, pd, hand) => {
     const era    = pd?.season?.era ? `${pd.season.era} ERA` : '';
