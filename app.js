@@ -3100,10 +3100,13 @@ async function fetchInjuryPenalties(sport) {
       const abbr = (team.abbreviation || '').toUpperCase();
       if (!abbr) continue;
       let penalty = 0;
+      // WNBA: shallower 12-player rosters mean individual stars carry far more weight
+      const outHit  = sport === 'wnba' ? 0.08 : 0.05;
+      const dbtHit  = sport === 'wnba' ? 0.04 : 0.025;
       for (const inj of (team.injuries || [])) {
         const st = (inj.status || '').toLowerCase();
-        if (st === 'out')           penalty += 0.05;
-        else if (st === 'doubtful') penalty += 0.025;
+        if (st === 'out')           penalty += outHit;
+        else if (st === 'doubtful') penalty += dbtHit;
       }
       if (penalty > 0) _injuryPenalty.set(`${sport}:${abbr}`, Math.min(0.18, penalty));
     }
@@ -8174,7 +8177,7 @@ function mlbPickMerit(propType, stat, pick) {
 // Multi-factor OVER/UNDER direction for player props.
 // Returns 'UNDER' when evidence stacks up; 'OVER' otherwise.
 function propDirection(sport, rawAvg, catName, teamAbbr, g) {
-  const LEAGUE_OU   = { nba: 225, wnba: 160, nhl: 5.5, nfl: 45 };
+  const LEAGUE_OU   = { nba: 225, wnba: 165, nhl: 5.5, nfl: 45 };
   const OU_MARGIN   = { nba: 8,   wnba: 6,   nhl: 0.5, nfl: 4  };
   const MIN_UNDER   = { points: 15, rebound: 7, assist: 5, goal: 0.4, passing: 200, rushing: 60, receiving: 50 };
   let score = 0;
