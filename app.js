@@ -7349,6 +7349,11 @@ function updateSvAuthBar() {
 
 function initAuth() {
   _sbClient.auth.onAuthStateChange(async (event, session) => {
+    // Don't overwrite bypass session with a null Supabase session
+    if (!session && sessionStorage.getItem('_tb_bypass')) {
+      _authReady = true;
+      return;
+    }
     _currentUser     = session?.user || null;
     _currentUserRole = null;
     _authReady       = true;
