@@ -5541,6 +5541,10 @@ function renderMLBLineups(games) {
 
 // ── SOCCER ───────────────────────────────────────────────────
 const SOCCER_LEAGUES = [
+  { id:'fifa.world',       name:'FIFA World Cup 2026', icon:'🌍' },
+  { id:'fifa.friendly.m',  name:'Intl Friendlies',     icon:'🌐' },
+  { id:'uefa.nations',     name:'UEFA Nations League',  icon:'🏆' },
+  { id:'concacaf.nations.league', name:'CONCACAF Nations League', icon:'🌎' },
   { id:'eng.1',           name:'Premier League',     icon:'🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
   { id:'esp.1',           name:'La Liga',             icon:'🇪🇸' },
   { id:'ger.1',           name:'Bundesliga',          icon:'🇩🇪' },
@@ -5630,7 +5634,7 @@ async function loadSoccerScores() {
 async function loadSoccerTables() {
   showLoading('other-standings-area', 'Loading league tables…');
   try {
-    const leagues = SOCCER_LEAGUES.filter(l => ['eng.1','esp.1','ger.1','ita.1','fra.1','usa.1'].includes(l.id));
+    const leagues = SOCCER_LEAGUES.filter(l => ['fifa.world','uefa.nations','concacaf.nations.league','eng.1','esp.1','ger.1','ita.1','fra.1','usa.1'].includes(l.id));
     const results = await Promise.allSettled(
       leagues.map(l =>
         fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${l.id}/standings`).then(r => r.json())
