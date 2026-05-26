@@ -2030,6 +2030,7 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-row-team { font-weight: 700; font-size: .82rem; color: var(--text); flex-shrink: 0; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ── TODAY'S TICKET ── */
 .sv-ticket { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 12px; }
+.sv-ticket-date-line { font-size: .68rem; font-weight: 600; color: #fff; background: var(--accent); padding: 4px 12px; letter-spacing: .03em; }
 .sv-ticket-hdr { font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); padding: 7px 12px; border-bottom: 1px solid var(--border); background: rgba(0,230,118,.04); }
 .sv-ticket-list { display: flex; flex-direction: column; }
 .sv-tk-row { display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,.04); font-size: .78rem; }
@@ -2045,6 +2046,7 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-tk-prop { font-size: .62rem; color: var(--text-muted); margin-left: 4px; font-style: italic; flex-shrink: 0; }
 .sv-tk-status { font-size: .65rem; color: var(--text); margin-left: 6px; font-weight: 600; }
 .tk-date-pill { font-size: .6rem; background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 7px; margin-left: 6px; font-weight: 600; vertical-align: middle; }
+.tk-bo5-tag { font-size: .55rem; background: #7c4dff22; color: #7c4dff; border: 1px solid #7c4dff55; border-radius: 4px; padding: 0 4px; margin-left: 4px; font-weight: 700; letter-spacing: .02em; vertical-align: middle; }
 /* Side-by-side day/night tickets in simple view */
 .sv-tickets-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
 @media (max-width: 640px) { .sv-tickets-grid { grid-template-columns: 1fr; } }

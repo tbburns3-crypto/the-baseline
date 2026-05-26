@@ -8551,11 +8551,12 @@ function renderTicketBlock(title, legs, allPicks, footer = '', ticketDate = '') 
   const wins   = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
   const losses = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'loss').length;
   const statusLine = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
-  const datePill = ticketDate ? (() => {
-    try { return `<span class="tk-date-pill">${new Date(ticketDate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}</span>`; } catch { return ''; }
-  })() : '';
+  const rawDate = ticketDate || dateStrLocal(0);
+  let dateLabel = '';
+  try { dateLabel = new Date(rawDate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' }); } catch {}
   return `<div class="sv-ticket">
-    <div class="sv-ticket-hdr">${esc(title)} - ${legs.length} Leg${legs.length!==1?'s':''} ${datePill} ${statusLine}</div>
+    <div class="sv-ticket-date-line">${dateLabel}</div>
+    <div class="sv-ticket-hdr">${esc(title)} - ${legs.length} Leg${legs.length!==1?'s':''} ${statusLine}</div>
     <div class="sv-ticket-list">${legs.map(row).join('')}</div>
     ${footer}
   </div>`;
@@ -8857,7 +8858,10 @@ function renderSimpleView() {
     const wins   = legs.filter(l => allPicks[l.id]?.result === 'win').length;
     const losses = legs.filter(l => allPicks[l.id]?.result === 'loss').length;
     const status = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
+    let dateLabel = '';
+    try { dateLabel = new Date((ticket.date || today) + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' }); } catch {}
     return `<div class="sv-ticket">
+      <div class="sv-ticket-date-line">${dateLabel}</div>
       <div class="sv-ticket-hdr">${esc(label)} - ${legs.length} Leg${legs.length!==1?'s':''} ${status}</div>
       <div class="sv-ticket-list">${legs.map(ticketRow).join('')}</div>
     </div>`;
