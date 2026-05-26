@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>The Baseline | Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=223">
+  <link rel="stylesheet" href="style.css?v=224">
 </head>
 <body>
 
@@ -63,7 +63,7 @@
       <!-- Step 2: code entry -->
       <div id="auth-step-code" style="display:none">
         <h2 class="auth-modal-title">Check your email</h2>
-        <p class="auth-modal-desc">We sent a sign-in email to <strong id="auth-code-email"></strong>.<br>If it has a code, enter it below. If it has a link, click it and come right back. This tab signs you in automatically.</p>
+        <p class="auth-modal-desc">We sent a sign-in email to <strong id="auth-code-email"></strong>.<br>If it has a code, enter it below. If it has a link, click it and come right back. This tab signs you in automatically.<br><span style="color:#888;font-size:12px;">Not seeing it? Check your spam or junk folder.</span></p>
         <input type="text" id="auth-code-input" class="auth-code-input" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')verifyOtpCode()">
         <button id="auth-verify-btn" class="auth-submit-btn" onclick="verifyOtpCode()">Sign In</button>
         <button class="auth-resend-link" onclick="showAuthForm()">Use a different email</button>
@@ -293,6 +293,6 @@
   </div><!-- /app-layout -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=223"></script>
+  <script src="app.js?v=224"></script>
 </body>
 </html>

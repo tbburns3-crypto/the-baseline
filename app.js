@@ -1107,6 +1107,8 @@ function tennisRound(m) {
 // Countries known to produce clay / fast-court specialists
 const CLAY_COUNTRIES  = new Set(['ESP','ARG','ITA','FRA','CHL','COL','PER','URU','BRA','AUT','SUI','MON','SVK']);
 const GRASS_COUNTRIES = new Set(['AUS','GBR','USA','GER','CAN','RSA','NZL','SWE']);
+// Known hard-court/grass specialists who underperform their ranking on clay
+const HARD_COURT_SPECIALISTS = new Set(['medvedev','hurkacz','fritz','norrie','draper','paul','raonic','isner','opelka','sock','querrey']);
 
 // Tournament-specific affinity - last name (lowercase) → partial tournament name → strength (1-4)
 // Updated 2025: reflect current form, post-surgery players, new top-10 entrants
@@ -1153,6 +1155,12 @@ const PLAYER_VOLATILITY = {
   nakashima:     -1,  // underperforms seeding in slams
   etcheverry:    -1,
   cerundolo:     -1,
+  // Declining veterans - ranking points still high but physical/form decline
+  cilic:         -3,  // chronic knee issues, early-round exits consistently
+  thiem:         -2,  // wrist injury never fully recovered, inconsistent returns
+  wawrinka:      -2,  // multiple surgeries, very late career
+  gasquet:       -1,  // late career, output drop-off
+  tsonga:        -1,  // injuries
   // WTA
   ostapenko:     -3,  // most volatile player in women's game
   kvitova:       -2,  // injury history, major variance
@@ -1287,6 +1295,9 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
     const clayBonus = tier === 'slam' ? 2 : 1;
     if (CLAY_COUNTRIES.has(c1) && !CLAY_COUNTRIES.has(c2)) p1Score += clayBonus;
     else if (CLAY_COUNTRIES.has(c2) && !CLAY_COUNTRIES.has(c1)) p2Score += clayBonus;
+    // Hard-court specialists penalized on clay regardless of nationality
+    if (HARD_COURT_SPECIALISTS.has(l1.toLowerCase())) p1Score -= 1;
+    if (HARD_COURT_SPECIALISTS.has(l2.toLowerCase())) p2Score -= 1;
   } else if (surfLow.includes('grass') || surfLow.includes('indoor')) {
     if (GRASS_COUNTRIES.has(c1) && !GRASS_COUNTRIES.has(c2)) p1Score += 1;
     else if (GRASS_COUNTRIES.has(c2) && !GRASS_COUNTRIES.has(c1)) p2Score += 1;
@@ -1352,6 +1363,13 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
     const str2 = calcWinStreak(p2Recent, p2key);
     if (str1 >= 4) p1Score += 2; else if (str1 >= 2) p1Score += 1; else if (str1 <= -3) p1Score -= 1;
     if (str2 >= 4) p2Score += 2; else if (str2 >= 2) p2Score += 1; else if (str2 <= -3) p2Score -= 1;
+
+    // L10 dominance override: if one player is <=30% and opponent >=50%, extra push
+    if (fw1 >= 0 && fw2 >= 0 && p1Recent.length >= 5 && p2Recent.length >= 5) {
+      const r1 = fw1 / p1Recent.length, r2 = fw2 / p2Recent.length;
+      if (r1 <= 0.30 && r2 >= 0.50) p2Score += 2;
+      else if (r2 <= 0.30 && r1 >= 0.50) p1Score += 2;
+    }
   }
 
   // 7. Player volatility - known high-variance players score lower as favorites
@@ -7370,7 +7388,10 @@ async function sendOtpCode() {
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
 
   try {
-    const { error } = await _sbClient.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+    const { error } = await _sbClient.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true, emailRedirectTo: window.location.origin + window.location.pathname }
+    });
     if (error) throw error;
     _otpEmail = email;
     document.getElementById('auth-step-email').style.display = 'none';
@@ -7379,7 +7400,11 @@ async function sendOtpCode() {
     document.getElementById('auth-error').style.display      = 'none';
     setTimeout(() => document.getElementById('auth-code-input')?.focus(), 60);
   } catch (err) {
-    errEl.textContent   = err.message || 'Something went wrong. Please try again.';
+    let msg = err.message || 'Something went wrong. Please try again.';
+    if (/rate.limit|too many/i.test(msg)) msg = 'Too many attempts -- please wait 60 seconds and try again.';
+    else if (/invalid.*email|not.*allowed/i.test(msg)) msg = 'That email address is not accepted. Please use a valid email.';
+    else if (/network|fetch|failed/i.test(msg)) msg = 'Network error. Check your connection and try again.';
+    errEl.textContent   = msg;
     errEl.style.display = '';
     if (btn) { btn.disabled = false; btn.textContent = 'Send Code'; }
   }
