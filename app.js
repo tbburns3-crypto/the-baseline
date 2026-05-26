@@ -5576,6 +5576,15 @@ async function loadSoccerScores() {
         const away = comp.competitors?.find(c => c.homeAway === 'away') || comp.competitors?.[1];
         const st   = comp.status || ev.status || {};
         const state = st.type?.state || '';
+        const mkRecs = (c) => {
+          const rr = c?.records || c?.record || [];
+          return {
+            total: (rr.find(r => r.type === 'total') || rr[0])?.summary || '',
+            home:  rr.find(r => r.type === 'home')?.summary || '',
+            road:  rr.find(r => r.type === 'road')?.summary || '',
+            l10:   rr.find(r => r.name === 'L10' || r.name === 'Last 10')?.summary || ''
+          };
+        };
         allGames.push({
           id:        ev.id,
           league:    `${lg.icon} ${lg.name}`,
@@ -5585,14 +5594,19 @@ async function loadSoccerScores() {
           awayTeam:  away?.team?.shortDisplayName || away?.team?.name || '-',
           homeAbbr:  home?.team?.abbreviation || '',
           awayAbbr:  away?.team?.abbreviation || '',
-          homeRec:   home?.record?.[0]?.summary || '',
-          awayRec:   away?.record?.[0]?.summary || '',
+          homeId:    home?.team?.id || '',
+          awayId:    away?.team?.id || '',
+          homeRec:   (home?.records || home?.record || [])[0]?.summary || '',
+          awayRec:   (away?.records || away?.record || [])[0]?.summary || '',
+          homeRecs:  mkRecs(home),
+          awayRecs:  mkRecs(away),
           series:    comp.series ? { summary: comp.series.summary||'', title: comp.series.title||'' } : null,
           homeScore: state !== 'pre' ? (home?.score ?? '') : '',
           awayScore: state !== 'pre' ? (away?.score ?? '') : '',
           status:    st.type?.shortDetail || st.type?.description || '-',
           period:    st.period || '',
-          time:      st.displayClock || ''
+          time:      st.displayClock || '',
+          odds:      (() => { const o = comp.odds?.[0]; return o ? { spread: o.details || '', overUnder: o.overUnder || null } : null; })()
         });
       }
     }
