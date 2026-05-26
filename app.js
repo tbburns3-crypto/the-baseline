@@ -7390,7 +7390,7 @@ async function sendOtpCode() {
   try {
     const { error } = await _sbClient.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true, emailRedirectTo: window.location.origin + window.location.pathname }
+      options: { shouldCreateUser: true, emailRedirectTo: 'https://thebaseline.pro' }
     });
     if (error) throw error;
     _otpEmail = email;
