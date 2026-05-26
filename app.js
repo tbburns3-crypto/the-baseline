@@ -1,6 +1,6 @@
 /* ============================================================
    THE BASELINE - app.js
-   Live tennis & sports scoreboard for GitHub Pages
+   Live tennis & sports scoreboard — thebaseline.pro
    ============================================================ */
 
 // ── CONFIG ──────────────────────────────────────────────────
