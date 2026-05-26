@@ -9058,8 +9058,19 @@ function init() {
   const lastSport = localStorage.getItem('_baseline_sport') || 'tennis';
   switchSport(lastSport);
   // Read params BEFORE stripping — replaceState changes location.search immediately
-  const _ckParam = new URLSearchParams(location.search).get('checkout');
+  const _urlParams = new URLSearchParams(location.search);
+  const _ckParam   = _urlParams.get('checkout');
+  const _bypassKey = _urlParams.get('_tbk');
   if (location.search) history.replaceState({}, '', location.pathname);
+  // Temporary admin bypass — grants session access without email, stripped from URL immediately
+  if (_bypassKey === 'tbl-admin-2026') {
+    sessionStorage.setItem('_tb_bypass', '1');
+  }
+  if (sessionStorage.getItem('_tb_bypass')) {
+    _currentUser     = { email: 'tbburns3@gmail.com' };
+    _currentUserRole = 'admin';
+    updateAuthUI();
+  }
   if (_ckParam === 'success') {
     const _banner = document.createElement('div');
     _banner.className = 'checkout-activating';
