@@ -2965,16 +2965,35 @@ function parseSeriesContext(series) {
   return { isPlayoff: true, gameNum: null, leader: null };
 }
 
-// Determine which team leads the series and return their edge multiplier
+// Determine which team leads the series and return their edge multiplier.
+// Tiered by series lead — a 3-1 lead is much more decisive than 1-0.
+// Trailing team gets a small desperation boost in elimination games.
 function seriesMomentumAdj(sc, homeTeam, homeAbbr, awayTeam, awayAbbr) {
-  if (!sc.isPlayoff || !sc.leader) return { home: 1.0, away: 1.0 };
+  if (!sc.isPlayoff) return { home: 1.0, away: 1.0 };
+  if (!sc.leader || sc.tied) return { home: 1.0, away: 1.0 };
+
   const ll = sc.leader.toLowerCase();
-  // Match by partial name or abbreviation (ESPN uses city or nickname in series leader)
   const homeMatch = homeTeam.toLowerCase().split(' ').some(w => ll.includes(w)) ||
                     homeAbbr.toLowerCase() === ll;
+
+  const w = sc.wins || 1, l = sc.losses || 0;
+
+  // Leader's edge grows with series lead; capped because individual games are noisy
+  let leaderEdge =
+    (w === 3 && l === 0) ? 1.028 :  // 3-0: near-certain series win; leader plays loose
+    (w === 3 && l === 1) ? 1.025 :  // 3-1: closing out; strong but not automatic
+    (w === 3 && l === 2) ? 1.018 :  // 3-2: slight edge, both teams have proven themselves
+    (w === 2 && l === 0) ? 1.020 :  // 2-0: solid momentum
+    (w === 2 && l === 1) ? 1.012 :  // 2-1: modest edge
+                           1.010;   // 1-0 or any other lead
+
+  // Elimination game: trailing team plays more desperate; reduce leader's edge ~1%
+  // (they've had all week to prepare and have nothing to lose)
+  if (w === 3) leaderEdge = Math.max(1.010, leaderEdge - 0.010);
+
   return homeMatch
-    ? { home: 1.015, away: 1.0 }   // home team leads series → small momentum edge
-    : { home: 1.0,   away: 1.015 };
+    ? { home: leaderEdge, away: 1.0 }
+    : { home: 1.0, away: leaderEdge };
 }
 
 // Smarter win probability: blends season record, home/road split, and L10 recent form
@@ -3086,7 +3105,7 @@ async function fetchInjuryPenalties(sport) {
         if (st === 'out')           penalty += 0.05;
         else if (st === 'doubtful') penalty += 0.025;
       }
-      if (penalty > 0) _injuryPenalty.set(`${sport}:${abbr}`, Math.min(0.12, penalty));
+      if (penalty > 0) _injuryPenalty.set(`${sport}:${abbr}`, Math.min(0.18, penalty));
     }
   } catch {}
 }
