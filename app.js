@@ -7352,6 +7352,7 @@ function initAuth() {
     // Don't overwrite bypass session with a null Supabase session
     if (!session && sessionStorage.getItem('_tb_bypass')) {
       _authReady = true;
+      updateAuthUI();
       return;
     }
     _currentUser     = session?.user || null;
