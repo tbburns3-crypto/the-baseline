@@ -7854,6 +7854,29 @@ function buildSecretTicket() {
   const allPicks = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
 
+  // Admin override: manually curated top pick pinned to Secret Ticket only
+  const _ST_ADMIN_PICKS = [
+    {
+      date:   '2026-05-27',
+      id:     'plr_401815526_681624',
+      sport:  'mlb',
+      type:   'player',
+      pick:   'Andy Pages',
+      matchup:'Colorado Rockies @ Los Angeles Dodgers',
+      conf:   3,
+      _stScore: 999,
+      _pickObj: { prop:'RBI', player:'Andy Pages', stat:'To Get 1+ RBI', date:'2026-05-27', sport:'mlb', result:null, gamePk:823947 }
+    }
+  ];
+  for (const ap of _ST_ADMIN_PICKS) {
+    if (ap.date !== today) continue;
+    if (!allPicks[ap.id]) {
+      allPicks[ap.id] = ap._pickObj;
+      savePicks(allPicks);
+    }
+    candidates.push(ap);
+  }
+
   // Score and filter MLB picks - use mlbPickMerit for player props
   const scored = [];
   for (const c of candidates) {
