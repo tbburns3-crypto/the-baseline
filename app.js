@@ -7308,15 +7308,23 @@ async function resolveYesterdayPicks(ystDate) {
     ),
   ]);
 
-  let anyResolved = false;
+  // Write results directly (bypass resolvePick's non-null guard so wrong results from
+  // a previous run are corrected — ESPN final scores are authoritative for yesterday)
+  const finalPicks = getPicks();
+  let picksChanged = false;
   for (const leg of allLegs) {
-    if (!leg.id || !winnerMap[String(leg.id)]) continue;
-    const p = getPicks()[leg.id];
-    if (!p || p.result !== null) continue;
-    resolvePick(leg.id, winnerMap[String(leg.id)]);
-    anyResolved = true;
+    const gameId = String(leg.id || '');
+    if (!gameId || !winnerMap[gameId]) continue;
+    const p = finalPicks[gameId];
+    if (!p) continue;
+    const pickLow   = (p.team || '').toLowerCase();
+    const winnerLow = winnerMap[gameId].toLowerCase();
+    const isWin = winnerLow === pickLow || winnerLow.endsWith(' ' + pickLow) || winnerLow.includes(pickLow);
+    const newResult = isWin ? 'win' : 'loss';
+    if (p.result !== newResult) { finalPicks[gameId].result = newResult; picksChanged = true; }
   }
-  if (anyResolved && S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
+  if (picksChanged) { savePicks(finalPicks); updatePicksDisplay(); }
+  if (picksChanged && S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
 }
 
 function showYesterdayTickets() {
