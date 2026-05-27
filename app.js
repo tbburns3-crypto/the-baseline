@@ -7223,6 +7223,52 @@ async function _trySyncTicketsToSupabase() {
   } catch {}
 }
 
+// Save all MLB player-prop picks for `date` to Supabase so cross-device
+// yesterday views get the full per-game breakdown, not just top-10 ticket legs.
+// Requires admin auth — called silently on builds, skips if not signed in.
+async function _sbSaveMlbPicks(date) {
+  try {
+    const { data: { session } } = await _sbClient.auth.getSession();
+    if (!session) return;
+    const allPicks = getPicks();
+    const mlbPicks = {};
+    for (const [id, p] of Object.entries(allPicks)) {
+      if (p.sport === 'mlb' && p.date === date) mlbPicks[id] = p;
+    }
+    if (!Object.keys(mlbPicks).length) return;
+    await fetch(`${_SB_URL}/rest/v1/baseline_mlb_picks`, {
+      method: 'POST',
+      headers: {
+        apikey: _SB_KEY,
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({ date, picks_json: mlbPicks, saved_at: new Date().toISOString() }),
+    });
+  } catch {}
+}
+
+// Fetch MLB picks for `date` from Supabase and merge into localStorage.
+// Only adds picks that don't exist locally — never overwrites existing results.
+async function _fetchAndMergeMlbPicks(date) {
+  try {
+    const res = await fetch(`${_SB_URL}/rest/v1/baseline_mlb_picks?date=eq.${encodeURIComponent(date)}&select=picks_json`, {
+      headers: { apikey: _SB_KEY, Authorization: `Bearer ${_SB_KEY}` },
+    });
+    if (!res.ok) return;
+    const rows = await res.json();
+    const remote = rows?.[0]?.picks_json;
+    if (!remote || typeof remote !== 'object') return;
+    const local = getPicks();
+    let changed = false;
+    for (const [id, p] of Object.entries(remote)) {
+      if (!local[id]) { local[id] = p; changed = true; }
+    }
+    if (changed) savePicks(local);
+  } catch {}
+}
+
 // Fetch yesterday's tickets from Supabase and cache them in localStorage.
 // Called during preload (so Yesterday tab works immediately) and on-demand when
 // the tab is clicked and localStorage is empty (e.g. first visit on this device).
@@ -7236,6 +7282,8 @@ async function _fetchAndCacheYesterdayTickets(date) {
     if (sbYst?.eve) {
       try { localStorage.setItem(_YST_EVE_TICKET_KEY, JSON.stringify({ date, legs: sbYst.eve })); changed = true; } catch {}
     }
+    // Also fetch MLB player picks so per-game breakdowns show on fresh devices
+    await _fetchAndMergeMlbPicks(date);
     if (changed && S.sport === 'tickets' && _ticketDateOffset === -1) {
       renderTicketsPage();
       resolveYesterdayPicks(date);
@@ -7330,7 +7378,9 @@ async function resolveYesterdayPicks(ystDate) {
 function showYesterdayTickets() {
   _ticketDateOffset = -1;
   renderTicketsPage();
-  resolveYesterdayPicks(dateStrLocal(-1));
+  const ystDate = dateStrLocal(-1);
+  _fetchAndMergeMlbPicks(ystDate).then(() => renderTicketsPage());
+  resolveYesterdayPicks(ystDate);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -8251,6 +8301,7 @@ async function preloadPicksForSimpleView() {
   // Do this AFTER all sports load so we score from the full candidate pool.
   buildDailyTicketIfNeeded();
   await buildSplitTicketsIfNeeded();
+  _sbSaveMlbPicks(dateStrLocal()); // persist MLB player picks to Supabase for cross-device yesterday views
   _svPreloadDone = true;
   if (isActive()) renderSimpleView();
   if (S.sport === 'tickets') renderTicketsPage();
