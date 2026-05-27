@@ -1313,33 +1313,23 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   } else if (s1) { p1Score += 1; }
     else if (s2) { p2Score += 1; }
 
-  // 3. Rankings / points
+  // 3. Rankings (only when both unseeded — matches buildTennisPrediction)
   const rd1 = S.rankIndex.get(p1key), rd2 = S.rankIndex.get(p2key);
-  if (rd1 && rd2) {
-    const pts1 = parseInt(rd1.points) || 0;
-    const pts2 = parseInt(rd2.points) || 0;
-    if (pts1 > 0 && pts2 > 0) {
-      const ratio = Math.max(pts1, pts2) / Math.min(pts1, pts2);
-      if (pts1 > pts2) { p1Score += ratio >= 3 ? 3 : ratio >= 1.5 ? 2 : ratio >= 1.2 ? 1 : 0; }
-      else             { p2Score += ratio >= 3 ? 3 : ratio >= 1.5 ? 2 : ratio >= 1.2 ? 1 : 0; }
-    } else if (rd1.rank !== rd2.rank) {
-      if (rd1.rank < rd2.rank) p1Score += 2; else p2Score += 2;
-    }
+  if (!s1 && !s2 && rd1 && rd2 && rd1.rank !== rd2.rank) {
+    if (rd1.rank < rd2.rank) p1Score += 2; else p2Score += 2;
   }
 
-  // 4. Nationality × surface affinity
+  // 4. Nationality × surface affinity (only when both unseeded — matches buildTennisPrediction)
   const c1 = rd1?.country || '', c2 = rd2?.country || '';
-  if (surfLow.includes('clay')) {
-    // Clay slam (Roland Garros) = +2; other clay events = +1
-    const clayBonus = tier === 'slam' ? 2 : 1;
-    if (CLAY_COUNTRIES.has(c1) && !CLAY_COUNTRIES.has(c2)) p1Score += clayBonus;
-    else if (CLAY_COUNTRIES.has(c2) && !CLAY_COUNTRIES.has(c1)) p2Score += clayBonus;
-    // Hard-court specialists penalized on clay regardless of nationality
-    if (HARD_COURT_SPECIALISTS.has(l1.toLowerCase())) p1Score -= 1;
-    if (HARD_COURT_SPECIALISTS.has(l2.toLowerCase())) p2Score -= 1;
-  } else if (surfLow.includes('grass') || surfLow.includes('indoor')) {
-    if (GRASS_COUNTRIES.has(c1) && !GRASS_COUNTRIES.has(c2)) p1Score += 1;
-    else if (GRASS_COUNTRIES.has(c2) && !GRASS_COUNTRIES.has(c1)) p2Score += 1;
+  if (!s1 && !s2) {
+    if (surfLow.includes('clay')) {
+      const clayBonus = tier === 'slam' ? 2 : 1;
+      if (CLAY_COUNTRIES.has(c1) && !CLAY_COUNTRIES.has(c2)) p1Score += clayBonus;
+      else if (CLAY_COUNTRIES.has(c2) && !CLAY_COUNTRIES.has(c1)) p2Score += clayBonus;
+    } else if (surfLow.includes('grass') || surfLow.includes('indoor')) {
+      if (GRASS_COUNTRIES.has(c1) && !GRASS_COUNTRIES.has(c2)) p1Score += 1;
+      else if (GRASS_COUNTRIES.has(c2) && !GRASS_COUNTRIES.has(c1)) p2Score += 1;
+    }
   }
 
   // 5. Tournament affinity (known specialists)
@@ -1360,7 +1350,7 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
       const now = Date.now(); let hw1 = 0, hw2 = 0;
       for (const g of h2h) {
         const age = g.event_date ? (now - new Date(g.event_date+'T12:00:00').getTime()) / 2592000000 : 24;
-        const wt  = age <= 12 ? 2 : age <= 24 ? 1.5 : 0.5; // >2yr old results barely count
+        const wt  = age <= 12 ? 2 : age <= 24 ? 1.5 : 1; // matches buildTennisPrediction weights
         const gp1 = String(g.first_player_key || '');
         const p1w = (g.event_winner === 'First Player' && gp1 === p1key) || (g.event_winner === 'Second Player' && gp1 !== p1key);
         if (p1w) hw1 += wt; else hw2 += wt;
