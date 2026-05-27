@@ -3839,13 +3839,15 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
         if (!pd?.season) return;
         const ip = parseFloat(pd.season.inningsPitched || 0);
         if (ip < 20) return;
-        if (rates.k9 >= 9.0) {
+        // Cap at 14.0 K/9 — anything higher is a small-sample reliever, not a realistic game projection
+        if (rates.k9 >= 9.0 && rates.k9 <= 14.0) {
           const gs = parseInt(pd.season.gamesStarted || 0);
           const avgIP = gs > 0 ? ip / gs : 5.5;
           const projK = rates.k9 * avgIP / 9;
           const ouLine = Math.max(3.5, Math.floor(projK) - 0.5).toFixed(1);
+          // Put OVER first so every code path (buildPickCandidates, toPlr, kLine regex) picks it up correctly
           recordPlayerPick(`plr_${gKey}_k_${side}`, 'mlb', pname, 'K',
-            `${rates.k9.toFixed(1)}K/9 · OVER ${ouLine} K`, gameMatchup, gamePk);
+            `OVER ${ouLine} K · ${rates.k9.toFixed(1)} K/9`, gameMatchup, gamePk);
         }
       };
       recKPick(awayPD, awayPName, awayRates, 'away');
@@ -7260,6 +7262,7 @@ async function resolveYesterdayPicks(ystDate) {
   let picksDirty = false;
   for (const leg of allLegs) {
     if (!leg.id || !leg.pick || leg.sport === 'tennis') continue;
+    if (leg.type === 'player') continue; // player props can't be reverse-engineered from leg data alone
     if (!picks[leg.id]) {
       picks[leg.id] = { team: leg.pick, sport: leg.sport || '', matchup: leg.matchup || '', conf: leg.conf || 1, date: ystDate, result: null, type: 'game' };
       picksDirty = true;
@@ -7282,17 +7285,14 @@ async function resolveYesterdayPicks(ystDate) {
     for (const ev of (json.events || [])) {
       const comp = ev.competitions?.[0]; if (!comp) continue;
       if (!comp.status?.type?.completed) continue;
-      // Use ESPN's winner flag when available; fall back to score comparison
-      let winnerComp = comp.competitors?.find(c => c.winner === true);
-      if (!winnerComp) {
-        const home = comp.competitors?.find(c => c.homeAway === 'home');
-        const away = comp.competitors?.find(c => c.homeAway === 'away');
-        if (!home || !away) continue;
-        const hS = parseFloat(home.score || 0), aS = parseFloat(away.score || 0);
-        if (hS === aS) continue;
-        winnerComp = hS > aS ? home : away;
-      }
-      // Use displayName ("Boston Red Sox") so resolvePick's endsWith(" sox") matching works
+      const home = comp.competitors?.find(c => c.homeAway === 'home');
+      const away = comp.competitors?.find(c => c.homeAway === 'away');
+      if (!home || !away) continue;
+      const hS = parseFloat(home.score || 0), aS = parseFloat(away.score || 0);
+      if (hS === aS) continue;
+      // Score comparison only — winner:true can be stale/wrong for recently completed games
+      const winnerComp = hS > aS ? home : away;
+      // Use displayName ("Boston Red Sox") so endsWith(" sox") matching works in resolvePick
       winnerMap[String(ev.id)] = winnerComp.team?.displayName || winnerComp.team?.name || '';
     }
   };
@@ -8685,13 +8685,16 @@ function cleanLegDesc(leg) {
   const ouEmbed = d.match(/(OVER|UNDER)\s+[\d.]+\s+\w+/i);
   if (ouEmbed) return ouEmbed[0];
   // "27.9 Points", "5.7 Assists", "18.0 Points" → convert to bet line
+  // Only for recognized per-game props — prevents K/9 rates ("11.5 K/9") from being
+  // misread as a per-game total and converted to nonsense lines like "OVER 16.5 K".
   const avgM = d.match(/^([\d.]+)\s+(.+)$/);
   if (avgM) {
     const n = parseFloat(avgM[1]);
     const prop = avgM[2].trim();
     const ABBRS = { Points:'PTS', Rebounds:'REB', Assists:'AST', Goals:'G', 'Goals+Assists':'GA',
                     'Passing Yards':'PASS', 'Rushing Yards':'RUSH', 'Receiving Yards':'REC' };
-    const abbr = ABBRS[prop] || prop;
+    if (!(prop in ABBRS)) return d;
+    const abbr = ABBRS[prop];
     const line = toOULine(leg.sport || '', prop, n);
     return line !== null ? `OVER ${line} ${abbr}` : abbr;
   }
