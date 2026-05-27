@@ -8835,13 +8835,15 @@ function renderTicketsPage() {
     ? `<div class="tp-pending">⏳ Lineup pending: ${pending.map(m => esc(m)).join(' · ')}<br><span class="tp-pending-sub">Player prop picks fill in automatically once lineups post - they lock immediately when added${!showMLBAgg && mlbGamesWithLineups > 0 ? ` · Combined tickets unlock when 3+ lineups are in (${mlbGamesWithLineups}/3 so far)` : ''}</span></div>`
     : (!showMLBAgg && mlbGamesWithLineups > 0 ? `<div class="tp-pending">⏳ Combined tickets need 3+ lineups - ${mlbGamesWithLineups}/3 posted so far. Checking automatically.</div>` : '');
 
+  const mlbHRParlay = mlbHR.slice(0, 5);
   const mlbAggCards = showMLBAgg ? [
-    mlbHits.length    ? renderTicketBlock('🎯 1+ Hits',     mlbHits,    allPicks) : '',
-    mlbRBI.length     ? renderTicketBlock('⚡ 1+ RBI',      mlbRBI,     allPicks) : '',
-    mlbHR.length      ? renderTicketBlock('💣 To Hit HR',   mlbHR,      allPicks) : '',
-    mlbDoubles.length ? renderTicketBlock('2️⃣ 1+ Double',   mlbDoubles, allPicks) : '',
-    mlbXBH.length     ? renderTicketBlock('💥 1+ XBH',      mlbXBH,     allPicks) : '',
-    mlbKs.length      ? renderTicketBlock('🔥 Pitcher Ks',  mlbKs,      allPicks) : '',
+    mlbHits.length       ? renderTicketBlock('🎯 1+ Hits',        mlbHits,       allPicks) : '',
+    mlbRBI.length        ? renderTicketBlock('⚡ 1+ RBI',         mlbRBI,        allPicks) : '',
+    mlbHRParlay.length   ? renderTicketBlock('💣 HR Parlay',      mlbHRParlay,   allPicks) : '',
+    mlbHR.length > 5     ? renderTicketBlock('💣 All HR Picks',   mlbHR,         allPicks) : '',
+    mlbDoubles.length    ? renderTicketBlock('2️⃣ 1+ Double',      mlbDoubles,    allPicks) : '',
+    mlbXBH.length        ? renderTicketBlock('💥 1+ XBH',         mlbXBH,        allPicks) : '',
+    mlbKs.length         ? renderTicketBlock('🔥 Pitcher Ks',     mlbKs,         allPicks) : '',
   ].filter(Boolean) : [];
 
   const toMLBCard = g => {
