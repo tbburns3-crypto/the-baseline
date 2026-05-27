@@ -7282,13 +7282,18 @@ async function resolveYesterdayPicks(ystDate) {
     for (const ev of (json.events || [])) {
       const comp = ev.competitions?.[0]; if (!comp) continue;
       if (!comp.status?.type?.completed) continue;
-      const home = comp.competitors?.find(c => c.homeAway === 'home');
-      const away = comp.competitors?.find(c => c.homeAway === 'away');
-      if (!home || !away) continue;
-      const hS = parseFloat(home.score || 0), aS = parseFloat(away.score || 0);
-      if (hS === aS) continue;
-      const winner = hS > aS ? home : away;
-      winnerMap[String(ev.id)] = winner.team?.abbreviation || winner.team?.displayName || '';
+      // Use ESPN's winner flag when available; fall back to score comparison
+      let winnerComp = comp.competitors?.find(c => c.winner === true);
+      if (!winnerComp) {
+        const home = comp.competitors?.find(c => c.homeAway === 'home');
+        const away = comp.competitors?.find(c => c.homeAway === 'away');
+        if (!home || !away) continue;
+        const hS = parseFloat(home.score || 0), aS = parseFloat(away.score || 0);
+        if (hS === aS) continue;
+        winnerComp = hS > aS ? home : away;
+      }
+      // Use displayName ("Boston Red Sox") so resolvePick's endsWith(" sox") matching works
+      winnerMap[String(ev.id)] = winnerComp.team?.displayName || winnerComp.team?.name || '';
     }
   };
 
