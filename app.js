@@ -1611,6 +1611,9 @@ async function loadTennisMatchDetail(key, container, m) {
       } catch {}
     }
     container.innerHTML = buildTennisDetailHTML(m, h2h, surface, p1Recent, p2Recent);
+    // H2H is now in cache — re-run pick so stored result matches what the analysis shows.
+    // Skip finished matches (result already resolved, recordPick guards against overwrite).
+    if (!isFinished(m.event_status)) inlineTennisPick(m, null, true);
   } catch (err) {
     container.innerHTML = `<div class="td-error">Could not load - ${esc(err.message)}</div>`;
   }
@@ -8810,9 +8813,12 @@ function renderTicketBlock(title, legs, allPicks, footer = '', ticketDate = '') 
     const match  = (leg.matchup || '').replace(/ @ /g, ' v ');
     const desc   = cleanLegDesc(leg);
     const bo5Tag = (leg.bo5 || live.bo5) ? ' <span class="tk-bo5-tag">BO5</span>' : '';
+    // Use the live stored pick name so display matches what W/L resolves against.
+    // Falls back to frozen leg.pick if no live entry exists (e.g. fresh device).
+    const displayPick = live.team || live.player || leg.pick;
     const pickLine = desc
-      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(desc)}${bo5Tag}</span>`
-      : `<span class="sv-tk-pick">${esc(leg.pick)}</span>${bo5Tag}`;
+      ? `<span class="sv-tk-pick">${esc(displayPick)}</span><span class="sv-tk-prop">${esc(desc)}${bo5Tag}</span>`
+      : `<span class="sv-tk-pick">${esc(displayPick)}</span>${bo5Tag}`;
     return `<div class="sv-tk-row${result==='win'?' sv-tk-win':result==='loss'?' sv-tk-loss':''}">
       <span class="sv-tk-num">${i+1}</span>
       <span class="sv-tk-icon">${icon}</span>
