@@ -154,29 +154,68 @@ async function resolvePlayerPicksForGame(espnGameId, gamePk) {
   try {
     const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`);
     const box  = await res.json();
-    const statMap = new Map();
+    const statMap = new Map(); // pid -> batting stats
+    const kMap    = {};        // 'home'|'away' -> starting pitcher strikeouts
     for (const side of ['away', 'home']) {
       for (const pid of (box.teams?.[side]?.batters || [])) {
         const ps = box.teams[side].players[`ID${pid}`];
         if (ps) statMap.set(String(pid), ps.stats?.batting || {});
       }
+      const starterId = box.teams?.[side]?.pitchers?.[0];
+      if (starterId) {
+        const ps = box.teams[side].players[`ID${starterId}`];
+        kMap[side] = parseInt(ps?.stats?.pitching?.strikeOuts || 0);
+      }
     }
     let changed = false;
     for (const [k, p] of pending) {
-      const pid = k.split('_')[2];
-      const st  = statMap.get(pid);
-      if (!st) continue;
-      const win =
-        p.prop === 'Hit'  ? parseInt(st.hits         || 0) > 0 :
-        p.prop === 'HR'   ? parseInt(st.homeRuns      || 0) > 0 :
-        p.prop === 'RBI'  ? parseInt(st.rbi           || 0) > 0 :
-        p.prop === 'Walk' ? parseInt(st.baseOnBalls   || 0) > 0 :
-        p.prop === 'SB'   ? parseInt(st.stolenBases   || 0) > 0 : false;
-      picks[k].result = win ? 'win' : 'loss';
-      changed = true;
+      const parts = k.split('_'); // ['plr', espnId, pid_or_k, prop_or_side]
+      if (parts[2] === 'k') {
+        // Pitcher K pick: plr_{gKey}_k_{side}
+        const side = parts[3];
+        if (kMap[side] === undefined) continue;
+        const lineMatch = (p.stat || '').match(/OVER\s+([\d.]+)/i);
+        if (!lineMatch) continue;
+        picks[k].result = kMap[side] > parseFloat(lineMatch[1]) ? 'win' : 'loss';
+        changed = true;
+      } else {
+        // Batter pick: plr_{gKey}_{pid}_{prop}
+        const st = statMap.get(parts[2]);
+        if (!st) continue;
+        const win =
+          p.prop === 'Hit'    ? parseInt(st.hits         || 0) > 0 :
+          p.prop === 'HR'     ? parseInt(st.homeRuns      || 0) > 0 :
+          p.prop === 'RBI'    ? parseInt(st.rbi           || 0) > 0 :
+          p.prop === 'Walk'   ? parseInt(st.baseOnBalls   || 0) > 0 :
+          p.prop === 'SB'     ? parseInt(st.stolenBases   || 0) > 0 :
+          p.prop === 'Double' ? parseInt(st.doubles       || 0) > 0 :
+          p.prop === 'XBH'    ? (parseInt(st.doubles || 0) + parseInt(st.triples || 0) + parseInt(st.homeRuns || 0)) > 0 : false;
+        picks[k].result = win ? 'win' : 'loss';
+        changed = true;
+      }
     }
     if (changed) { savePicks(picks); updatePicksDisplay(); }
   } catch {}
+}
+
+// Resolve yesterday's player prop picks on any device by fetching MLB final boxscores.
+// Groups pending player picks by game and calls resolvePlayerPicksForGame for each.
+async function resolveYesterdayPlayerPicks(ystDate) {
+  const picks = getPicks();
+  const pending = Object.entries(picks).filter(([k, p]) =>
+    p.type === 'player' && p.result === null && p.date === ystDate && p.sport === 'mlb'
+  );
+  if (!pending.length) return;
+  const gameMap = new Map(); // espnGameId -> gamePk
+  for (const [k, p] of pending) {
+    const espnId = k.split('_')[1];
+    if (espnId && p.gamePk && !gameMap.has(espnId)) gameMap.set(espnId, p.gamePk);
+  }
+  if (!gameMap.size) return;
+  await Promise.allSettled(
+    [...gameMap.entries()].map(([espnId, gamePk]) => resolvePlayerPicksForGame(espnId, gamePk))
+  );
+  if (S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
 }
 
 function showPicksHistory() {
@@ -7287,6 +7326,7 @@ async function _fetchAndCacheYesterdayTickets(date) {
     if (changed && S.sport === 'tickets' && _ticketDateOffset === -1) {
       renderTicketsPage();
       resolveYesterdayPicks(date);
+      resolveYesterdayPlayerPicks(date);
     }
   } catch {}
 }
@@ -7379,7 +7419,10 @@ function showYesterdayTickets() {
   _ticketDateOffset = -1;
   renderTicketsPage();
   const ystDate = dateStrLocal(-1);
-  _fetchAndMergeMlbPicks(ystDate).then(() => renderTicketsPage());
+  _fetchAndMergeMlbPicks(ystDate).then(() => {
+    renderTicketsPage();
+    resolveYesterdayPlayerPicks(ystDate);
+  });
   resolveYesterdayPicks(ystDate);
 }
 
