@@ -7234,8 +7234,90 @@ async function _fetchAndCacheYesterdayTickets(date) {
     if (sbYst?.eve) {
       try { localStorage.setItem(_YST_EVE_TICKET_KEY, JSON.stringify({ date, legs: sbYst.eve })); changed = true; } catch {}
     }
-    if (changed && S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
+    if (changed && S.sport === 'tickets' && _ticketDateOffset === -1) {
+      renderTicketsPage();
+      resolveYesterdayPicks(date);
+    }
   } catch {}
+}
+
+// Fetch yesterday's ESPN final scores and resolve W/L for all ticket legs.
+// Creates pick entries from leg data on fresh devices so results always show.
+async function resolveYesterdayPicks(ystDate) {
+  const allLegs = [];
+  try {
+    const ystMorn = JSON.parse(localStorage.getItem(_YST_MORN_TICKET_KEY) || 'null');
+    const ystEve  = JSON.parse(localStorage.getItem(_YST_EVE_TICKET_KEY)  || 'null');
+    const ystOld  = JSON.parse(localStorage.getItem(_YST_TICKET_KEY)      || 'null');
+    for (const t of [ystMorn, ystEve, ystOld]) {
+      if (t?.date === ystDate && t.legs?.length) allLegs.push(...t.legs);
+    }
+  } catch {}
+  if (!allLegs.length) return;
+
+  // On fresh devices the picks don't exist in localStorage yet; seed them from leg data
+  const picks = getPicks();
+  let picksDirty = false;
+  for (const leg of allLegs) {
+    if (!leg.id || !leg.pick || leg.sport === 'tennis') continue;
+    if (!picks[leg.id]) {
+      picks[leg.id] = { team: leg.pick, sport: leg.sport || '', matchup: leg.matchup || '', conf: leg.conf || 1, date: ystDate, result: null, type: 'game' };
+      picksDirty = true;
+    }
+  }
+  if (picksDirty) savePicks(picks);
+
+  const d8 = ystDate.replace(/-/g, '');
+  const espnSports = [
+    { path: 'basketball/nba' },
+    { path: 'basketball/wnba' },
+    { path: 'baseball/mlb' },
+    { path: 'football/nfl' },
+    { path: 'hockey/nhl' },
+  ];
+  const soccerLeagueIds = ['fifa.world','eng.1','esp.1','ger.1','ita.1','fra.1','usa.1','uefa.champions','uefa.europa'];
+
+  const winnerMap = {};
+  const parseFn = json => {
+    for (const ev of (json.events || [])) {
+      const comp = ev.competitions?.[0]; if (!comp) continue;
+      if (!comp.status?.type?.completed) continue;
+      const home = comp.competitors?.find(c => c.homeAway === 'home');
+      const away = comp.competitors?.find(c => c.homeAway === 'away');
+      if (!home || !away) continue;
+      const hS = parseFloat(home.score || 0), aS = parseFloat(away.score || 0);
+      if (hS === aS) continue;
+      const winner = hS > aS ? home : away;
+      winnerMap[String(ev.id)] = winner.team?.abbreviation || winner.team?.displayName || '';
+    }
+  };
+
+  await Promise.allSettled([
+    ...espnSports.map(s =>
+      fetch(`https://site.api.espn.com/apis/site/v2/sports/${s.path}/scoreboard?dates=${d8}`)
+        .then(r => r.json()).then(parseFn).catch(() => {})
+    ),
+    ...soccerLeagueIds.map(lid =>
+      fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lid}/scoreboard?dates=${d8}`)
+        .then(r => r.json()).then(parseFn).catch(() => {})
+    ),
+  ]);
+
+  let anyResolved = false;
+  for (const leg of allLegs) {
+    if (!leg.id || !winnerMap[String(leg.id)]) continue;
+    const p = getPicks()[leg.id];
+    if (!p || p.result !== null) continue;
+    resolvePick(leg.id, winnerMap[String(leg.id)]);
+    anyResolved = true;
+  }
+  if (anyResolved && S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
+}
+
+function showYesterdayTickets() {
+  _ticketDateOffset = -1;
+  renderTicketsPage();
+  resolveYesterdayPicks(dateStrLocal(-1));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -8657,7 +8739,7 @@ function renderTicketsPage() {
 
   const secretBtn = off === 0 && _isAdmin() ? `<button class="st-open-btn" onclick="showSecretTicket()">🔒 Secret Ticket</button>` : '';
   const dateNav = `<div class="tp-day-nav">
-    <button class="tp-day-btn${off===-1?' tp-day-active':''}" onclick="_ticketDateOffset=-1;renderTicketsPage()">Yesterday</button>
+    <button class="tp-day-btn${off===-1?' tp-day-active':''}" onclick="showYesterdayTickets()">Yesterday</button>
     <button class="tp-day-btn${off===0?' tp-day-active':''}" onclick="_ticketDateOffset=0;renderTicketsPage()">Today</button>
     <button class="tp-day-btn${off===1?' tp-day-active':''}" onclick="_ticketDateOffset=1;renderTicketsPage()">Tomorrow</button>
     ${secretBtn}
