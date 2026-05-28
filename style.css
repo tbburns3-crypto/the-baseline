@@ -2820,3 +2820,68 @@ body.simple-mode #app-layout { display: none !important; }
   .auth-user-email-chip { max-width: 80px; font-size: .62rem; padding: 2px 6px 2px 5px; }
   .auth-modal-box { padding: 24px 18px 20px; }
 }
+
+/* ── AESTHETIC ENHANCEMENTS ── */
+
+/* 1. Topbar subtle depth gradient */
+#topbar { background: linear-gradient(180deg, #162c1e 0%, var(--bg-2) 100%); }
+
+/* 2. Card lift on hover — all sports
+      transition-property overrides existing transition declarations */
+.tournament-group,
+.other-match-row,
+.picks-card,
+.golf-group-card,
+.golf-pick-card,
+.sv-pick-card,
+.sv-top-item,
+.overview-card,
+.player-result-row,
+.fav-stale-row {
+  transition-property: background, border-color, transform, box-shadow;
+  transition-duration: 0.18s;
+  transition-timing-function: ease;
+}
+.tournament-group:hover    { transform: translateY(-1px); box-shadow: 0 4px 18px rgba(0,0,0,.32); }
+.other-match-row:hover     { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.28); }
+.picks-card:hover          { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.32); border-color: rgba(0,230,118,.2); }
+.golf-group-card:hover     { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.28); }
+.golf-pick-card:hover      { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+.sv-pick-card.sv-has-plrs:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+.sv-top-item.sv-has-plrs:hover  { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+.overview-card:hover       { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+.player-result-row:hover   { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.2); }
+.fav-stale-row:hover       { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.2); border-color: rgba(0,230,118,.25); }
+
+/* 3. Pick badge glow — all sports */
+.match-pick-inline { box-shadow: 0 0 8px rgba(0,230,118,.25); }
+.match-pick-inline.match-pick-injury { box-shadow: 0 0 8px rgba(255,179,0,.25); }
+.game-pick-inline.pick-win { text-shadow: 0 0 10px rgba(0,230,118,.35); }
+
+/* 4. Surface pills — crisper borders and higher contrast */
+.surface-pill.surf-clay   { background: rgba(205,133,63,.28); border: 1px solid rgba(194,123,59,.4);  }
+.surface-pill.surf-grass  { background: rgba(76,175,80,.25);  border: 1px solid rgba(56,142,60,.35); }
+.surface-pill.surf-hard   { background: rgba(30,136,229,.25); border: 1px solid rgba(21,101,192,.35); }
+.surface-pill.surf-indoor { background: rgba(171,71,188,.25); border: 1px solid rgba(106,27,154,.35); }
+
+/* 5. Live element glows */
+.live-status { box-shadow: 0 0 10px rgba(244,67,54,.35); }
+.live-badge  { box-shadow: 0 0 8px rgba(244,67,54,.4); }
+.other-match-row.live { box-shadow: inset 3px 0 10px rgba(244,67,54,.1); }
+
+/* 6. Ticket block gradient headers */
+.sv-ticket-date-line { background: linear-gradient(90deg, #00e676 0%, #00c853 100%); }
+.sv-ticket-hdr       { background: linear-gradient(90deg, rgba(0,230,118,.1) 0%, rgba(0,230,118,.02) 100%); }
+
+/* 7. Smoother panel expand animations */
+.match-detail       { animation-duration: 0.22s; animation-timing-function: cubic-bezier(0.23,1,0.32,1); }
+.game-preview-panel { animation-duration: 0.22s; animation-timing-function: cubic-bezier(0.23,1,0.32,1); }
+.matchup-inline     { animation-duration: 0.22s; animation-timing-function: cubic-bezier(0.23,1,0.32,1); }
+
+/* 8. Serving player name glow (tennis) */
+.player.serving .player-name { text-shadow: 0 0 14px rgba(0,230,118,.3); }
+
+/* 9. High-confidence dot glow */
+.tp-conf-3 { text-shadow: 0 0 6px rgba(0,230,118,.45); }
+.pc-conf-3 { text-shadow: 0 0 6px rgba(0,230,118,.45); }
+.sv-conf   { text-shadow: 0 0 8px rgba(0,230,118,.3);  }
