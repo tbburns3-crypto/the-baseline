@@ -9856,19 +9856,18 @@ function _randGetPool() {
   const now   = Date.now();
   return Object.entries(getPicks())
     .filter(([k, p]) => {
-      if (p.type === 'player')  return false;  // player props only, exclude
       if (p.result !== null)    return false;  // already resolved
       if (p.date !== today)     return false;  // today only
       if (!_randState.sports.has(p.sport || 'tennis')) return false;
 
-      // Tennis: exclude if match is already live or finished
-      if ((p.sport || 'tennis') === 'tennis') {
+      // Tennis game picks: exclude if match is already live or finished
+      if (p.type !== 'player' && (p.sport || 'tennis') === 'tennis') {
         const eventKey = k.replace(/^tn_/, '');
         const match = S.matches.get(String(eventKey));
         if (match && (isLive(match.event_status) || isFinished(match.event_status))) return false;
       }
 
-      // Any sport: if game start time is stored and has passed (5-min grace), exclude
+      // Any pick: if game start time stored and has passed (5-min grace), exclude
       if (p.gameTime) {
         const startMs = new Date(p.gameTime).getTime();
         if (!isNaN(startMs) && startMs < now - 5 * 60 * 1000) return false;
@@ -9987,20 +9986,31 @@ function renderRandTicket() {
     return `<span class="rand-dots">${'●'.repeat(n)}${'○'.repeat(3 - n)}</span>`;
   };
 
+  const PROP_ICON = { Hit:'🎯', HR:'💣', RBI:'⚡', Walk:'🚶', SB:'🏃', Double:'2️⃣', XBH:'💥', Points:'🏀', Rebounds:'📊', Assists:'🎽' };
+
   const rows = _randState.ticket.map((p, i) => {
-    const locked = _randState.lockedKeys.has(p._pickKey);
-    const sport  = p.sport || 'tennis';
-    const icon   = _SPORT_ICON_MAP[sport] || '🎯';
+    const locked   = _randState.lockedKeys.has(p._pickKey);
+    const sport    = p.sport || 'tennis';
+    const icon     = _SPORT_ICON_MAP[sport] || '🎯';
+    const isPlayer = p.type === 'player';
+
+    const topLine = isPlayer
+      ? `${PROP_ICON[p.prop] || '🎯'} ${esc(lastName(p.player || ''))} &middot; ${esc(p.prop || '')}`
+      : `&#8594; ${esc(p.team || '')}`;
+    const subLine = isPlayer
+      ? `${esc(p.stat || '')} &middot; ${esc(p.gameMatchup || '')}`
+      : esc(p.matchup || '');
+
     return `
       <div class="rand-pick-row${locked ? ' rand-locked' : ''}">
         <button class="rand-lock-btn" onclick="toggleRandLock(${i})" title="${locked ? 'Unlock' : 'Lock'} this pick">${locked ? '🔒' : '🔓'}</button>
         <div class="rand-pick-info">
           <div class="rand-pick-top">
             <span class="rand-pick-sport-pill">${icon} ${sport.toUpperCase()}</span>
-            ${confDots(p.conf)}
+            ${isPlayer ? '<span class="rand-prop-badge">PROP</span>' : confDots(p.conf)}
           </div>
-          <div class="rand-pick-matchup">${esc(p.matchup || '')}</div>
-          <div class="rand-pick-team">&#8594; ${esc(p.team || '')}</div>
+          <div class="rand-pick-matchup">${subLine}</div>
+          <div class="rand-pick-team">${topLine}</div>
         </div>
       </div>`;
   }).join('');
