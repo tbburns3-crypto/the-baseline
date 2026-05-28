@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>The Baseline | Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=252">
+  <link rel="stylesheet" href="style.css?v=253">
 </head>
 <body>
 
@@ -93,43 +93,44 @@
 
   <!-- ── TOP NAV ── -->
   <header id="topbar">
-    <div class="logo">
-      <span class="logo-icon">◉</span>
-      <span class="logo-text">THE BASELINE</span>
-    </div>
-    <div class="topbar-controls">
-      <div id="tz-selector" title="Your timezone"></div>
-      <button id="simple-view-btn" onclick="showSimpleView()" title="Today's Picks">⚡ Picks</button>
-      <span id="picks-accuracy" title="Prediction accuracy"></span>
-      <div id="conn-indicator">
-        <span id="conn-dot" class="conn-dot conn-connecting"></span>
-        <span id="conn-label">Connecting…</span>
+    <div id="topbar-row1">
+      <div class="logo">
+        <span class="logo-icon">◉</span>
+        <span class="logo-text">THE BASELINE</span>
       </div>
-      <button id="refresh-btn" title="Refresh data">↻</button>
-      <div id="auth-control">
-        <button id="auth-signin-btn" class="auth-topbar-btn" onclick="openAuthModal()">Sign In</button>
-        <div id="auth-user-info" style="display:none">
-          <span id="auth-user-email" class="auth-user-email-chip"></span>
-          <button id="auth-manage-btn" class="auth-manage-btn" onclick="openPortal()" style="display:none">Manage Sub</button>
-          <a id="admin-topbar-link" href="admin.html" onclick="openAdminPanel(event)" class="auth-manage-btn" style="display:none">⚙ Admin</a>
-          <button class="auth-signout-btn" onclick="signOut()">Sign Out</button>
+      <div class="topbar-controls">
+        <div id="tz-selector" title="Your timezone"></div>
+        <button id="simple-view-btn" onclick="showSimpleView()" title="Today's Picks">⚡ Picks</button>
+        <span id="picks-accuracy" title="Prediction accuracy"></span>
+        <div id="conn-indicator">
+          <span id="conn-dot" class="conn-dot conn-connecting"></span>
+          <span id="conn-label">Connecting…</span>
+        </div>
+        <button id="refresh-btn" title="Refresh data">↻</button>
+        <div id="auth-control">
+          <button id="auth-signin-btn" class="auth-topbar-btn" onclick="openAuthModal()">Sign In</button>
+          <div id="auth-user-info" style="display:none">
+            <span id="auth-user-email" class="auth-user-email-chip"></span>
+            <button id="auth-manage-btn" class="auth-manage-btn" onclick="openPortal()" style="display:none">Manage Sub</button>
+            <a id="admin-topbar-link" href="admin.html" onclick="openAdminPanel(event)" class="auth-manage-btn" style="display:none">⚙ Admin</a>
+            <button class="auth-signout-btn" onclick="signOut()">Sign Out</button>
+          </div>
         </div>
       </div>
     </div>
+    <!-- ── SPORT TABS BAR ── -->
+    <nav id="sport-tabs">
+      <button class="sport-tab active" data-sport="tennis">🎾 Tennis</button>
+      <button class="sport-tab" data-sport="nba">🏀 NBA</button>
+      <button class="sport-tab" data-sport="wnba">🏀 WNBA</button>
+      <button class="sport-tab" data-sport="mlb">⚾ MLB</button>
+      <button class="sport-tab" data-sport="nfl">🏈 NFL</button>
+      <button class="sport-tab" data-sport="nhl">🏒 NHL</button>
+      <button class="sport-tab" data-sport="soccer">⚽ Soccer</button>
+      <button class="sport-tab" data-sport="golf">⛳ Golf</button>
+      <button class="sport-tab" data-sport="tickets">🎫 Tickets</button>
+    </nav>
   </header>
-
-  <!-- ── SPORT TABS BAR ── -->
-  <nav id="sport-tabs">
-    <button class="sport-tab active" data-sport="tennis">🎾 Tennis</button>
-    <button class="sport-tab" data-sport="nba">🏀 NBA</button>
-    <button class="sport-tab" data-sport="wnba">🏀 WNBA</button>
-    <button class="sport-tab" data-sport="mlb">⚾ MLB</button>
-    <button class="sport-tab" data-sport="nfl">🏈 NFL</button>
-    <button class="sport-tab" data-sport="nhl">🏒 NHL</button>
-    <button class="sport-tab" data-sport="soccer">⚽ Soccer</button>
-    <button class="sport-tab" data-sport="golf">⛳ Golf</button>
-    <button class="sport-tab" data-sport="tickets">🎫 Tickets</button>
-  </nav>
 
   <!-- ── CONNECTION STATUS BAR ── -->
   <div id="conn-bar" class="conn-connecting">
@@ -297,6 +298,6 @@
   </div><!-- /app-layout -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=252"></script>
+  <script src="app.js?v=253"></script>
 </body>
 </html>

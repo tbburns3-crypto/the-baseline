@@ -24,7 +24,7 @@
   --hard:        #1565c0;
   --indoor:      #6a1b9a;
   --sidebar-w:   260px;
-  --topbar-h:    52px;
+  --topbar-h:    92px;
   --sporttabs-h: 40px;
   --datebar-h:   52px;
   --connbar-h:   30px;
@@ -55,9 +55,15 @@ input { font: inherit; }
   background: var(--bg-2);
   border-bottom: 1px solid var(--border);
   display: flex;
+  flex-direction: column;
+}
+#topbar-row1 {
+  display: flex;
   align-items: center;
   padding: 0 16px;
+  height: 52px;
   gap: 16px;
+  flex-shrink: 0;
 }
 
 .logo {
@@ -76,19 +82,15 @@ input { font: inherit; }
 }
 
 #sport-tabs {
-  position: sticky;
-  top: var(--topbar-h);
-  z-index: 100;
   display: flex;
   gap: 4px;
   height: var(--sporttabs-h);
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border);
   padding: 0 16px;
   overflow-x: auto;
   scrollbar-width: none;
   align-items: center;
   -webkit-overflow-scrolling: touch;
+  flex-shrink: 0;
 }
 .sport-tab {
   padding: 6px 14px;
@@ -201,7 +203,7 @@ input { font: inherit; }
 /* ── APP LAYOUT ── */
 #app-layout {
   display: flex;
-  min-height: calc(100vh - var(--topbar-h) - var(--sporttabs-h) - var(--connbar-h));
+  min-height: calc(100vh - var(--topbar-h) - var(--connbar-h));
 }
 
 /* ── SIDEBAR ── */
@@ -212,9 +214,9 @@ input { font: inherit; }
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--topbar-h) - var(--sporttabs-h) - var(--connbar-h) - var(--datebar-h));
+  height: calc(100vh - var(--topbar-h) - var(--connbar-h) - var(--datebar-h));
   position: sticky;
-  top: calc(var(--topbar-h) + var(--sporttabs-h) + var(--connbar-h) + var(--datebar-h));
+  top: calc(var(--topbar-h) + var(--connbar-h) + var(--datebar-h));
   overflow: hidden;
 }
 .sidebar-header {
@@ -1941,7 +1943,6 @@ input { font: inherit; }
 /* ── SIMPLE VIEW ── hides everything else via body class ── */
 /* When simple-mode is active, hide all full-app chrome */
 body.simple-mode #topbar,
-body.simple-mode #sport-tabs,
 body.simple-mode #conn-bar,
 body.simple-mode #date-bar,
 body.simple-mode #app-layout { display: none !important; }
@@ -2469,7 +2470,6 @@ body.simple-mode #app-layout { display: none !important; }
 .view-tab { flex-shrink: 0; }
 
 /* iOS touch momentum for all horizontal scrollers */
-#sport-tabs,
 #date-tabs-container,
 #tournament-list { -webkit-overflow-scrolling: touch; }
 
