@@ -24,7 +24,8 @@
   --hard:        #1565c0;
   --indoor:      #6a1b9a;
   --sidebar-w:   260px;
-  --topbar-h:    84px;
+  --topbar-h:    52px;
+  --sporttabs-h: 40px;
   --datebar-h:   52px;
   --connbar-h:   30px;
   --radius:      8px;
@@ -49,16 +50,14 @@ input { font: inherit; }
 #topbar {
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 101;
   height: var(--topbar-h);
   background: var(--bg-2);
   border-bottom: 1px solid var(--border);
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  padding: 6px 16px 0;
-  gap: 0;
-  overflow: hidden;
+  padding: 0 16px;
+  gap: 16px;
 }
 
 .logo {
@@ -67,7 +66,6 @@ input { font: inherit; }
   gap: 8px;
   white-space: nowrap;
   flex-shrink: 0;
-  order: 1;
 }
 .logo-icon { color: var(--accent); font-size: 1.3rem; }
 .logo-text {
@@ -78,15 +76,19 @@ input { font: inherit; }
 }
 
 #sport-tabs {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 100;
   display: flex;
   gap: 4px;
-  order: 3;
-  flex-basis: 100%;
-  width: 100%;
+  height: var(--sporttabs-h);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-bottom: 4px;
-  margin-top: 4px;
+  align-items: center;
+  -webkit-overflow-scrolling: touch;
 }
 .sport-tab {
   padding: 6px 14px;
@@ -110,7 +112,6 @@ input { font: inherit; }
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
-  order: 2;
   margin-left: auto;
 }
 #conn-indicator {
@@ -200,7 +201,7 @@ input { font: inherit; }
 /* ── APP LAYOUT ── */
 #app-layout {
   display: flex;
-  min-height: calc(100vh - var(--topbar-h) - var(--connbar-h));
+  min-height: calc(100vh - var(--topbar-h) - var(--sporttabs-h) - var(--connbar-h));
 }
 
 /* ── SIDEBAR ── */
@@ -211,9 +212,9 @@ input { font: inherit; }
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--topbar-h) - var(--connbar-h) - var(--datebar-h));
+  height: calc(100vh - var(--topbar-h) - var(--sporttabs-h) - var(--connbar-h) - var(--datebar-h));
   position: sticky;
-  top: calc(var(--topbar-h) + var(--connbar-h) + var(--datebar-h));
+  top: calc(var(--topbar-h) + var(--sporttabs-h) + var(--connbar-h) + var(--datebar-h));
   overflow: hidden;
 }
 .sidebar-header {
@@ -1940,6 +1941,7 @@ input { font: inherit; }
 /* ── SIMPLE VIEW ── hides everything else via body class ── */
 /* When simple-mode is active, hide all full-app chrome */
 body.simple-mode #topbar,
+body.simple-mode #sport-tabs,
 body.simple-mode #conn-bar,
 body.simple-mode #date-bar,
 body.simple-mode #app-layout { display: none !important; }

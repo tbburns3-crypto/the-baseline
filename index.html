@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>The Baseline | Live Scores</title>
-  <link rel="stylesheet" href="style.css?v=251">
+  <link rel="stylesheet" href="style.css?v=252">
 </head>
 <body>
 
@@ -97,17 +97,6 @@
       <span class="logo-icon">◉</span>
       <span class="logo-text">THE BASELINE</span>
     </div>
-    <nav id="sport-tabs">
-      <button class="sport-tab active" data-sport="tennis">🎾 Tennis</button>
-      <button class="sport-tab" data-sport="nba">🏀 NBA</button>
-      <button class="sport-tab" data-sport="wnba">🏀 WNBA</button>
-      <button class="sport-tab" data-sport="mlb">⚾ MLB</button>
-      <button class="sport-tab" data-sport="nfl">🏈 NFL</button>
-      <button class="sport-tab" data-sport="nhl">🏒 NHL</button>
-      <button class="sport-tab" data-sport="soccer">⚽ Soccer</button>
-      <button class="sport-tab" data-sport="golf">⛳ Golf</button>
-      <button class="sport-tab" data-sport="tickets">🎫 Tickets</button>
-    </nav>
     <div class="topbar-controls">
       <div id="tz-selector" title="Your timezone"></div>
       <button id="simple-view-btn" onclick="showSimpleView()" title="Today's Picks">⚡ Picks</button>
@@ -128,6 +117,19 @@
       </div>
     </div>
   </header>
+
+  <!-- ── SPORT TABS BAR ── -->
+  <nav id="sport-tabs">
+    <button class="sport-tab active" data-sport="tennis">🎾 Tennis</button>
+    <button class="sport-tab" data-sport="nba">🏀 NBA</button>
+    <button class="sport-tab" data-sport="wnba">🏀 WNBA</button>
+    <button class="sport-tab" data-sport="mlb">⚾ MLB</button>
+    <button class="sport-tab" data-sport="nfl">🏈 NFL</button>
+    <button class="sport-tab" data-sport="nhl">🏒 NHL</button>
+    <button class="sport-tab" data-sport="soccer">⚽ Soccer</button>
+    <button class="sport-tab" data-sport="golf">⛳ Golf</button>
+    <button class="sport-tab" data-sport="tickets">🎫 Tickets</button>
+  </nav>
 
   <!-- ── CONNECTION STATUS BAR ── -->
   <div id="conn-bar" class="conn-connecting">
@@ -295,6 +297,6 @@
   </div><!-- /app-layout -->
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=251"></script>
+  <script src="app.js?v=252"></script>
 </body>
 </html>
