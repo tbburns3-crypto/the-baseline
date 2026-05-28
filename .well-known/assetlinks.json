@@ -3,8 +3,6 @@
   "target": {
     "namespace": "android_app",
     "package_name": "pro.thebaseline.app",
-    "sha256_cert_fingerprints": [
-      "REPLACE_WITH_SHA256_FROM_PWABUILDER"
-    ]
+    "sha256_cert_fingerprints": ["7E:9C:CB:97:5D:5A:5B:7D:B9:CE:C7:F9:32:73:AD:69:71:82:6D:EC:ED:7A:A9:0B:9E:FE:0A:03:CF:F7:A4:11"]
   }
 }]
