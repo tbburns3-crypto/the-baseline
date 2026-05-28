@@ -9466,18 +9466,18 @@ function renderSimpleView() {
 
   const lockedSection = _hasFullAccess() ? '' : `
     <div class="sv-locked-section">
-      <div class="sv-locked-hdr">🔒 Premium — What You're Missing Today</div>
+      <div class="sv-locked-hdr">🔒 Premium: What You're Missing Today</div>
       <div class="sv-locked-grid">
         ${lockedCard('🎾','Tennis',[90,75,60,85])}
         ${lockedCard('⛳','Golf',[80,95,55,70])}
         ${lockedCard('📊','Live Scores',[100,85,70,90])}
         ${lockedCard('🏀','NBA + Lineups',[75,90,65,80])}
       </div>
-      <button class="sv-locked-unlock" onclick="openUpgradeModal()">Unlock Everything — From $7.99/week →</button>
+      <button class="sv-locked-unlock" onclick="openUpgradeModal()">Unlock Everything. From $7.99/week →</button>
     </div>
     <div class="sv-pro-tip">
       <span class="sv-pro-tip-label">💡 Pro Tip</span>
-      Round robins are your best friend — especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
+      Round robins are your best friend, especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
     </div>`;
 
   el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${upsellBanner}${lockedSection}`;
