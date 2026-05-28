@@ -7878,7 +7878,6 @@ function closeUpgradeModal() {
 }
 
 async function startCheckout(plan) {
-  // Disable button immediately — everything else is inside try so it always re-enables on failure
   const btn = document.getElementById(`checkout-btn-${plan}`);
   const origText = btn ? btn.textContent : 'Subscribe';
   if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
@@ -7886,20 +7885,29 @@ async function startCheckout(plan) {
   const showErr = msg => {
     if (btn) { btn.disabled = false; btn.textContent = origText; }
     const errEl = document.getElementById('upgrade-modal-error');
-    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; setTimeout(() => { errEl.style.display = 'none'; }, 6000); }
+    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; setTimeout(() => { errEl.style.display = 'none'; }, 8000); }
     else alert(msg);
   };
 
+  // Safety net — always re-enable button after 20s no matter what
+  const safetyTimer = setTimeout(() => showErr('Request timed out. Please try again.'), 20000);
+
   try {
-    const { data: { session } } = await _sbClient.auth.getSession();
+    // getSession with its own 8s timeout
+    const sessionResult = await Promise.race([
+      _sbClient.auth.getSession(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('Session check timed out. Please refresh and try again.')), 8000))
+    ]);
+    const session = sessionResult?.data?.session;
     if (!session) {
+      clearTimeout(safetyTimer);
       if (btn) { btn.disabled = false; btn.textContent = origText; }
-      openAuthModal(); // sign-in slides in on top; upgrade modal stays behind it
+      openAuthModal();
       return;
     }
 
     const ctrl = new AbortController();
-    const tmo  = setTimeout(() => ctrl.abort(), 15000);
+    const tmo  = setTimeout(() => ctrl.abort(), 12000);
     const res = await fetch(`${_SB_URL}/functions/v1/create-checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
@@ -7907,12 +7915,18 @@ async function startCheckout(plan) {
       signal: ctrl.signal,
     });
     clearTimeout(tmo);
-    const data = await res.json();
+
+    let data;
+    try { data = await res.json(); }
+    catch { throw new Error(`Server error (${res.status}). Please try again.`); }
+
     if (data.error) throw new Error(data.error);
     if (!data.url)  throw new Error('No checkout URL returned. Please try again.');
+    clearTimeout(safetyTimer);
     window.location.href = data.url;
   } catch (err) {
-    showErr(err.name === 'AbortError' ? 'Request timed out. Please try again.' : 'Could not start checkout: ' + err.message);
+    clearTimeout(safetyTimer);
+    showErr(err.name === 'AbortError' ? 'Request timed out. Please try again.' : (err.message || 'Could not start checkout. Please try again.'));
   }
 }
 
