@@ -2531,7 +2531,12 @@ function stopScoresTimer() {
 function loadSportScores(sport) {
   if (sport === 'soccer')          loadSoccerScores();
   else if (sport === 'golf')       loadGolfLeaderboard();
-  else if (sport === 'tickets')    renderTicketsPage();
+  else if (sport === 'tickets') {
+    renderTicketsPage();
+    // Re-fetch from Supabase each time the tab is opened so the night ticket
+    // appears without requiring a full page reload
+    buildSplitTicketsIfNeeded().then(() => { if (S.sport === 'tickets') renderTicketsPage(); });
+  }
   else if (sport === 'randomizer') renderRandomizer();
   else loadOtherScores(sport);
 }
@@ -9887,10 +9892,14 @@ function _randGetPool() {
         if (match && (isLive(match.event_status) || isFinished(match.event_status))) return false;
       }
 
-      // Any pick: if game start time stored and has passed (5-min grace), exclude
+      // Any pick with a gameTime: exclude if already started (5-min grace) OR if game is on a different day
       if (p.gameTime) {
         const startMs = new Date(p.gameTime).getTime();
-        if (!isNaN(startMs) && startMs < now - 5 * 60 * 1000) return false;
+        if (!isNaN(startMs)) {
+          if (startMs < now - 5 * 60 * 1000) return false;
+          const gameDate = new Intl.DateTimeFormat('en-CA', { timeZone: getUserTZ() }).format(new Date(startMs));
+          if (gameDate !== today) return false;
+        }
       }
 
       return true;
