@@ -6367,10 +6367,10 @@ async function loadGolfLeaderboard() {
         // Groups: players with hole data (split-tee correct); upcoming: grouped by tee time (approx.)
         const { groups, upcomingGroups } = groupByTeeTime(allComp, round, ev.id);
 
-        // Live groups first (by best leaderboard position), finished groups at the bottom (by tee time)
-        const bestPos = g => Math.min(...g.players.map(p => parseInt(p.order) || 9999));
+        // Live groups sorted by holes completed (furthest along first), finished groups after
+        const maxHoles = g => Math.max(...g.players.map(p => p.linescores?.[round - 1]?.linescores?.length || 0));
         const liveG   = groups.filter(g =>  g.players.some(p => playerRoundStatus(p, round) === 'live'))
-                              .sort((a, b) => bestPos(a) - bestPos(b));
+                              .sort((a, b) => maxHoles(b) - maxHoles(a));
         const doneG   = groups.filter(g =>  g.players.every(p => playerRoundStatus(p, round) === 'finished'))
                               .sort((a, b) => new Date(a.time) - new Date(b.time));
         const activeG = [...liveG, ...doneG];
