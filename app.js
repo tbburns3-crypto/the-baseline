@@ -9649,8 +9649,10 @@ function renderSimpleView() {
   const lockedCard = (icon, sport, rows) => `
     <div class="sv-locked-card" onclick="openUpgradeModal()">
       <div class="sv-locked-sport-name">${icon} ${sport}</div>
-      <div class="sv-locked-bars">${rows.map(w => `<div class="sv-lb" style="width:${w}%"></div>`).join('')}</div>
-      <div class="sv-locked-overlay"><span class="sv-lock-icon">🔒</span><span class="sv-lock-label">PREMIUM</span></div>
+      <div class="sv-locked-body">
+        <div class="sv-locked-bars">${rows.map(w => `<div class="sv-lb" style="width:${w}%"></div>`).join('')}</div>
+        <div class="sv-locked-overlay"><span class="sv-lock-icon">🔒</span><span class="sv-lock-label">PREMIUM</span></div>
+      </div>
     </div>`;
 
   const lockedSection = _hasFullAccess() ? '' : `

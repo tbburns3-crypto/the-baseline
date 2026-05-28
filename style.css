@@ -2099,13 +2099,14 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-locked-section { margin-top: 20px; }
 .sv-locked-hdr { font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #4a7c59; margin-bottom: 12px; }
 .sv-locked-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-.sv-locked-card { background: #0e1f13; border: 1px solid #1a3020; border-radius: 10px; padding: 14px 14px 12px; position: relative; overflow: hidden; cursor: pointer; }
+.sv-locked-card { background: #0e1f13; border: 1px solid #1a3020; border-radius: 10px; padding: 14px 14px 12px; cursor: pointer; }
 .sv-locked-card:hover .sv-locked-overlay { background: rgba(8,20,11,.82); }
-.sv-locked-sport-name { font-size: .78rem; font-weight: 700; color: #4a7c59; margin-bottom: 10px; }
-.sv-locked-bars { display: flex; flex-direction: column; gap: 7px; }
+.sv-locked-sport-name { font-size: .78rem; font-weight: 700; color: #d4f0dc; margin-bottom: 8px; }
+.sv-locked-body { position: relative; overflow: hidden; border-radius: 7px; }
+.sv-locked-bars { display: flex; flex-direction: column; gap: 7px; padding: 10px 0 8px; }
 .sv-lb { height: 9px; background: #1a3020; border-radius: 4px; animation: sv-shimmer 1.8s ease-in-out infinite; }
 @keyframes sv-shimmer { 0%,100% { opacity: .45; } 50% { opacity: .9; } }
-.sv-locked-overlay { position: absolute; inset: 0; background: rgba(8,20,11,.78); backdrop-filter: blur(2px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 10px; transition: background .15s; }
+.sv-locked-overlay { position: absolute; inset: 0; background: rgba(8,20,11,.78); backdrop-filter: blur(2px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 7px; transition: background .15s; }
 .sv-lock-icon { font-size: 1.3rem; }
 .sv-lock-label { font-size: .62rem; font-weight: 800; color: var(--accent); letter-spacing: .12em; }
 .sv-locked-unlock { width: 100%; background: var(--accent); color: #000; border: none; border-radius: 10px; padding: 14px; font-size: .88rem; font-weight: 800; cursor: pointer; letter-spacing: .02em; }
