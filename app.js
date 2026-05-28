@@ -9205,8 +9205,11 @@ function renderTicketsPage() {
   }
   const golfMiniCards = [];
   if (_hasFullAccess() && !golfSingle) {
-    if (golfEarly.length >= 5) golfMiniCards.push(renderTicketBlock('⛳ Early Mini', golfEarly.slice(0, 5), allPicks));
-    if (golfLate.length  >= 5) golfMiniCards.push(renderTicketBlock('⛳ Late Mini',  golfLate.slice(0,  5), allPicks));
+    const topGolf = legs => legs.filter(l => (l.conf || 1) >= 2).slice(0, 5);
+    const earlyMini = topGolf(golfEarly);
+    const lateMini  = topGolf(golfLate);
+    if (earlyMini.length >= 3) golfMiniCards.push(renderTicketBlock('⛳ Early Mini', earlyMini, allPicks));
+    if (lateMini.length  >= 3) golfMiniCards.push(renderTicketBlock('⛳ Late Mini',  lateMini,  allPicks));
   }
   const golfHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">⛳ Golf</div>
