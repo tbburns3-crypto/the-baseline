@@ -2,10 +2,12 @@
   "name": "The Baseline",
   "short_name": "Baseline",
   "description": "Live scores and daily picks across every sport.",
-  "start_url": "/?source=pwa",
-  "scope": "/",
+  "start_url": "/the-baseline/?source=pwa",
+  "scope": "/the-baseline/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
+  "dir": "ltr",
   "background_color": "#0a1a0e",
   "theme_color": "#0a1a0e",
   "lang": "en-US",
@@ -29,6 +31,7 @@
       "src": "og-image.png",
       "sizes": "1200x630",
       "type": "image/png",
+      "form_factor": "wide",
       "label": "The Baseline live scores and picks"
     }
   ]
