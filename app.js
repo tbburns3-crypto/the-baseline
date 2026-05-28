@@ -5773,7 +5773,7 @@ const GOLF_PAIRINGS_OVERRIDE = {
       ['Poston','Mouw','Campbell'],
       ['Tosti','Parry','Clanton'],
       ['Lipsky','Lebioda','Putnam'],
-      ['Crowe','Dumont de Chassart','Chatfield'],
+      ['Crowe','Chassart','Chatfield'],
       ['MacIntyre','Matsuyama','Smalley'],
       ['Garnett','Wu','J. Smith'],
       ['Saddier','Nyholm','Dou'],
