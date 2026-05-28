@@ -9662,7 +9662,7 @@ function renderSimpleView() {
       <div class="sv-locked-grid">
         ${lockedCard('🎾','Tennis',[90,75,60,85])}
         ${lockedCard('⛳','Golf',[80,95,55,70])}
-        ${lockedCard('📊','Live Scores',[100,85,70,90])}
+        ${lockedCard('⚾','MLB',[100,85,70,90])}
         ${lockedCard('🏀','NBA + Lineups',[75,90,65,80])}
       </div>
       <button class="sv-locked-unlock" onclick="openUpgradeModal()">Unlock Everything. From $7.99/week →</button>
