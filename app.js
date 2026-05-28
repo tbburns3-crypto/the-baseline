@@ -9228,6 +9228,7 @@ function renderTicketsPage() {
     ${mlbAggCards.length ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(mlbAggCards)}` : ''}
     ${mlbPerGameSection}
     ${!mlbHasAny ? `<div class="tp-sport-empty">No MLB picks yet${off===0?' - visit MLB Picks tab to load data':''}</div>` : ''}
+    ${mlbHasAny ? '<div class="tp-tip-mini">💡 Consider a round robin on these picks</div>' : ''}
   </div>`;
 
   // ── Tennis ──
@@ -9247,6 +9248,7 @@ function renderTicketsPage() {
   const tennisHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">🎾 Tennis</div>
     ${tnCards.length ? grid(tnCards) : `<div class="tp-sport-empty">No tennis picks yet${off===0?' - visit the Tennis tab':''}</div>`}
+    ${tnCards.length ? '<div class="tp-tip-mini">💡 High-odds tennis picks are great for round robins</div>' : ''}
   </div>`;
 
   // ── Golf ──
@@ -9273,6 +9275,7 @@ function renderTicketsPage() {
     <div class="tp-sport-hdr">⛳ Golf</div>
     ${golfCards.length ? grid(golfCards) : `<div class="tp-sport-empty">No golf picks yet${off===0?' - visit the Golf tab':''}</div>`}
     ${golfMiniCards.length ? `<div class="tp-sub-hdr tp-mini-hdr">&#11088; Golf Mini Ticket · Top 5 Most Confident</div>${grid(golfMiniCards)}` : ''}
+    ${golfCards.length ? '<div class="tp-tip-mini">💡 Golf is the best sport for round robins. High odds = big payouts with protection</div>' : ''}
   </div>`;
 
   // ── NBA ──
@@ -9286,6 +9289,7 @@ function renderTicketsPage() {
     ${nbaAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nbaAggCards)}` : ''}
     ${nbaPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nbaPerGameCards)}` : ''}
     ${!nbaHasAny ? `<div class="tp-sport-empty">No NBA picks yet${off===0?' - visit the NBA tab':''}</div>` : ''}
+    ${nbaHasAny ? '<div class="tp-tip-mini">💡 Consider a round robin on these picks</div>' : ''}
   </div>`;
 
   // ── WNBA ──
@@ -9299,6 +9303,7 @@ function renderTicketsPage() {
     ${wnbaAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(wnbaAggCards)}` : ''}
     ${wnbaPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(wnbaPerGameCards)}` : ''}
     ${!wnbaHasAny ? `<div class="tp-sport-empty">No WNBA picks yet${off===0?' - visit the WNBA tab':''}</div>` : ''}
+    ${wnbaHasAny ? '<div class="tp-tip-mini">💡 Consider a round robin on these picks</div>' : ''}
   </div>`;
 
   // ── NHL ──
@@ -9312,6 +9317,7 @@ function renderTicketsPage() {
     ${nhlAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nhlAggCards)}` : ''}
     ${nhlPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nhlPerGameCards)}` : ''}
     ${!nhlHasAny ? `<div class="tp-sport-empty">No NHL picks yet${off===0?' - visit the NHL tab':''}</div>` : ''}
+    ${nhlHasAny ? '<div class="tp-tip-mini">💡 Consider a round robin on these picks</div>' : ''}
   </div>`;
 
   // ── NFL ──
@@ -9325,6 +9331,7 @@ function renderTicketsPage() {
     ${nflAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nflAggCards)}` : ''}
     ${nflPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nflPerGameCards)}` : ''}
     ${!nflHasAny ? `<div class="tp-sport-empty">No NFL picks yet${off===0?' - NFL season runs Sep–Feb':''}</div>` : ''}
+    ${nflHasAny ? '<div class="tp-tip-mini">💡 Consider a round robin on these picks</div>' : ''}
   </div>`;
 
   el.innerHTML = `<div class="tp-page">
@@ -9334,6 +9341,10 @@ function renderTicketsPage() {
     ${todayPicksHTML}
     ${ystTicketHTML}
     ${mlbHTML}${tennisHTML}${golfHTML}${nbaHTML}${wnbaHTML}${nhlHTML}${nflHTML}
+    <div class="sv-pro-tip" style="margin-top:16px">
+      <span class="sv-pro-tip-label">💡 Pro Tip</span>
+      Round robins are your best friend, especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
+    </div>
   </div>`;
 }
 

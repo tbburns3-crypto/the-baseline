@@ -2111,6 +2111,7 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-locked-unlock:hover { background: #00ff87; }
 .sv-pro-tip { margin-top: 12px; background: rgba(0,230,118,.06); border: 1px solid rgba(0,230,118,.18); border-radius: 9px; padding: 12px 14px; font-size: .78rem; color: #7abf8a; line-height: 1.6; }
 .sv-pro-tip-label { font-weight: 800; color: var(--accent); margin-right: 6px; }
+.tp-tip-mini { font-size: .72rem; color: #4a7c59; padding: 8px 4px 2px; line-height: 1.5; }
 
 /* ── TICKETS PAGE ── */
 .tp-page { padding: 12px 12px 32px; }
