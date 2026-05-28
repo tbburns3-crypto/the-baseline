@@ -1029,14 +1029,24 @@ function renderMatches(all) {
       }
       liveTournMap.get(tKey).matches.push(m);
     }
-    const tournBlocks = [...liveTournMap.values()].map(t => {
+    const LIVE_TIER_ORDER = { slam: 0, masters: 1, '500': 2, '250': 3, chal: 4, itf: 5 };
+    const ROUND_ORDER = { final: 0, semi: 1, quarter: 2, r4: 3, mid: 4, r3: 5, r2: 6, r1: 7, unknown: 8 };
+    const sortedLiveTourns = [...liveTournMap.values()].sort((a, b) => {
+      const ta = LIVE_TIER_ORDER[tournamentTier(a.matches[0])] ?? 6;
+      const tb = LIVE_TIER_ORDER[tournamentTier(b.matches[0])] ?? 6;
+      return ta !== tb ? ta - tb : a.name.localeCompare(b.name);
+    });
+    const tournBlocks = sortedLiveTourns.map(t => {
       const sc = surfaceClass(t.surface);
+      const sortedLiveM = [...t.matches].sort((a, b) =>
+        (ROUND_ORDER[tennisRound(a)] ?? 8) - (ROUND_ORDER[tennisRound(b)] ?? 8)
+      );
       return `<div class="live-tourn-block">
         <div class="live-tourn-hdr">
           <span class="surface-dot ${sc}" title="${esc(t.surface || 'hard')}"></span>
           <span class="live-tourn-name">${esc(t.name)}</span>
         </div>
-        ${t.matches.map(m => buildMatchRow(m, 'live')).join('')}
+        ${sortedLiveM.map(m => buildMatchRow(m, 'live')).join('')}
       </div>`;
     }).join('');
     html += `
@@ -1100,9 +1110,9 @@ function buildGroup(g, catKey = '') {
   const hasLive = g.matches.some(m => isLive(m.event_status));
   const sc = surfaceClass(g.surface);
   const sortedM = [...g.matches].sort((a, b) => {
-    const al = isLive(a.event_status) ? 0 : 1;
-    const bl = isLive(b.event_status) ? 0 : 1;
-    if (al !== bl) return al - bl;
+    const stateOf = m => isLive(m.event_status) ? 0 : isFinished(m.event_status) ? 2 : 1;
+    const sa = stateOf(a), sb = stateOf(b);
+    if (sa !== sb) return sa - sb;
     return (a.event_time || '').localeCompare(b.event_time || '');
   });
 
