@@ -1,52 +1,77 @@
-const CACHE = 'baseline-v1';
-const SHELL = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/app.js',
+// ── Bump CACHE_VER with every deploy so stale caches are wiped ──
+const CACHE_VER = 'baseline-v309';
+
+const PRECACHE = [
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
-  '/favicon.svg'
+  '/favicon.svg',
 ];
 
-// Install: cache app shell
+// Install: pre-cache static assets, take over immediately
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE_VER)
+      .then(c => c.addAll(PRECACHE))
+      .then(() => self.skipWaiting())
   );
 });
 
-// Activate: clean up old caches
+// Activate: delete every old cache, claim all tabs
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_VER).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch: network-first for API calls, cache-first for app shell
 self.addEventListener('fetch', e => {
-  const url = new URL(e.request.url);
+  const req = e.request;
+  const url = new URL(req.url);
 
-  // Always go to network for external APIs and Supabase
+  // External APIs and Supabase: always pass through, never cache
   if (url.hostname !== location.hostname) {
-    e.respondWith(fetch(e.request).catch(() => new Response('', { status: 503 })));
+    e.respondWith(fetch(req).catch(() => new Response('', { status: 503 })));
     return;
   }
 
-  // Cache-first for local assets, network fallback
+  // HTML (index.html, root, any .html): network-first so refreshes always load latest
+  const acceptsHTML = req.headers.get('Accept')?.includes('text/html');
+  const isHTML = acceptsHTML || url.pathname.endsWith('.html') || url.pathname === '/';
+  if (isHTML) {
+    e.respondWith(
+      fetch(req)
+        .then(res => {
+          if (res.ok) caches.open(CACHE_VER).then(c => c.put(req, res.clone()));
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Versioned assets (app.js?v=309, style.css?v=309): cache-first - safe because version param changes with each deploy
+  if (url.search.includes('v=')) {
+    e.respondWith(
+      caches.match(req).then(cached => {
+        if (cached) return cached;
+        return fetch(req).then(res => {
+          if (res.ok) caches.open(CACHE_VER).then(c => c.put(req, res.clone()));
+          return res;
+        });
+      })
+    );
+    return;
+  }
+
+  // Everything else (icons, manifest, fonts): network-first, cache as fallback
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const networkFetch = fetch(e.request).then(res => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
-        }
+    fetch(req)
+      .then(res => {
+        if (res.ok) caches.open(CACHE_VER).then(c => c.put(req, res.clone()));
         return res;
-      });
-      return cached || networkFetch;
-    })
+      })
+      .catch(() => caches.match(req))
   );
 });
