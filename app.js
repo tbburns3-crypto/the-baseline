@@ -4529,20 +4529,27 @@ function buildNBAPicksCard(g, summary) {
       }
       if (!playerMap.size) continue;
       const playerRows = [...playerMap.values()].slice(0, 3).map(p => {
-        const stored  = getPicks()[`plr_${g.id}_${p.id}_pts`];
-        const icon    = stored?.result === 'win' ? '✓' : stored?.result === 'loss' ? '✗' : '';
-        const cls     = stored?.result === 'win' ? 'nba-pick-win' : stored?.result === 'loss' ? 'nba-pick-loss' : '';
-        const statStr = Object.values(p.stats).map(s => `${s.val} ${s.label}`).join(' · ');
+        const pickKey  = `plr_${g.id}_${p.id}_pts`;
+        const stored   = getPicks()[pickKey];
+        const icon     = stored?.result === 'win' ? '✓' : stored?.result === 'loss' ? '✗' : '';
+        const cls      = stored?.result === 'win' ? 'nba-pick-win' : stored?.result === 'loss' ? 'nba-pick-loss' : '';
+        const pickLine = stored?.stat && stored.stat !== '-' ? stored.stat : '';
+        const suppStats = Object.entries(p.stats)
+          .filter(([k]) => !k.includes('point'))
+          .map(([, s]) => `${s.val} ${s.label}`).join(' · ');
+        const statDisplay = pickLine
+          ? `<span class="nba-pick-line">${esc(pickLine)}</span>${suppStats ? `<span class="nba-supp-stat">${esc(suppStats)}</span>` : ''}`
+          : esc(Object.values(p.stats).map(s => `${s.val} ${s.label}`).join(' · '));
         return `<div class="nba-player-row ${cls}">
           <span class="nba-pick-icon">${icon}</span>
           <span class="nba-player-pos">${esc(p.pos)}</span>
           <span class="nba-player-name">${esc(p.name)}</span>
           <span class="nba-player-team">${esc(tAbbr)}</span>
-          <span class="nba-player-stat">${esc(statStr)}</span>
+          <span class="nba-player-stat">${statDisplay}</span>
         </div>`;
       }).join('');
       blocksHTML += `<div class="nba-team-block">
-        <div class="nba-team-block-hdr">${esc(tAbbr)} Season Avg</div>
+        <div class="nba-team-block-hdr">${esc(tAbbr)} Top Scorer Pick</div>
         ${playerRows}
       </div>`;
     }
@@ -4633,7 +4640,7 @@ async function loadOtherPicksPage(sport) {
 
     if (_loadSeq !== seq) return;
     const cards = games.map(g => isNBALeague ? buildNBAPicksCard(g, summaryMap.get(String(g.id))) : buildWinPredCard(g)).join('');
-    const note  = off !== 0 ? '' : `<div class="pc-data-note">${isNBALeague ? 'Win prediction · season stat leaders from ESPN' : 'Win predictions based on season records · ESPN odds where available'}</div>`;
+    const note  = off !== 0 ? '' : `<div class="pc-data-note">${isNBALeague ? 'Win prediction + top scorer points pick · supporting stats from ESPN' : 'Win predictions based on season records · ESPN odds where available'}</div>`;
     area.innerHTML = nav + note + `<div class="picks-cards">${cards}</div>`;
     updatePicksDisplay();
   } catch (err) {
