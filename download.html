@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download The Baseline - Android App</title>
+  <meta name="description" content="Get The Baseline on Android. Live scores and daily picks across tennis, MLB, NBA, NHL, soccer and more.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#0a1a0e">
+  <style>
+    :root {
+      --bg: #0a1a0e;
+      --bg-2: #112016;
+      --card: #172c1c;
+      --border: #1f3a28;
+      --accent: #00e676;
+      --text: #e8f5e9;
+      --muted: #4a7c59;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    .brand {
+      font-size: .85rem;
+      letter-spacing: .12em;
+      color: var(--muted);
+      margin-bottom: 2.5rem;
+      text-transform: uppercase;
+    }
+    .brand span { color: var(--accent); font-size: 1.1rem; margin-right: .4rem; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.2rem 2rem;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .icon { font-size: 3.5rem; margin-bottom: 1rem; }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: .5rem;
+      letter-spacing: -.01em;
+    }
+
+    .tagline {
+      font-size: .9rem;
+      color: #7ab890;
+      margin-bottom: 1.8rem;
+      line-height: 1.5;
+    }
+
+    .sports-row {
+      display: flex;
+      justify-content: center;
+      gap: .5rem;
+      flex-wrap: wrap;
+      margin-bottom: 2rem;
+    }
+    .sport-pill {
+      background: rgba(0,230,118,.08);
+      border: 1px solid rgba(0,230,118,.18);
+      border-radius: 20px;
+      padding: .28rem .7rem;
+      font-size: .75rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .dl-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .6rem;
+      background: var(--accent);
+      color: #0a1a0e;
+      font-size: 1rem;
+      font-weight: 800;
+      border: none;
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      width: 100%;
+      cursor: pointer;
+      text-decoration: none;
+      letter-spacing: .01em;
+      transition: filter .18s, transform .15s;
+    }
+    .dl-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .dl-btn .dl-icon { font-size: 1.3rem; }
+
+    .dl-size { font-size: .72rem; font-weight: 500; opacity: .7; }
+
+    .steps {
+      margin-top: 1.8rem;
+      text-align: left;
+    }
+    .steps-title {
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: .8rem;
+    }
+    .step {
+      display: flex;
+      gap: .75rem;
+      align-items: flex-start;
+      margin-bottom: .65rem;
+    }
+    .step-num {
+      background: rgba(0,230,118,.12);
+      color: var(--accent);
+      font-size: .7rem;
+      font-weight: 800;
+      width: 1.4rem;
+      height: 1.4rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: .05rem;
+    }
+    .step-text {
+      font-size: .82rem;
+      color: #7ab890;
+      line-height: 1.45;
+    }
+    .step-text strong { color: var(--text); }
+
+    .disclaimer {
+      margin-top: 2rem;
+      font-size: .68rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .footer {
+      margin-top: 2.5rem;
+      font-size: .72rem;
+      color: var(--muted);
+    }
+    .footer a { color: var(--muted); text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <div class="brand"><span>◉</span> THE BASELINE</div>
+
+  <div class="card">
+    <div class="icon">📲</div>
+    <h1>Get The Baseline</h1>
+    <p class="tagline">Live scores and data-driven daily picks across every major sport. Free to download.</p>
+
+    <div class="sports-row">
+      <span class="sport-pill">🎾 Tennis</span>
+      <span class="sport-pill">⚾ MLB</span>
+      <span class="sport-pill">🏀 NBA</span>
+      <span class="sport-pill">🏒 NHL</span>
+      <span class="sport-pill">⚽ Soccer</span>
+      <span class="sport-pill">🏈 NFL</span>
+    </div>
+
+    <a class="dl-btn" href="https://xxbymjminigvhfetfvwe.supabase.co/storage/v1/object/public/downloads/Baseline.apk" download="Baseline.apk">
+      <span class="dl-icon">⬇</span>
+      Download for Android
+      <span class="dl-size">~1 MB</span>
+    </a>
+
+    <div class="steps">
+      <div class="steps-title">How to install</div>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">Tap the button above to download the APK file</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">Open the downloaded file from your notifications or Downloads folder</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">If prompted, tap <strong>Settings</strong> and enable <strong>Install unknown apps</strong>, then go back and tap Install</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-text">Done - The Baseline icon appears on your home screen</div>
+      </div>
+    </div>
+
+    <p class="disclaimer">For entertainment purposes only. Not financial or wagering advice.</p>
+  </div>
+
+  <div class="footer">
+    <a href="/">thebaseline.pro</a> &nbsp;&middot;&nbsp;
+    <a href="terms.html">Terms</a> &nbsp;&middot;&nbsp;
+    <a href="privacy.html">Privacy</a>
+  </div>
+
+</body>
+</html>
