@@ -9444,7 +9444,39 @@ function renderSimpleView() {
         <div class="sv-pending-msg">Check back after 5:00 PM ET for tonight's picks</div>
       </div>`;
 
-  el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>`;
+  const upsellBanner = _hasFullAccess() ? '' : `
+    <div class="sv-upsell-banner" onclick="openUpgradeModal()">
+      <div class="sv-upsell-inner">
+        <div class="sv-upsell-eyebrow">◉ THE BASELINE PREMIUM</div>
+        <div class="sv-upsell-heading">Every sport. Live scores. Full access.</div>
+        <div class="sv-upsell-sports">🎾 Tennis &nbsp;·&nbsp; ⛳ Golf &nbsp;·&nbsp; 🏀 NBA &nbsp;·&nbsp; ⚾ MLB &nbsp;·&nbsp; 📊 Live Scores &nbsp;·&nbsp; 🏒 NHL</div>
+      </div>
+      <div class="sv-upsell-right">
+        <div class="sv-upsell-price">From <strong>$7.99</strong><span>/wk</span></div>
+        <button class="sv-upsell-btn" onclick="event.stopPropagation();openUpgradeModal()">See Plans →</button>
+      </div>
+    </div>`;
+
+  const lockedCard = (icon, sport, rows) => `
+    <div class="sv-locked-card" onclick="openUpgradeModal()">
+      <div class="sv-locked-sport-name">${icon} ${sport}</div>
+      <div class="sv-locked-bars">${rows.map(w => `<div class="sv-lb" style="width:${w}%"></div>`).join('')}</div>
+      <div class="sv-locked-overlay"><span class="sv-lock-icon">🔒</span><span class="sv-lock-label">PREMIUM</span></div>
+    </div>`;
+
+  const lockedSection = _hasFullAccess() ? '' : `
+    <div class="sv-locked-section">
+      <div class="sv-locked-hdr">🔒 Premium — What You're Missing Today</div>
+      <div class="sv-locked-grid">
+        ${lockedCard('🎾','Tennis',[90,75,60,85])}
+        ${lockedCard('⛳','Golf',[80,95,55,70])}
+        ${lockedCard('📊','Live Scores',[100,85,70,90])}
+        ${lockedCard('🏀','NBA + Lineups',[75,90,65,80])}
+      </div>
+      <button class="sv-locked-unlock" onclick="openUpgradeModal()">Unlock Everything — From $7.99/week →</button>
+    </div>`;
+
+  el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${upsellBanner}${lockedSection}`;
 }
 
 // BFCache restore: reset checkout buttons that were disabled before navigating to Stripe
