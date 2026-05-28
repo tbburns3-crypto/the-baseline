@@ -955,6 +955,7 @@ function wsConnect() {
       if (S.pollTimer) { clearInterval(S.pollTimer); S.pollTimer = null; }
       setConn('connected', 'Live updates active');
       try { S.ws.send(JSON.stringify({ action: 'subscribe', APIkey: CFG.tennis.key })); } catch {}
+      loadLivescores(); // seed event_serve for currently-live matches on connect
     };
 
     S.ws.onmessage = (ev) => {
