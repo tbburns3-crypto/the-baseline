@@ -9849,16 +9849,76 @@ let _randState = {
   lockedKeys: new Set(), // _pickKey values that are locked
 };
 
+const _RAND_SAVED_KEY = '_baseline_rand_ticket_v1';
+
 function _randGetPool() {
   const today = dateStrLocal(0);
+  const now   = Date.now();
   return Object.entries(getPicks())
-    .filter(([k, p]) =>
-      p.type !== 'player' &&
-      p.result === null &&
-      p.date === today &&
-      _randState.sports.has(p.sport || 'tennis')
-    )
+    .filter(([k, p]) => {
+      if (p.type === 'player')  return false;  // player props only, exclude
+      if (p.result !== null)    return false;  // already resolved
+      if (p.date !== today)     return false;  // today only
+      if (!_randState.sports.has(p.sport || 'tennis')) return false;
+
+      // Tennis: exclude if match is already live or finished
+      if ((p.sport || 'tennis') === 'tennis') {
+        const eventKey = k.replace(/^tn_/, '');
+        const match = S.matches.get(String(eventKey));
+        if (match && (isLive(match.event_status) || isFinished(match.event_status))) return false;
+      }
+
+      // Any sport: if game start time is stored and has passed (5-min grace), exclude
+      if (p.gameTime) {
+        const startMs = new Date(p.gameTime).getTime();
+        if (!isNaN(startMs) && startMs < now - 5 * 60 * 1000) return false;
+      }
+
+      return true;
+    })
     .map(([k, p]) => ({ ...p, _pickKey: k }));
+}
+
+function saveRandTicket() {
+  if (!_randState.ticket.length) return;
+  try {
+    localStorage.setItem(_RAND_SAVED_KEY, JSON.stringify({
+      ticket:     _randState.ticket,
+      lockedKeys: [..._randState.lockedKeys],
+      count:      _randState.count,
+      sports:     [..._randState.sports],
+      savedAt:    dateStrLocal(0),
+    }));
+  } catch {}
+  const btn = document.getElementById('rand-save-btn');
+  if (btn) {
+    btn.textContent = '✓ Saved!';
+    btn.disabled = true;
+    setTimeout(() => { const b = document.getElementById('rand-save-btn'); if (b) { b.textContent = '💾 Save Ticket'; b.disabled = false; } }, 2000);
+  }
+}
+
+function _loadSavedRandTicket() {
+  try {
+    const raw = localStorage.getItem(_RAND_SAVED_KEY);
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    if (saved.savedAt !== dateStrLocal(0)) { localStorage.removeItem(_RAND_SAVED_KEY); return false; }
+    _randState.ticket     = saved.ticket || [];
+    _randState.lockedKeys = new Set(saved.lockedKeys || []);
+    _randState.count      = saved.count  || 5;
+    _randState.sports     = new Set(saved.sports || _RAND_SPORTS_ALL);
+    return _randState.ticket.length > 0;
+  } catch { return false; }
+}
+
+function clearRandTicket() {
+  try { localStorage.removeItem(_RAND_SAVED_KEY); } catch {}
+  _randState.ticket     = [];
+  _randState.lockedKeys = new Set();
+  renderRandTicket();
+  const note = document.getElementById('rand-pool-note');
+  if (note) { const n = _randGetPool().length; note.textContent = `${n} pick${n !== 1 ? 's' : ''} available today across selected sports`; }
 }
 
 function doRandomize() {
@@ -9954,9 +10014,13 @@ function renderRandTicket() {
       </div>
       <div class="rand-pick-list">${rows}</div>
       <div class="rand-ticket-footer">
-        ${allLocked
-          ? `<span class="rand-all-locked-note">All picks locked in.</span>`
-          : `<button class="rand-reroll-btn" onclick="doRandomize()">&#x1F500; Re-Roll Unlocked Picks</button>`}
+        <div class="rand-ticket-actions">
+          ${allLocked
+            ? `<span class="rand-all-locked-note">All picks locked in.</span>`
+            : `<button class="rand-reroll-btn" onclick="doRandomize()">&#x1F500; Re-Roll Unlocked</button>`}
+          <button id="rand-save-btn" class="rand-save-btn" onclick="saveRandTicket()">&#x1F4BE; Save Ticket</button>
+        </div>
+        <button class="rand-clear-btn" onclick="clearRandTicket()">&#x21BA; Start New Ticket</button>
       </div>
     </div>`;
 }
@@ -9964,6 +10028,7 @@ function renderRandTicket() {
 function renderRandomizer() {
   const area = document.getElementById('rand-area');
   if (!area) return;
+  _loadSavedRandTicket(); // restore saved ticket for today if one exists
   const pool = _randGetPool();
 
   const sportBtns = _RAND_SPORTS_ALL.map(s =>

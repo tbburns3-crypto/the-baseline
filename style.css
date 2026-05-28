@@ -3054,11 +3054,29 @@ body.simple-mode #app-layout { display: none !important; }
 .rand-pick-team { font-size: .88rem; font-weight: 600; color: var(--text); margin-top: .13rem; }
 
 .rand-ticket-footer { padding: .72rem 1rem; text-align: center; }
+.rand-ticket-actions {
+  display: flex; align-items: center; justify-content: center;
+  gap: .6rem; margin-bottom: .45rem; flex-wrap: wrap;
+}
 .rand-reroll-btn {
   background: transparent; border: 1px solid var(--border);
   color: var(--text-muted); border-radius: 8px;
-  padding: .48rem 1.1rem; font-size: .83rem; cursor: pointer;
+  padding: .45rem 1rem; font-size: .82rem; cursor: pointer;
   transition: all .18s;
 }
 .rand-reroll-btn:hover { border-color: var(--accent); color: var(--accent); }
+.rand-save-btn {
+  background: rgba(0,230,118,.12); border: 1px solid rgba(0,230,118,.3);
+  color: var(--accent); border-radius: 8px;
+  padding: .45rem 1rem; font-size: .82rem; font-weight: 600;
+  cursor: pointer; transition: all .18s;
+}
+.rand-save-btn:hover { background: rgba(0,230,118,.22); }
+.rand-save-btn:disabled { opacity: .55; cursor: default; }
+.rand-clear-btn {
+  background: none; border: none; color: var(--text-muted);
+  font-size: .72rem; cursor: pointer; padding: .2rem;
+  transition: color .18s;
+}
+.rand-clear-btn:hover { color: var(--text); }
 .rand-all-locked-note { font-size: .78rem; color: var(--text-muted); }
