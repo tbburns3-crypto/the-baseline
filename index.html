@@ -30,7 +30,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0a1a0e">
-  <link rel="stylesheet" href="style.css?v=304">
+  <link rel="stylesheet" href="style.css?v=305">
 </head>
 <body>
 
@@ -40,7 +40,42 @@
       <button class="auth-modal-close" onclick="closeUpgradeModal()">✕</button>
       <div class="auth-modal-brand">◉ THE BASELINE</div>
       <h2 class="upgrade-title">Unlock Full Access</h2>
-      <p class="upgrade-desc">Daily picks across every sport, live scores, MLB player props, and more.</p>
+      <p class="upgrade-desc">Curated picks, personalized tickets, and live scores across 8 sports - every single day.</p>
+
+      <!-- Feature pills -->
+      <div class="up-feature-grid">
+        <div class="up-feat-pill">🎲 Ticket Randomizer</div>
+        <div class="up-feat-pill">🎫 Daily Tickets</div>
+        <div class="up-feat-pill">⚾ Player Props</div>
+        <div class="up-feat-pill">📊 8 Sports</div>
+        <div class="up-feat-pill">⚡ Live Scores</div>
+        <div class="up-feat-pill">📈 W/L Tracker</div>
+      </div>
+
+      <!-- Randomizer preview card -->
+      <div class="up-rand-preview">
+        <div class="up-rand-preview-hdr">
+          <div class="up-rand-preview-title">🎲 Ticket Randomizer <span class="up-new-badge">NEW</span></div>
+          <div class="up-rand-preview-sub">Choose your sports, choose your count, get a custom ticket built from today's real picks.</div>
+        </div>
+        <div class="up-rand-mini-ticket">
+          <div class="up-rand-mini-hdr"><span>Your Ticket</span><span>3 Picks</span></div>
+          <div class="up-rand-mini-row">
+            <span class="up-rand-mini-lock">🔒</span>
+            <div><div class="up-rand-mini-sport">🎾 TENNIS ●●●</div><div class="up-rand-mini-team">&#8594; Sinner</div></div>
+          </div>
+          <div class="up-rand-mini-row">
+            <span class="up-rand-mini-lock">🔓</span>
+            <div><div class="up-rand-mini-sport">⚾ MLB ●●○</div><div class="up-rand-mini-team">&#8594; Dodgers</div></div>
+          </div>
+          <div class="up-rand-mini-row">
+            <span class="up-rand-mini-lock">🔓</span>
+            <div><div class="up-rand-mini-sport">🏀 NBA ●●●</div><div class="up-rand-mini-team">&#8594; Celtics</div></div>
+          </div>
+          <div class="up-rand-mini-reroll">🔀 Re-Roll Unlocked Picks</div>
+        </div>
+      </div>
+
       <div class="upgrade-plans">
         <div class="upgrade-plan">
           <div class="plan-label">Weekly</div>
@@ -339,7 +374,7 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=304"></script>
+  <script src="app.js?v=305"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
