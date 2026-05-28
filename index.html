@@ -30,7 +30,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0a1a0e">
-  <link rel="stylesheet" href="style.css?v=284">
+  <link rel="stylesheet" href="style.css?v=285">
 </head>
 <body>
 
@@ -63,6 +63,7 @@
         </div>
       </div>
       <div id="upgrade-modal-error" class="upgrade-error-msg" style="display:none"></div>
+      <p class="upgrade-signin-row">Already have an account? <button class="upgrade-signin-link" onclick="closeUpgradeModal();openAuthModal()">Sign In</button></p>
       <p class="upgrade-fine">Secure checkout via Stripe. Cancel anytime.<br>
         <a href="terms.html" target="_blank" style="color:#555;font-size:11px;">Terms of Service</a>
         &nbsp;&middot;&nbsp;
@@ -332,7 +333,7 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=284"></script>
+  <script src="app.js?v=285"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
