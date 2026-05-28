@@ -77,6 +77,9 @@ input { font: inherit; }
   display: flex;
   gap: 4px;
   flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .sport-tab {
   padding: 6px 14px;
@@ -99,7 +102,6 @@ input { font: inherit; }
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: auto;
   flex-shrink: 0;
 }
 #conn-indicator {
