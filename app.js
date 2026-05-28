@@ -1026,7 +1026,7 @@ function renderMatches(all) {
     for (const m of liveMatches) {
       const tName = m.tournament_name || m.league_name || m.event_type_type || 'Other';
       const cat   = matchCategory(m.event_type_type || '');
-      const label = cat === 'atp' ? " — Men's" : cat === 'wta' ? " — Women's" : cat === 'doubles' ? ' — Doubles' : '';
+      const label = cat === 'atp' ? " (Men's)" : cat === 'wta' ? " (Women's)" : cat === 'doubles' ? ' (Doubles)' : '';
       const tKey  = tName + '_' + cat;
       if (!liveTournMap.has(tKey)) {
         liveTournMap.set(tKey, { name: tName + label, surface: m.tournament_surface || inferSurface(tName), matches: [] });
@@ -4376,12 +4376,30 @@ function buildTomorrowPickCard(m) {
     conf = Math.max(1, Math.min(3, conf + tennisCalOffset));
   }
 
-  // Record the pick with full analysis — pass tier, bo5, and match date so ticket scoring works correctly
+  // Record pick with full analysis. For finished matches, overwrite even a resolved pick
+  // so the stored pick always matches what the full data model says (not ranking-only guess).
   if (pickName && m.event_date && m.event_date >= dateStrLocal(0)) {
     const pickId  = 'tn_' + m.event_key;
     const surfTag = surface ? ` (${surface})` : '';
     const matchup = `${l1} vs ${l2}${surfTag}`;
-    recordPick(pickId, lastName(pickName), matchup, 'tennis', conf, true, m.event_date, tier, { matchDate: m.event_date, bo5: bo5 || undefined, cat: matchCategory(m.event_type_type || '') });
+    const meta    = { matchDate: m.event_date, bo5: bo5 || undefined, cat: matchCategory(m.event_type_type || '') };
+    if (isFinished(m.event_status)) {
+      // Overwrite preliminary pick with full-data result, then re-resolve
+      const picks = getPicks();
+      const entry = { team: lastName(pickName), date: m.event_date, result: null,
+                      matchup, sport: 'tennis', conf, tier };
+      Object.assign(entry, meta);
+      picks[pickId] = entry;
+      savePicks(picks);
+      let winnerLN = '';
+      if (m.event_winner === 'First Player')       winnerLN = lastName(m.event_first_player  || '');
+      else if (m.event_winner === 'Second Player') winnerLN = lastName(m.event_second_player || '');
+      else if (m.event_winner)                     winnerLN = lastName(m.event_winner);
+      if (winnerLN) resolvePick(pickId, winnerLN);
+      updatePicksDisplay();
+    } else {
+      recordPick(pickId, lastName(pickName), matchup, 'tennis', conf, true, m.event_date, tier, meta);
+    }
   }
 
   // Confidence dots
@@ -4661,7 +4679,7 @@ function buildSoccerPicksCard(g) {
   }
 
   if (!fin && !live && pickTeam) {
-    recordPick(String(g.id), pickTeam.split(' ').pop(), matchup, 'soccer', pickConf);
+    recordPick(String(g.id), pickTeam.split(' ').pop(), matchup, 'soccer', pickConf, true);
   }
 
   const stored = getPicks()[String(g.id)];
@@ -4685,7 +4703,7 @@ function buildSoccerPicksCard(g) {
 
   const pickLine = pickTeam
     ? `<span class="pc-fav">${esc(pickTeam.split(' ').pop())} to Win ${'●'.repeat(pickConf)}${'○'.repeat(3-pickConf)}</span>`
-    : `<span class="pc-fav pc-fav-even">Draw possible — no strong lean</span>`;
+    : `<span class="pc-fav pc-fav-even">Draw possible, no strong lean</span>`;
 
   return `<div class="picks-card">
     <div class="pc-league-badge">${esc(g.league)}</div>
@@ -4758,9 +4776,17 @@ async function loadSoccerPicksPage() {
       area.innerHTML = '<div class="empty-state"><p>No soccer matches today.</p></div>';
       return;
     }
-    allGames.forEach(g => autoRecordAndResolvePick(g));
-    const note  = '<div class="pc-data-note">3-outcome model · Home & away W-D-L form · Odds where available</div>';
+    // Build cards first — records picks with force=true using pure data model
     const cards = allGames.map(g => buildSoccerPicksCard(g)).join('');
+    // Then resolve finished games (W/L) without overwriting pre-game picks
+    allGames.forEach(g => {
+      const { fin } = gameRowState(g);
+      if (!fin || g.awayScore === '' || g.homeScore === '') return;
+      const aS = parseFloat(g.awayScore) || 0, hS = parseFloat(g.homeScore) || 0;
+      if (aS !== hS) resolvePick(String(g.id), aS > hS ? g.awayTeam.split(' ').pop() : g.homeTeam.split(' ').pop());
+      else resolvePick(String(g.id), '__draw__');
+    });
+    const note  = '<div class="pc-data-note">3-outcome model · Home & away W-D-L form · Odds where available</div>';
     area.innerHTML = note + `<div class="picks-cards">${cards}</div>`;
     updatePicksDisplay();
   } catch (err) {
