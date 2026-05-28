@@ -7848,7 +7848,11 @@ async function verifyOtpCode() {
 }
 
 async function signOut() {
+  sessionStorage.removeItem('_tb_bypass');
   localStorage.removeItem(_ROLE_CACHE_KEY);
+  _currentUser = null;
+  _auth.clear();
+  updateAuthUI();
   await _sbClient.auth.signOut();
 }
 

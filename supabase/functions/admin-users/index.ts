@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
 }
 
 Deno.serve(async (req) => {
@@ -48,7 +49,8 @@ Deno.serve(async (req) => {
 
   // ── PATCH: update a user's role ──
   if (req.method === 'PATCH') {
-    const body = await req.json()
+    let body: any
+    try { body = await req.json() } catch { return respond({ error: 'Invalid request body' }, 400) }
     const { userId, role } = body
     if (!userId || !role) return respond({ error: 'Missing userId or role' }, 400)
     if (!['free', 'paid', 'banned', 'admin'].includes(role)) return respond({ error: 'Invalid role' }, 400)

@@ -146,7 +146,7 @@
       <!-- Step 2: code -->
       <div id="adm-login-code" class="adm-login" style="display:none">
         <div class="adm-login-title">◉ Check Your Email</div>
-        <p class="adm-login-sub">Enter the 6-digit code sent to <strong id="adm-code-email"></strong>.<br>Or click the link in the email — this page will sign in automatically.</p>
+        <p class="adm-login-sub">Enter the 6-digit code sent to <strong id="adm-code-email"></strong>.<br>Or click the link in the email. This page will sign in automatically.</p>
         <input id="adm-code-input" class="adm-input" type="text" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')verifyAdminOtp()">
         <button id="adm-verify-btn" class="adm-login-btn" onclick="verifyAdminOtp()">Sign In</button>
         <div id="adm-code-err" class="adm-login-err"></div>
@@ -258,7 +258,7 @@
         showPanel();
         loadUsers();
       } catch (e) {
-        const msg = e.name === 'AbortError' ? 'Request timed out — check your connection.' : e.message;
+        const msg = e.name === 'AbortError' ? 'Request timed out. Check your connection.' : e.message;
         showGate(`<h2>Error</h2><p>${msg}</p><br><button onclick="init()" class="adm-btn">Retry</button>`);
       }
     }
@@ -334,7 +334,7 @@
         if (data.error) throw new Error(data.error);
         renderUsersData(data.users || []);
       } catch (err) {
-        document.getElementById('adm-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#ff5252">Error: ${err.name === 'AbortError' ? 'Request timed out — try refreshing' : err.message}</td></tr>`;
+        document.getElementById('adm-tbody').innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:#ff5252">Error: ${err.name === 'AbortError' ? 'Request timed out. Try refreshing.' : err.message}</td></tr>`;
       }
     }
 
@@ -407,7 +407,8 @@
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_session.access_token}` },
           body: JSON.stringify({ userId, role }),
         });
-        const data = await res.json();
+        let data;
+        try { data = await res.json(); } catch { throw new Error(`Server error (${res.status}). Redeploy may be needed.`); }
         if (data.error) throw new Error(data.error);
         // Update local state without a full reload
         const user = _allUsers.find(u => u.id === userId);
