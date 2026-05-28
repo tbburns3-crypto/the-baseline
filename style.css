@@ -2140,6 +2140,7 @@ body.simple-mode #app-layout { display: none !important; }
 .tp-sport-section { margin-bottom: 22px; }
 .tp-sport-hdr { font-size: .68rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-bottom: 8px; }
 .tp-sub-hdr { font-size: .62rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); margin: 10px 0 6px; }
+.tp-mini-hdr { color: #ffd700; border-left: 3px solid #ffd700; padding-left: 8px; margin-top: 18px; }
 .tp-sport-empty { font-size: .78rem; color: var(--text-muted); padding: 8px 2px; }
 
 /* 2-column ticket grid */

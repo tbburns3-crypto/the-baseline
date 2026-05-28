@@ -8872,10 +8872,18 @@ function renderTicketsPage() {
     if (morn?.legs?.length) cards.push(renderTicketBlock('🌤 Day Ticket', morn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks, '', morn.date));
     if (eve?.legs?.length)  cards.push(renderTicketBlock('🌙 Night Ticket', eve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks, '', eve.date));
     else if (!eve) cards.push(`<div class="sv-ticket sv-ticket-pending"><div class="sv-ticket-hdr">🌙 Night Ticket</div><div class="sv-pending-msg">Check back after 5:00 PM ET for tonight's picks</div></div>`);
+    // Mini ticket — top 5 from each full ticket, members only
+    const miniCards = [];
+    if (_hasFullAccess()) {
+      const miniLegs = t => t.legs.slice(0, 5).map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')}));
+      if (morn?.legs?.length >= 5) miniCards.push(renderTicketBlock('🌤 Day Mini Ticket', miniLegs(morn), allPicks, '', morn.date));
+      if (eve?.legs?.length  >= 5) miniCards.push(renderTicketBlock('🌙 Night Mini Ticket', miniLegs(eve),  allPicks, '', eve.date));
+    }
     if (cards.length) {
       todayPicksHTML = `<div class="tp-sport-section">
         <div class="tp-sport-hdr">🎫 Today's Picks</div>
         ${grid(cards)}
+        ${miniCards.length ? `<div class="tp-sub-hdr tp-mini-hdr">&#11088; Mini Ticket &mdash; Top 5 Most Confident</div>${grid(miniCards)}` : ''}
       </div>`;
     }
   }
