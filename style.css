@@ -3087,19 +3087,22 @@ body.simple-mode #app-layout { display: none !important; }
 .rand-hist-title   { font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); margin-bottom: .8rem; }
 .rand-hist-card    { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: .9rem; overflow: hidden; }
 .rand-hist-card-hdr {
-  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
-  padding: .65rem .9rem; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: .45rem; flex-wrap: wrap;
+  padding: .6rem .9rem; border-bottom: 1px solid var(--border);
 }
 .rand-hist-date    { font-size: .82rem; font-weight: 700; color: var(--text); }
-.rand-hist-today   { font-size: .62rem; font-weight: 600; background: rgba(0,230,118,.14); color: var(--accent); border-radius: 5px; padding: .05rem .3rem; margin-left: .2rem; vertical-align: middle; }
-.rand-hist-meta    { font-size: .72rem; color: var(--text-muted); margin-left: auto; }
+.rand-hist-today   { font-size: .6rem; font-weight: 600; background: rgba(0,230,118,.14); color: var(--accent); border-radius: 5px; padding: .04rem .28rem; margin-left: .15rem; vertical-align: middle; }
+.rand-hist-time    { font-size: .72rem; color: var(--text-muted); }
+.rand-hist-meta    { font-size: .7rem; color: var(--text-muted); margin-left: auto; letter-spacing: .02em; }
 .rand-hist-wl      { font-size: .72rem; font-weight: 700; color: var(--accent); }
 .rand-hist-pending { font-size: .72rem; color: var(--text-muted); }
-.rand-hist-picks   { padding: .45rem .9rem .55rem; display: flex; flex-direction: column; gap: .38rem; }
-.rand-hist-pick    { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.rand-hist-picks   { padding: .4rem .9rem .5rem; display: flex; flex-direction: column; gap: .3rem; }
+.rand-hist-pick    { display: flex; align-items: center; gap: .4rem; }
+.rand-hist-pick-icon { font-size: .8rem; flex-shrink: 0; width: 1.1rem; text-align: center; }
 .rand-hist-pick-text { flex: 1; min-width: 0; }
 .rand-hist-pick-main { font-size: .8rem; font-weight: 600; color: var(--text); }
-.rand-hist-pick-sub  { font-size: .7rem; color: var(--text-muted); margin-top: .05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rand-hist-badge     { font-size: .62rem; font-weight: 700; border-radius: 5px; padding: .08rem .32rem; flex-shrink: 0; margin-top: .1rem; }
+.rand-hist-pick-sub  { font-size: .68rem; color: var(--text-muted); margin-top: .02rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rand-hist-badge     { font-size: .6rem; font-weight: 700; border-radius: 4px; padding: .06rem .28rem; flex-shrink: 0; min-width: 1.4rem; text-align: center; }
 .rand-hist-badge.win  { background: rgba(0,230,118,.16); color: var(--accent); }
 .rand-hist-badge.loss { background: rgba(255,80,80,.12); color: #f87171; }
+.rand-hist-badge.pend { background: rgba(255,255,255,.05); color: var(--text-muted); }

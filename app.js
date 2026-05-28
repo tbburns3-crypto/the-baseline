@@ -9870,9 +9870,9 @@ function _getRandHistory() {
 
 function _pushRandHistory(entry) {
   try {
-    const hist = _getRandHistory().filter(e => e.savedAt !== entry.savedAt);
-    hist.unshift(entry);
-    localStorage.setItem(_RAND_HISTORY_KEY, JSON.stringify(hist.slice(0, 14)));
+    const hist = _getRandHistory();
+    hist.unshift(entry); // each save is its own entry - never replace
+    localStorage.setItem(_RAND_HISTORY_KEY, JSON.stringify(hist.slice(0, 30)));
   } catch {}
 }
 
@@ -9938,9 +9938,10 @@ function renderRandHistory() {
   const picks = getPicks();
 
   const cards = history.map(entry => {
-    const dt    = new Date(entry.savedTs);
-    const label = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const isToday = entry.savedAt === dateStrLocal(0);
+    const dt      = new Date(entry.savedTs);
+    const dayLabel = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const timeLabel = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const isToday  = entry.savedAt === dateStrLocal(0);
 
     let wins = 0, losses = 0, pending = 0;
     for (const p of entry.ticket) {
@@ -9951,23 +9952,29 @@ function renderRandHistory() {
       else pending++;
     }
     const wlHtml = (wins || losses)
-      ? `<span class="rand-hist-wl">${wins}W - ${losses}L${pending ? ` - ${pending} pending` : ''}</span>`
+      ? `<span class="rand-hist-wl">${wins}W - ${losses}L${pending ? ` · ${pending} left` : ''}</span>`
       : `<span class="rand-hist-pending">${pending} pending</span>`;
 
-    const sportIcons = [...new Set(entry.ticket.map(p => _SPORT_ICON_MAP[p.sport || 'tennis']))].join(' ');
+    const sportIcons = [...new Set(entry.ticket.map(p => _SPORT_ICON_MAP[p.sport || 'tennis']))].join('');
 
     const pickRows = entry.ticket.map(p => {
       const cur    = picks[p._pickKey];
       const result = cur ? cur.result : p.result;
       const badge  = result === 'win'  ? '<span class="rand-hist-badge win">W</span>'
                    : result === 'loss' ? '<span class="rand-hist-badge loss">L</span>'
-                   : '';
+                   : '<span class="rand-hist-badge pend">-</span>';
       const isPlayer = p.type === 'player';
-      const mainText = isPlayer
-        ? `${esc(p.player || '')} - ${esc(p.prop || '')} ${esc(p.stat || '')}`
-        : `${_SPORT_ICON_MAP[p.sport || 'tennis']} ${esc(p.team || '')}`;
-      const subText  = esc(p.matchup || p.gameMatchup || '');
+      let mainText;
+      if (isPlayer) {
+        // Extract just the OVER/UNDER line number, drop the context stats
+        const line = (p.stat || '').match(/(OVER|UNDER)\s+[\d.]+/i)?.[0] || '';
+        mainText = `${esc(lastName(p.player || ''))} - ${esc(p.prop || '')}${line ? ' ' + esc(line) : ''}`;
+      } else {
+        mainText = `&#8594; ${esc(p.team || '')}`;
+      }
+      const subText = esc(p.matchup || p.gameMatchup || '');
       return `<div class="rand-hist-pick">
+        <span class="rand-hist-pick-icon">${_SPORT_ICON_MAP[p.sport || 'tennis'] || ''}</span>
         <div class="rand-hist-pick-text">
           <div class="rand-hist-pick-main">${mainText}</div>
           ${subText ? `<div class="rand-hist-pick-sub">${subText}</div>` : ''}
@@ -9978,7 +9985,8 @@ function renderRandHistory() {
 
     return `<div class="rand-hist-card">
       <div class="rand-hist-card-hdr">
-        <span class="rand-hist-date">${label}${isToday ? ' <span class="rand-hist-today">Today</span>' : ''}</span>
+        <span class="rand-hist-date">${dayLabel}${isToday ? ' <span class="rand-hist-today">Today</span>' : ''}</span>
+        <span class="rand-hist-time">${timeLabel}</span>
         <span class="rand-hist-meta">${entry.ticket.length} picks ${sportIcons}</span>
         ${wlHtml}
       </div>
