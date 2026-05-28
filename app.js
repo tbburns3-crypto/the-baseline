@@ -8463,11 +8463,17 @@ async function preloadTennisPicksQuiet() {
       const alreadyHasPick = !!existingPicks[pickId];
       inlineTennisPick(m, null, isLive(m.event_status) && !alreadyHasPick);
       if (isFinished(m.event_status) && m.event_winner) {
-        let wln = '';
-        if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player  || '');
-        else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
-        else                                          wln = lastName(m.event_winner);
-        if (wln) resolvePick('tn_' + m.event_key, wln);
+        const st3 = (m.event_status || '').toLowerCase();
+        const isRet3 = st3.includes('retir') || st3.includes('walkover') || st3 === 'w/o';
+        if (isRet3) {
+          resolvePickRetired('tn_' + m.event_key);
+        } else {
+          let wln = '';
+          if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player  || '');
+          else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
+          else                                          wln = lastName(m.event_winner);
+          if (wln) resolvePick('tn_' + m.event_key, wln);
+        }
       }
     }
 
