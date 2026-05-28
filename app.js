@@ -5755,7 +5755,7 @@ const GOLF_PAIRINGS_OVERRIDE = {
     round: 1,
     groups: [
       ['Bradley','Harman','Gerard'],
-      ['van Rooyen','Power','T. Kim'],
+      ['Rooyen','Power','T. Kim'],
       ['Thompson','Brennan','McCarty'],
       ['Blair','Thorbjornsen','Hardy'],
       ['Streelman','Hubbard','Greyserman'],
