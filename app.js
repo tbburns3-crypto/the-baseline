@@ -9474,6 +9474,10 @@ function renderSimpleView() {
         ${lockedCard('🏀','NBA + Lineups',[75,90,65,80])}
       </div>
       <button class="sv-locked-unlock" onclick="openUpgradeModal()">Unlock Everything — From $7.99/week →</button>
+    </div>
+    <div class="sv-pro-tip">
+      <span class="sv-pro-tip-label">💡 Pro Tip</span>
+      Round robins are your best friend — especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
     </div>`;
 
   el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${upsellBanner}${lockedSection}`;

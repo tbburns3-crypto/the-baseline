@@ -2109,6 +2109,8 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-lock-label { font-size: .62rem; font-weight: 800; color: var(--accent); letter-spacing: .12em; }
 .sv-locked-unlock { width: 100%; background: var(--accent); color: #000; border: none; border-radius: 10px; padding: 14px; font-size: .88rem; font-weight: 800; cursor: pointer; letter-spacing: .02em; }
 .sv-locked-unlock:hover { background: #00ff87; }
+.sv-pro-tip { margin-top: 12px; background: rgba(0,230,118,.06); border: 1px solid rgba(0,230,118,.18); border-radius: 9px; padding: 12px 14px; font-size: .78rem; color: #7abf8a; line-height: 1.6; }
+.sv-pro-tip-label { font-weight: 800; color: var(--accent); margin-right: 6px; }
 
 /* ── TICKETS PAGE ── */
 .tp-page { padding: 12px 12px 32px; }
