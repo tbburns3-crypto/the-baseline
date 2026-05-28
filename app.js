@@ -6750,7 +6750,10 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
 
           const todayOv = GOLF_PAIRINGS_OVERRIDE[ev.id];
           const roundForGroups = (todayOv && todayOv.date === dateStrLocal(0)) ? todayOv.round : round;
-          const { groups, upcomingGroups } = groupByTeeTime(allComp, roundForGroups, ev.id);
+          const { groups: _groups, upcomingGroups } = groupByTeeTime(allComp, roundForGroups, ev.id);
+          // Sort groups by holes completed descending (finished/live groups first)
+          const maxG = g => Math.max(...g.players.map(p => p.linescores?.[roundForGroups-1]?.linescores?.length || 0));
+          const groups = _groups.slice().sort((a, b) => maxG(b) - maxG(a));
 
           // Collect pickIds that are already displayed via current groups
           const shownPickIds = new Set([...groups, ...upcomingGroups].flatMap(g => {
@@ -6794,9 +6797,9 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           html += `<div class="golf-picks-section">
             <div class="golf-picks-event-hdr">${tour.icon} ${esc(ev.name || tour.label)} · Round ${roundForGroups} ${isLive ? '<span class="live-badge">LIVE</span>' : ''}</div>
             ${groups.map(g => buildGolfGroupPickCard(g, roundForGroups, isLive, tour.key, ev.id, isFinal)).join('')}
+            ${earlierHTML}
             ${preHdr}
             ${upcomingGroups.map(g => buildGolfGroupPickCard(g, roundForGroups, isLive, tour.key, ev.id, isFinal)).join('')}
-            ${earlierHTML}
           </div>`;
 
         } else if (tab === 'tomorrow') {
