@@ -2757,6 +2757,27 @@ body.simple-mode #app-layout { display: none !important; }
   border: none; border-radius: 8px; cursor: pointer;
 }
 
+/* ── APP FOOTER ── */
+#app-footer {
+  text-align: center;
+  padding: 18px 16px;
+  font-size: .72rem;
+  color: #3a5c44;
+  border-top: 1px solid #1a2e1f;
+  margin-top: 24px;
+}
+#app-footer a { color: #4a7c59; text-decoration: none; }
+#app-footer a:hover { color: var(--accent); }
+
+/* ── UPGRADE DISCLAIMER ── */
+.upgrade-disclaimer {
+  text-align: center;
+  font-size: .68rem;
+  color: #444;
+  margin-top: 8px;
+  font-style: italic;
+}
+
 @media (max-width: 600px) {
   .auth-user-email-chip { max-width: 80px; font-size: .62rem; padding: 2px 6px 2px 5px; }
   .auth-modal-box { padding: 24px 18px 20px; }
