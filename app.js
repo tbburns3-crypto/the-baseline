@@ -1441,7 +1441,7 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   // force=true: re-evaluate pre-game picks on every preload as more data arrives.
   // recordPick guards against overwriting resolved (finished) matches.
   // Store matchDate so Secret Ticket can filter without needing S.matches populated.
-  recordPick(pickId, pick, matchup, 'tennis', conf, true, pickDate, tier, { matchDate, bo5: isBestOf5(m) || undefined });
+  recordPick(pickId, pick, matchup, 'tennis', conf, true, pickDate, tier, { matchDate, bo5: isBestOf5(m) || undefined, cat: matchCategory(m.event_type_type || '') });
   return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
@@ -4375,7 +4375,7 @@ function buildTomorrowPickCard(m) {
     const pickId  = 'tn_' + m.event_key;
     const surfTag = surface ? ` (${surface})` : '';
     const matchup = `${l1} vs ${l2}${surfTag}`;
-    recordPick(pickId, lastName(pickName), matchup, 'tennis', conf, true, m.event_date, tier, { matchDate: m.event_date, bo5: bo5 || undefined });
+    recordPick(pickId, lastName(pickName), matchup, 'tennis', conf, true, m.event_date, tier, { matchDate: m.event_date, bo5: bo5 || undefined, cat: matchCategory(m.event_type_type || '') });
   }
 
   // Confidence dots
@@ -8508,9 +8508,20 @@ function getPicksForTicket(type, date, allPicks) {
         .slice(0, 10)
         .map(({ id, p }) => toPlr(plrKey)([id, p]));
     }
+    case 'tennis_slam_atp':
+      return entries.filter(([, p]) => p.sport === 'tennis' && p.tier === 'slam' && p.cat === 'atp' && (p.conf||0) >= 1)
+        .sort(sortConf).slice(0, 10).map(toGame);
+    case 'tennis_slam_wta':
+      return entries.filter(([, p]) => p.sport === 'tennis' && p.tier === 'slam' && p.cat === 'wta' && (p.conf||0) >= 1)
+        .sort(sortConf).slice(0, 10).map(toGame);
     case 'tennis_main': {
       const main = new Set(['slam','masters','500','250']);
       return entries.filter(([, p]) => p.sport === 'tennis' && main.has(p.tier) && (p.conf||0) >= 1)
+        .sort(sortConf).slice(0, 10).map(toGame);
+    }
+    case 'tennis_non_slam_main': {
+      const nonSlam = new Set(['masters','500','250']);
+      return entries.filter(([, p]) => p.sport === 'tennis' && nonSlam.has(p.tier) && (p.conf||0) >= 1)
         .sort(sortConf).slice(0, 10).map(toGame);
     }
     case 'tennis_all':
@@ -8972,11 +8983,18 @@ function renderTicketsPage() {
   </div>`;
 
   // ── Tennis ──
-  const tnMain = getPicksForTicket('tennis_main', date, allPicks);
-  const tnAll  = getPicksForTicket('tennis_all',  date, allPicks);
+  const tnSlamATP    = getPicksForTicket('tennis_slam_atp',      date, allPicks);
+  const tnSlamWTA    = getPicksForTicket('tennis_slam_wta',      date, allPicks);
+  const tnNonSlam    = getPicksForTicket('tennis_non_slam_main', date, allPicks);
+  const tnMain       = getPicksForTicket('tennis_main',          date, allPicks);
+  const tnAll        = getPicksForTicket('tennis_all',           date, allPicks);
+  const hasSlamSplit = tnSlamATP.length || tnSlamWTA.length;
   const tnCards = [
-    tnMain.length ? renderTicketBlock('🎾 Main Draws (Slam · Masters · 500 · 250)', tnMain, allPicks) : '',
-    tnAll.length  ? renderTicketBlock('🎾 All Tournaments', tnAll, allPicks) : '',
+    tnSlamATP.length  ? renderTicketBlock("🎾 Men's Grand Slam",    tnSlamATP, allPicks) : '',
+    tnSlamWTA.length  ? renderTicketBlock("🎾 Women's Grand Slam",  tnSlamWTA, allPicks) : '',
+    hasSlamSplit && tnNonSlam.length ? renderTicketBlock('🎾 Main Draws (Masters · 500 · 250)', tnNonSlam, allPicks) : '',
+    !hasSlamSplit && tnMain.length   ? renderTicketBlock('🎾 Main Draws (Slam · Masters · 500 · 250)', tnMain, allPicks) : '',
+    tnAll.length      ? renderTicketBlock('🎾 All Tournaments',     tnAll,    allPicks) : '',
   ].filter(Boolean);
   const tennisHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">🎾 Tennis</div>
