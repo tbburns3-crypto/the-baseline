@@ -7697,9 +7697,11 @@ async function _fetchAndCacheYesterdayTickets(date) {
   } catch {}
 }
 
-// Fetch yesterday's ESPN final scores and resolve W/L for all ticket legs.
-// Creates pick entries from leg data on fresh devices so results always show.
+// Fetch ESPN final scores and tennis API results for `ystDate` and resolve W/L
+// for all pending picks on that date — ticket legs AND any picks made directly
+// from sport tabs. Called automatically on startup and from the tickets tab.
 async function resolveYesterdayPicks(ystDate) {
+  // ── Seed fresh-device picks from yesterday's ticket legs ──────────────────
   const allLegs = [];
   try {
     const ystMorn = JSON.parse(localStorage.getItem(_YST_MORN_TICKET_KEY) || 'null');
@@ -7709,14 +7711,13 @@ async function resolveYesterdayPicks(ystDate) {
       if (t?.date === ystDate && t.legs?.length) allLegs.push(...t.legs);
     }
   } catch {}
-  if (!allLegs.length) return;
 
-  // On fresh devices the picks don't exist in localStorage yet; seed them from leg data
+  // On fresh devices the picks don't exist in localStorage yet; seed from leg data
   const picks = getPicks();
   let picksDirty = false;
   for (const leg of allLegs) {
     if (!leg.id || !leg.pick || leg.sport === 'tennis') continue;
-    if (leg.type === 'player') continue; // player props can't be reverse-engineered from leg data alone
+    if (leg.type === 'player') continue;
     if (!picks[leg.id]) {
       picks[leg.id] = { team: leg.pick, sport: leg.sport || '', matchup: leg.matchup || '', conf: leg.conf || 1, date: ystDate, result: null, type: 'game' };
       picksDirty = true;
@@ -7724,61 +7725,106 @@ async function resolveYesterdayPicks(ystDate) {
   }
   if (picksDirty) savePicks(picks);
 
-  const d8 = ystDate.replace(/-/g, '');
-  const espnSports = [
-    { path: 'basketball/nba' },
-    { path: 'basketball/wnba' },
-    { path: 'baseball/mlb' },
-    { path: 'football/nfl' },
-    { path: 'hockey/nhl' },
-  ];
-  const soccerLeagueIds = ['fifa.world','eng.1','esp.1','ger.1','ita.1','fra.1','usa.1','uefa.champions','uefa.europa'];
+  // Find all pending picks for this date (broader than just ticket legs)
+  const pendingNonTennis = Object.entries(getPicks()).filter(([, p]) =>
+    p.result === null && p.date === ystDate && p.type !== 'player' && (p.sport || 'tennis') !== 'tennis'
+  );
+  const pendingTennis = Object.entries(getPicks()).filter(([id, p]) =>
+    p.result === null && p.date === ystDate && (p.sport || 'tennis') === 'tennis' && id.startsWith('tn_')
+  );
 
-  const winnerMap = {};
-  const parseFn = json => {
-    for (const ev of (json.events || [])) {
-      const comp = ev.competitions?.[0]; if (!comp) continue;
-      if (!comp.status?.type?.completed) continue;
-      const home = comp.competitors?.find(c => c.homeAway === 'home');
-      const away = comp.competitors?.find(c => c.homeAway === 'away');
-      if (!home || !away) continue;
-      const hS = parseFloat(home.score || 0), aS = parseFloat(away.score || 0);
-      if (hS === aS) continue;
-      // Score comparison only — winner:true can be stale/wrong for recently completed games
-      const winnerComp = hS > aS ? home : away;
-      // Use displayName ("Boston Red Sox") so endsWith(" sox") matching works in resolvePick
-      winnerMap[String(ev.id)] = winnerComp.team?.displayName || winnerComp.team?.name || '';
+  if (!pendingNonTennis.length && !pendingTennis.length) return;
+
+  // ── Resolve non-tennis picks via ESPN scoreboards ─────────────────────────
+  if (pendingNonTennis.length) {
+    const d8 = ystDate.replace(/-/g, '');
+    const espnSports = [
+      { path: 'basketball/nba' },
+      { path: 'basketball/wnba' },
+      { path: 'baseball/mlb' },
+      { path: 'football/nfl' },
+      { path: 'hockey/nhl' },
+    ];
+    const soccerLeagueIds = ['fifa.world','eng.1','esp.1','ger.1','ita.1','fra.1','usa.1','uefa.champions','uefa.europa'];
+
+    const winnerMap = {};
+    const parseFn = json => {
+      for (const ev of (json.events || [])) {
+        const comp = ev.competitions?.[0]; if (!comp) continue;
+        if (!comp.status?.type?.completed) continue;
+        const home = comp.competitors?.find(c => c.homeAway === 'home');
+        const away = comp.competitors?.find(c => c.homeAway === 'away');
+        if (!home || !away) continue;
+        const hS = parseFloat(home.score || 0), aS = parseFloat(away.score || 0);
+        if (hS === aS) continue;
+        const winnerComp = hS > aS ? home : away;
+        winnerMap[String(ev.id)] = winnerComp.team?.displayName || winnerComp.team?.name || '';
+      }
+    };
+
+    await Promise.allSettled([
+      ...espnSports.map(s =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/${s.path}/scoreboard?dates=${d8}`)
+          .then(r => r.json()).then(parseFn).catch(() => {})
+      ),
+      ...soccerLeagueIds.map(lid =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lid}/scoreboard?dates=${d8}`)
+          .then(r => r.json()).then(parseFn).catch(() => {})
+      ),
+    ]);
+
+    // Write results — bypasses resolvePick's non-null guard so ESPN final scores
+    // can correct any pick that was set mid-game or on a previous run
+    const finalPicks = getPicks();
+    let picksChanged = false;
+    for (const [gameId, p] of pendingNonTennis) {
+      if (!winnerMap[gameId]) continue;
+      const pickLow   = (p.team || '').toLowerCase();
+      const winnerLow = winnerMap[gameId].toLowerCase();
+      const isWin = winnerLow === pickLow || winnerLow.endsWith(' ' + pickLow) || winnerLow.includes(pickLow);
+      const newResult = isWin ? 'win' : 'loss';
+      if (finalPicks[gameId] && finalPicks[gameId].result !== newResult) {
+        finalPicks[gameId].result = newResult;
+        picksChanged = true;
+      }
     }
-  };
-
-  await Promise.allSettled([
-    ...espnSports.map(s =>
-      fetch(`https://site.api.espn.com/apis/site/v2/sports/${s.path}/scoreboard?dates=${d8}`)
-        .then(r => r.json()).then(parseFn).catch(() => {})
-    ),
-    ...soccerLeagueIds.map(lid =>
-      fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lid}/scoreboard?dates=${d8}`)
-        .then(r => r.json()).then(parseFn).catch(() => {})
-    ),
-  ]);
-
-  // Write results directly (bypass resolvePick's non-null guard so wrong results from
-  // a previous run are corrected — ESPN final scores are authoritative for yesterday)
-  const finalPicks = getPicks();
-  let picksChanged = false;
-  for (const leg of allLegs) {
-    const gameId = String(leg.id || '');
-    if (!gameId || !winnerMap[gameId]) continue;
-    const p = finalPicks[gameId];
-    if (!p) continue;
-    const pickLow   = (p.team || '').toLowerCase();
-    const winnerLow = winnerMap[gameId].toLowerCase();
-    const isWin = winnerLow === pickLow || winnerLow.endsWith(' ' + pickLow) || winnerLow.includes(pickLow);
-    const newResult = isWin ? 'win' : 'loss';
-    if (p.result !== newResult) { finalPicks[gameId].result = newResult; picksChanged = true; }
+    if (picksChanged) { savePicks(finalPicks); updatePicksDisplay(); }
+    if (picksChanged && S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
   }
-  if (picksChanged) { savePicks(finalPicks); updatePicksDisplay(); }
-  if (picksChanged && S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
+
+  // ── Resolve tennis picks via the tennis API ───────────────────────────────
+  if (pendingTennis.length) {
+    try {
+      const turl = `${CFG.tennis.base}?method=get_events&date_start=${ystDate}&date_stop=${ystDate}&APIkey=${CFG.tennis.key}`;
+      const tres = await fetch(turl);
+      const tjson = await tres.json();
+      const tevents = Array.isArray(tjson.result) ? tjson.result : [];
+      const tPicks = getPicks();
+      let tChanged = false;
+      for (const m of tevents) {
+        if (!m.event_winner) continue;
+        const pid = 'tn_' + m.event_key;
+        const tp = tPicks[pid];
+        if (!tp || tp.result !== null) continue;
+        const tst = (m.event_status || '').toLowerCase();
+        if (tst.includes('retir') || tst.includes('walkover') || tst === 'w/o') {
+          tPicks[pid].result = 'retired';
+          tChanged = true;
+        } else {
+          let wln = '';
+          if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player  || '');
+          else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
+          else                                          wln = lastName(m.event_winner);
+          if (wln) {
+            tPicks[pid].result = wln.toLowerCase() === (tp.team || '').toLowerCase() ? 'win' : 'loss';
+            tChanged = true;
+          }
+        }
+      }
+      if (tChanged) { savePicks(tPicks); updatePicksDisplay(); }
+      if (tChanged && S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
+    } catch {}
+  }
 }
 
 function showYesterdayTickets() {
@@ -9815,6 +9861,16 @@ function init() {
   updatePicksDisplay();
   renderTZSelector();
   renderDateBar();
+
+  // Auto-resolve yesterday's picks on every startup — runs 4 seconds after load so
+  // the main data fetch and auth check have settled first. Covers all sports including
+  // tennis (which has no other auto-resolve path) and picks made outside the ticket.
+  setTimeout(() => {
+    const _autoYst = dateStrLocal(-1);
+    resolveYesterdayPicks(_autoYst);
+    resolveYesterdayPlayerPicks(_autoYst);
+  }, 4000);
+
   const lastSport = localStorage.getItem('_baseline_sport') || 'tennis';
   switchSport(lastSport);
   // Read params BEFORE stripping — replaceState changes location.search immediately
