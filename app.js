@@ -7918,16 +7918,23 @@ async function startCheckout(plan) {
     else alert(msg);
   };
 
+  // Not logged in — skip network entirely
+  if (!_currentUser) {
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
+    openAuthModal();
+    return;
+  }
+
   // Safety net — always re-enable button after 20s no matter what
   const safetyTimer = setTimeout(() => showErr('Request timed out. Please try again.'), 20000);
 
   try {
-    // getSession with its own 8s timeout
-    const sessionResult = await Promise.race([
-      _sbClient.auth.getSession(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('Session check timed out. Please refresh and try again.')), 8000))
-    ]);
-    const session = sessionResult?.data?.session;
+    // Get session — if expired, refresh it (avoids race-timeout on slow connections)
+    let session;
+    try { session = (await _sbClient.auth.getSession())?.data?.session; } catch { session = null; }
+    if (!session) {
+      try { session = (await _sbClient.auth.refreshSession())?.data?.session; } catch { session = null; }
+    }
     if (!session) {
       clearTimeout(safetyTimer);
       if (btn) { btn.disabled = false; btn.textContent = origText; }
