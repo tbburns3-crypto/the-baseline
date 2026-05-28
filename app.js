@@ -1451,10 +1451,9 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   conf = Math.max(1, Math.min(3, conf + getConfCalibration('tennis')));
 
   const injTag = (winner === 1 && p2Hurt) || (winner === 2 && p1Hurt) ? ' ⚕' : '';
-  // force=true: re-evaluate pre-game picks on every preload as more data arrives.
-  // recordPick guards against overwriting resolved (finished) matches.
-  // Store matchDate so Secret Ticket can filter without needing S.matches populated.
-  recordPick(pickId, pick, matchup, 'tennis', conf, true, pickDate, tier, { matchDate, bo5: isBestOf5(m) || undefined, cat: matchCategory(m.event_type_type || '') });
+  // force=false: first pick wins — prevents H2H re-evaluation on every load from
+  // changing a stored pick and causing the ticket to show different players on login.
+  recordPick(pickId, pick, matchup, 'tennis', conf, false, pickDate, tier, { matchDate, bo5: isBestOf5(m) || undefined, cat: matchCategory(m.event_type_type || '') });
   return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
@@ -4424,7 +4423,7 @@ function buildTomorrowPickCard(m) {
       if (winnerLN) resolvePick(pickId, winnerLN);
       updatePicksDisplay();
     } else {
-      recordPick(pickId, lastName(pickName), matchup, 'tennis', conf, true, m.event_date, tier, meta);
+      recordPick(pickId, lastName(pickName), matchup, 'tennis', conf, false, m.event_date, tier, meta);
     }
   }
 
