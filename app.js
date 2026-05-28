@@ -7984,7 +7984,8 @@ async function verifyOtpCode() {
   try {
     const { error } = await _sbClient.auth.verifyOtp({ email: _otpEmail, token: code, type: 'email' });
     if (error) throw error;
-    // onAuthStateChange handles the rest
+    // Close immediately — don't wait for onAuthStateChange + _fetchUserRole to settle
+    closeAuthModal();
   } catch (err) {
     errEl.textContent   = err.message || 'Invalid code. Please try again.';
     errEl.style.display = '';
