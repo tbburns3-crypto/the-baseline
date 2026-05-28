@@ -1565,15 +1565,19 @@ function injBadge(playerName = '') {
 // match can have an independent expandable panel in the LIVE NOW section and the
 // category section simultaneously without duplicate IDs.
 function buildMatchRow(m, idSuffix = '') {
-  const live     = isLive(m.event_status);
-  const finished = isFinished(m.event_status);
-  const sets     = parseSets(m);
+  const live       = isLive(m.event_status);
+  const finished   = isFinished(m.event_status);
+  const _st        = (m.event_status || '').toLowerCase().trim();
+  const isWalkover = finished && (_st.includes('walkover') || _st === 'w/o' || _st.includes('retir'));
+  const sets       = parseSets(m);
   const _sv = m.event_serve;
   const serve    = (_sv === '1' || _sv === 1 || _sv === 'First Player')  ? '1'
                  : (_sv === '2' || _sv === 2 || _sv === 'Second Player') ? '2' : '';
 
   const statusHTML = live
     ? `<span class="status live-status">● LIVE</span>`
+    : isWalkover
+    ? `<span class="status wo-status">W/O</span>`
     : finished
     ? `<span class="status fin-status">FIN</span>`
     : `<span class="status time-status">${esc(fmtTennisTime(m.event_date, m.event_time))}</span>`;

@@ -572,6 +572,7 @@ input { font: inherit; }
   animation: pulse-text 1.8s infinite;
 }
 .fin-status  { background: rgba(84,110,122,0.2); color: var(--fin); }
+.wo-status   { background: rgba(180,140,60,.15); color: #c9a84c; font-size: .62rem; }
 .time-status { background: var(--bg); color: var(--text-2); border: 1px solid var(--border); }
 
 .match-players { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
