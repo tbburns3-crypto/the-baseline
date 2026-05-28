@@ -6777,17 +6777,105 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           const preHdr = upcomingGroups.length > 0
             ? `<div class="golf-group-status-hdr">⏰ Pre-Round - ${upcomingGroups.length} group${upcomingGroups.length !== 1 ? 's' : ''}</div>` : '';
 
+          // Build a name→player lookup once for earlier-pick resolution
+          const _epNorm = s => (s || '').toLowerCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/å/g, 'a');
+          const _epLookup = new Map();
+          for (const c of allComp) {
+            const full  = _epNorm(c.athlete?.displayName || '');
+            const short = _epNorm(c.athlete?.shortName   || '');
+            const last  = full.split(' ').pop();
+            if (last)  _epLookup.set(last,  c);
+            if (full)  _epLookup.set(full,  c);
+            if (short) _epLookup.set(short, c);
+          }
+
           const earlierHTML = earlierPicks.length
-            ? `<div class="golf-group-status-hdr">⏳ Earlier Groups - picks locked pre-round</div>` +
-              earlierPicks.map(([, p]) => {
+            ? `<div class="golf-group-status-hdr">⏳ Earlier Groups</div>` +
+              earlierPicks.map(([epId, p]) => {
                 const conf = p.conf || 1;
                 const dots = `<span class="tp-conf tp-conf-${conf}">${'●'.repeat(conf)}${'○'.repeat(3-conf)}</span>`;
-                const result = p.result === 'win' ? ' <span class="pick-win">✓</span>' : p.result === 'loss' ? ' <span class="pick-loss">✗</span>' : '';
+
+                const matchupNames = (p.matchup || '').split(' v ').map(n => n.trim());
+                const storedLN = _epNorm(p.team || '').split(' ').pop();
+
+                const foundPlayers = matchupNames.map(n => {
+                  const nk = _epNorm(n);
+                  return _epLookup.get(nk) || _epLookup.get(nk.split(' ').pop()) || null;
+                }).filter(Boolean);
+
+                // Resolve win/loss if all players finished and result still null
+                if (foundPlayers.length >= 2 && p.result === null) {
+                  const parseRS = pl => {
+                    const v = pl.linescores?.[roundForGroups-1]?.displayValue;
+                    if (!v || v === '-') return 999;
+                    return v === 'E' ? 0 : (parseInt(v) || 999);
+                  };
+                  const allDone = foundPlayers.every(pl => playerRoundStatus(pl, roundForGroups) === 'finished');
+                  if (allDone) {
+                    const best = Math.min(...foundPlayers.map(parseRS));
+                    const won = best < 999 && foundPlayers.some(pl => {
+                      if (parseRS(pl) !== best) return false;
+                      const ln = _epNorm((pl.athlete?.shortName || pl.athlete?.displayName || '').split(' ').pop());
+                      return ln === storedLN || storedLN.includes(ln) || ln.includes(storedLN);
+                    });
+                    const allPks = getPicks();
+                    if (allPks[epId] && allPks[epId].result === null) {
+                      allPks[epId].result = won ? 'win' : 'loss';
+                      p.result = allPks[epId].result;
+                      savePicks(allPks);
+                      updatePicksDisplay();
+                    }
+                  }
+                }
+
+                const resultBadge = p.result === 'win'  ? ' <span class="pick-win">✓</span>'
+                                  : p.result === 'loss' ? ' <span class="pick-loss">✗</span>' : '';
+
+                if (foundPlayers.length >= 2) {
+                  const sorted = [...foundPlayers].sort((a, b) => {
+                    const aL = _epNorm((a.athlete?.shortName || a.athlete?.displayName || '').split(' ').pop());
+                    const bL = _epNorm((b.athlete?.shortName || b.athlete?.displayName || '').split(' ').pop());
+                    return (aL === storedLN ? -1 : bL === storedLN ? 1 : 0);
+                  });
+                  const rows = sorted.map((pl, idx) => {
+                    const name    = pl.athlete?.shortName || pl.athlete?.displayName || '-';
+                    const holes   = pl.linescores?.[roundForGroups-1]?.linescores?.length || 0;
+                    const thru    = holes >= 18 ? 'F' : holes > 0 ? String(holes) : '-';
+                    const rv      = pl.linescores?.[roundForGroups-1]?.displayValue || '-';
+                    const rn      = rv === 'E' ? 0 : parseInt(rv) || 0;
+                    const todayCls = rn < 0 ? 'golf-under' : rn > 0 ? 'golf-over' : 'golf-even';
+                    const todayStr = rv === '-' ? '-' : (rn > 0 ? `+${rn}` : rv);
+                    const total   = pl.score || 'E';
+                    const tn      = total === 'E' ? 0 : parseInt(total) || 0;
+                    const totCls  = tn < 0 ? 'golf-under' : tn > 0 ? 'golf-over' : 'golf-even';
+                    const isPick  = idx === 0;
+                    return `<div class="golf-pick-row ${isPick ? 'golf-pick-winner' : ''}">
+                      ${isPick ? '<span class="golf-pick-arrow">→</span>' : '<span class="golf-pick-arrow"></span>'}
+                      <span class="golf-pick-name">${esc(name)}</span>
+                      <span class="golf-pick-score ${totCls}">${esc(total)}</span>
+                      <span class="golf-pick-today ${todayCls}">${esc(todayStr)}</span>
+                      <span class="golf-pick-thru">${esc(thru)}</span>
+                      <span class="golf-pick-factors"></span>
+                    </div>`;
+                  }).join('');
+                  return `<div class="golf-pick-card">
+                    <div class="golf-pick-time">⏳ Earlier Group</div>
+                    <div class="golf-pick-hdr"><span></span><span>PLAYER</span><span>TOT</span><span>TODAY</span><span>THRU</span><span></span></div>
+                    ${rows}
+                    <div class="golf-pick-verdict-bar">
+                      <span class="golf-pick-verdict-name">→ ${esc(p.team)}${resultBadge}</span>
+                      ${dots}<span class="golf-pick-pre-label">pre-round</span>
+                    </div>
+                  </div>`;
+                }
+
+                // Fallback minimal card when players can't be matched
                 return `<div class="golf-pick-card golf-pick-card-locked">
                   <div class="golf-pick-verdict-bar">
-                    <span class="golf-pick-verdict-name">→ ${esc(p.team)}${result}</span>
-                    ${dots}
-                    <span class="golf-pick-pre-label">pre-round</span>
+                    <span class="golf-pick-verdict-name">→ ${esc(p.team)}${resultBadge}</span>
+                    ${dots}<span class="golf-pick-pre-label">pre-round</span>
                   </div>
                   <div class="golf-pick-matchup-small">${esc(p.matchup || '')}</div>
                 </div>`;
