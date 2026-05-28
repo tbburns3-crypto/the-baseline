@@ -7874,19 +7874,20 @@ function buildSecretTicket() {
   const allPicks = getPicks();
   const candidates = _buildPickCandidates(allPicks, today);
 
-  // Score and filter MLB picks - use mlbPickMerit for player props
+  // Score all sports — MLB player props use mlbPickMerit; everything else scales base score
   const scored = [];
   for (const c of candidates) {
-    if (c.sport !== 'mlb') continue;
     const p = allPicks[c.id];
     if (!p) continue;
-    if (p.prop === 'RunTotal') continue;
-    if (c.type === 'player') {
+    if (c.sport === 'mlb' && p.prop === 'RunTotal') continue;
+    if (c.sport === 'mlb' && c.type === 'player') {
       const merit = mlbPickMerit(p.prop, p.stat || '', p.player || '');
-      if (merit < 0) continue; // below quality threshold
-      scored.push({ ...c, _stScore: merit + 10, _pickObj: p }); // +10 base so props rank above game picks
+      if (merit < 0) continue;
+      scored.push({ ...c, _stScore: merit + 10, _pickObj: p });
     } else {
-      scored.push({ ...c, _stScore: (p.conf || 1) * 5, _pickObj: p });
+      // Tennis, NBA, NHL, soccer, golf — multiply base score (includes tier/sport bonus)
+      // so a conf-3 slam tennis pick (~65) competes with mid-tier MLB props
+      scored.push({ ...c, _stScore: c.score * 5, _pickObj: p });
     }
   }
 
