@@ -9196,20 +9196,23 @@ function renderTicketsPage() {
 
   // ── Golf ──
   const { early: golfEarly, late: golfLate, singleTicket: golfSingle } = getGolfSplitTickets(date, allPicks);
+  // Main tickets: alphabetical within each conf tier so layout differs from mini
+  const golfAlpha = legs => [...legs].sort((a, b) => {
+    const cd = (b.conf||1) - (a.conf||1);
+    return cd !== 0 ? cd : (a.pick||'').localeCompare(b.pick||'');
+  });
   const golfCards = [];
   if (golfSingle) {
-    if (golfEarly.length) golfCards.push(renderTicketBlock('⛳ Win Picks', golfEarly, allPicks));
+    if (golfEarly.length) golfCards.push(renderTicketBlock('⛳ Win Picks', golfAlpha(golfEarly), allPicks));
   } else {
-    if (golfEarly.length) golfCards.push(renderTicketBlock('⛳ Early Tee', golfEarly, allPicks));
-    if (golfLate.length)  golfCards.push(renderTicketBlock('⛳ Late Tee',  golfLate,  allPicks));
+    if (golfEarly.length) golfCards.push(renderTicketBlock('⛳ Early Tee', golfAlpha(golfEarly), allPicks));
+    if (golfLate.length)  golfCards.push(renderTicketBlock('⛳ Late Tee',  golfAlpha(golfLate),  allPicks));
   }
+  // Mini tickets: strict top 5 by conf (no threshold — these ARE the most confident picks)
   const golfMiniCards = [];
   if (_hasFullAccess() && !golfSingle) {
-    const topGolf = legs => legs.filter(l => (l.conf || 1) >= 2).slice(0, 5);
-    const earlyMini = topGolf(golfEarly);
-    const lateMini  = topGolf(golfLate);
-    if (earlyMini.length >= 3) golfMiniCards.push(renderTicketBlock('⛳ Early Mini', earlyMini, allPicks));
-    if (lateMini.length  >= 3) golfMiniCards.push(renderTicketBlock('⛳ Late Mini',  lateMini,  allPicks));
+    if (golfEarly.length >= 5) golfMiniCards.push(renderTicketBlock('⛳ Early Mini', golfEarly.slice(0, 5), allPicks));
+    if (golfLate.length  >= 5) golfMiniCards.push(renderTicketBlock('⛳ Late Mini',  golfLate.slice(0,  5), allPicks));
   }
   const golfHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">⛳ Golf</div>
