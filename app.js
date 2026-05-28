@@ -1020,12 +1020,15 @@ function renderMatches(all) {
   const liveMatches = filtered.filter(m => isLive(m.event_status));
   let html = '';
   if (liveMatches.length) {
-    // Group live matches by tournament
+    // Group live matches by tournament + category so ATP/WTA never merge
     const liveTournMap = new Map();
     for (const m of liveMatches) {
-      const tKey = m.tournament_name || m.league_name || m.event_type_type || 'Other';
+      const tName = m.tournament_name || m.league_name || m.event_type_type || 'Other';
+      const cat   = matchCategory(m.event_type_type || '');
+      const label = cat === 'atp' ? " — Men's" : cat === 'wta' ? " — Women's" : cat === 'doubles' ? ' — Doubles' : '';
+      const tKey  = tName + '_' + cat;
       if (!liveTournMap.has(tKey)) {
-        liveTournMap.set(tKey, { name: tKey, surface: m.tournament_surface || inferSurface(tKey), matches: [] });
+        liveTournMap.set(tKey, { name: tName + label, surface: m.tournament_surface || inferSurface(tName), matches: [] });
       }
       liveTournMap.get(tKey).matches.push(m);
     }
