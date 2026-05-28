@@ -2525,9 +2525,10 @@ function stopScoresTimer() {
 }
 
 function loadSportScores(sport) {
-  if (sport === 'soccer')       loadSoccerScores();
-  else if (sport === 'golf')    loadGolfLeaderboard();
-  else if (sport === 'tickets') renderTicketsPage();
+  if (sport === 'soccer')          loadSoccerScores();
+  else if (sport === 'golf')       loadGolfLeaderboard();
+  else if (sport === 'tickets')    renderTicketsPage();
+  else if (sport === 'randomizer') renderRandomizer();
   else loadOtherScores(sport);
 }
 
@@ -2566,7 +2567,7 @@ function switchSport(sport) {
     lineupsTab.style.display  = 'none';
     picksTab.style.display    = '';
     picksTab.textContent = '⛳ Picks';
-  } else if (sport === 'tickets') {
+  } else if (sport === 'tickets' || sport === 'randomizer') {
     secTab.style.display    = 'none';
     playersTab.style.display = 'none';
     lineupsTab.style.display = 'none';
@@ -2634,8 +2635,9 @@ function switchView(view) {
     }
   } else {
     if (view === 'scores') {
-      const panelId = S.sport === 'golf'    ? 'view-golf-leaderboard'
-                    : S.sport === 'tickets' ? 'view-tickets'
+      const panelId = S.sport === 'golf'       ? 'view-golf-leaderboard'
+                    : S.sport === 'tickets'    ? 'view-tickets'
+                    : S.sport === 'randomizer' ? 'view-randomizer'
                     : 'view-other-scores';
       document.getElementById(panelId).classList.add('active');
       loadSportScores(S.sport);
@@ -9830,6 +9832,165 @@ function renderSimpleView() {
 window.addEventListener('pageshow', (evt) => {
   if (evt.persisted) _resetCheckoutButtons();
 });
+
+// ── RANDOMIZER ────────────────────────────────────────────────
+
+const _RAND_SPORTS_ALL = ['tennis','mlb','nba','wnba','nfl','nhl','soccer','golf'];
+const _SPORT_ICON_MAP  = { tennis:'🎾', mlb:'⚾', nba:'🏀', wnba:'🏀', nfl:'🏈', nhl:'🏒', soccer:'⚽', golf:'⛳' };
+
+let _randState = {
+  count:      5,
+  sports:     new Set(_RAND_SPORTS_ALL),
+  ticket:     [],        // [{_pickKey, ...pick}, ...]
+  lockedKeys: new Set(), // _pickKey values that are locked
+};
+
+function _randGetPool() {
+  const today = dateStrLocal(0);
+  return Object.entries(getPicks())
+    .filter(([k, p]) =>
+      p.type !== 'player' &&
+      p.result === null &&
+      p.date === today &&
+      _randState.sports.has(p.sport || 'tennis')
+    )
+    .map(([k, p]) => ({ ...p, _pickKey: k }));
+}
+
+function doRandomize() {
+  const pool       = _randGetPool();
+  const poolKeySet = new Set(pool.map(p => p._pickKey));
+
+  // Keep locked picks still in the pool
+  const stillLocked  = _randState.ticket.filter(p =>
+    _randState.lockedKeys.has(p._pickKey) && poolKeySet.has(p._pickKey)
+  );
+  const lockedKeySet = new Set(stillLocked.map(p => p._pickKey));
+
+  // Shuffle available (non-locked) pool
+  const available = pool.filter(p => !lockedKeySet.has(p._pickKey));
+  for (let i = available.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [available[i], available[j]] = [available[j], available[i]];
+  }
+
+  const needed = Math.max(0, _randState.count - stillLocked.length);
+  _randState.ticket     = [...stillLocked, ...available.slice(0, needed)];
+  _randState.lockedKeys = new Set(stillLocked.map(p => p._pickKey));
+  renderRandTicket();
+}
+
+function toggleRandLock(i) {
+  const p = _randState.ticket[i];
+  if (!p) return;
+  if (_randState.lockedKeys.has(p._pickKey)) _randState.lockedKeys.delete(p._pickKey);
+  else _randState.lockedKeys.add(p._pickKey);
+  renderRandTicket();
+}
+
+function setRandCount(n) {
+  _randState.count = n;
+  document.querySelectorAll('.rand-count-btn').forEach(b =>
+    b.classList.toggle('active', +b.dataset.n === n));
+}
+
+function toggleRandSport(sport) {
+  if (_randState.sports.has(sport)) {
+    if (_randState.sports.size <= 1) return; // keep at least one sport active
+    _randState.sports.delete(sport);
+  } else {
+    _randState.sports.add(sport);
+  }
+  document.querySelectorAll('.rand-sport-btn').forEach(b =>
+    b.classList.toggle('active', _randState.sports.has(b.dataset.sport)));
+  const note = document.getElementById('rand-pool-note');
+  if (note) {
+    const n = _randGetPool().length;
+    note.textContent = `${n} pick${n !== 1 ? 's' : ''} available today across selected sports`;
+  }
+}
+
+function renderRandTicket() {
+  const area = document.getElementById('rand-ticket-area');
+  if (!area) return;
+  if (!_randState.ticket.length) {
+    area.innerHTML = `<div class="rand-empty">Hit Randomize to build your ticket.</div>`;
+    return;
+  }
+
+  const confDots = c => {
+    const n = Math.min(3, Math.max(1, parseInt(c) || 1));
+    return `<span class="rand-dots">${'●'.repeat(n)}${'○'.repeat(3 - n)}</span>`;
+  };
+
+  const rows = _randState.ticket.map((p, i) => {
+    const locked = _randState.lockedKeys.has(p._pickKey);
+    const sport  = p.sport || 'tennis';
+    const icon   = _SPORT_ICON_MAP[sport] || '🎯';
+    return `
+      <div class="rand-pick-row${locked ? ' rand-locked' : ''}">
+        <button class="rand-lock-btn" onclick="toggleRandLock(${i})" title="${locked ? 'Unlock' : 'Lock'} this pick">${locked ? '🔒' : '🔓'}</button>
+        <div class="rand-pick-info">
+          <div class="rand-pick-top">
+            <span class="rand-pick-sport-pill">${icon} ${sport.toUpperCase()}</span>
+            ${confDots(p.conf)}
+          </div>
+          <div class="rand-pick-matchup">${esc(p.matchup || '')}</div>
+          <div class="rand-pick-team">&#8594; ${esc(p.team || '')}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const allLocked = _randState.lockedKeys.size >= _randState.ticket.length;
+  area.innerHTML = `
+    <div class="rand-ticket">
+      <div class="rand-ticket-hdr">
+        <span class="rand-ticket-label">Your Ticket</span>
+        <span class="rand-ticket-count">${_randState.ticket.length} Pick${_randState.ticket.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="rand-pick-list">${rows}</div>
+      <div class="rand-ticket-footer">
+        ${allLocked
+          ? `<span class="rand-all-locked-note">All picks locked in.</span>`
+          : `<button class="rand-reroll-btn" onclick="doRandomize()">&#x1F500; Re-Roll Unlocked Picks</button>`}
+      </div>
+    </div>`;
+}
+
+function renderRandomizer() {
+  const area = document.getElementById('rand-area');
+  if (!area) return;
+  const pool = _randGetPool();
+
+  const sportBtns = _RAND_SPORTS_ALL.map(s =>
+    `<button class="rand-sport-btn${_randState.sports.has(s) ? ' active' : ''}" data-sport="${s}" onclick="toggleRandSport('${s}')">${_SPORT_ICON_MAP[s]} ${s.charAt(0).toUpperCase() + s.slice(1)}</button>`
+  ).join('');
+
+  const countBtns = [2,3,4,5,6,7,8,9,10].map(n =>
+    `<button class="rand-count-btn${_randState.count === n ? ' active' : ''}" data-n="${n}" onclick="setRandCount(${n})">${n}</button>`
+  ).join('');
+
+  area.innerHTML = `
+    <div class="rand-container">
+      <div class="rand-header">
+        <div class="rand-title">&#x1F3B2; Ticket Randomizer</div>
+        <div class="rand-subtitle">Pick your sports, choose your count, and get a ticket built from today's best picks.</div>
+      </div>
+      <div class="rand-controls">
+        <div class="rand-section-label">Sports</div>
+        <div class="rand-sport-filters">${sportBtns}</div>
+        <div class="rand-section-label">Picks on ticket</div>
+        <div class="rand-count-bar">${countBtns}</div>
+        <div class="rand-pool-note" id="rand-pool-note">${pool.length} pick${pool.length !== 1 ? 's' : ''} available today across selected sports</div>
+        <button class="rand-main-btn" onclick="doRandomize()">&#x1F3B2; Randomize</button>
+      </div>
+      <div id="rand-ticket-area">
+        <div class="rand-empty">Hit Randomize to build your ticket.</div>
+      </div>
+    </div>`;
+
+  if (_randState.ticket.length) renderRandTicket();
+}
 
 // ── EVENT LISTENERS ──────────────────────────────────────────
 document.querySelectorAll('.sport-tab').forEach(t =>

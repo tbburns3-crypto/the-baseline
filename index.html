@@ -30,7 +30,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0a1a0e">
-  <link rel="stylesheet" href="style.css?v=303">
+  <link rel="stylesheet" href="style.css?v=304">
 </head>
 <body>
 
@@ -154,6 +154,7 @@
       <button class="sport-tab" data-sport="soccer">⚽ Soccer</button>
       <button class="sport-tab" data-sport="golf">⛳ Golf</button>
       <button class="sport-tab" data-sport="tickets">🎫 Tickets</button>
+      <button class="sport-tab" data-sport="randomizer">🎲 Random</button>
     </nav>
   </header>
 
@@ -314,6 +315,11 @@
         </div>
       </section>
 
+      <!-- ── RANDOMIZER ── -->
+      <section id="view-randomizer" class="view-panel">
+        <div id="rand-area"></div>
+      </section>
+
       <!-- ── FAVORITES ── -->
       <section id="view-favorites" class="view-panel">
         <div class="empty-state">No favorites yet.<div class="muted">Tap ★ on any tennis match to save it here.</div></div>
@@ -333,7 +339,7 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=303"></script>
+  <script src="app.js?v=304"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});

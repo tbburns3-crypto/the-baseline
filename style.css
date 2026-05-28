@@ -2885,3 +2885,127 @@ body.simple-mode #app-layout { display: none !important; }
 .tp-conf-3 { text-shadow: 0 0 6px rgba(0,230,118,.45); }
 .pc-conf-3 { text-shadow: 0 0 6px rgba(0,230,118,.45); }
 .sv-conf   { text-shadow: 0 0 8px rgba(0,230,118,.3);  }
+
+
+/* ── RANDOMIZER ──────────────────────────────────────────────── */
+.rand-container { max-width: 600px; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
+.rand-header    { margin-bottom: 1.4rem; }
+.rand-title     { font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-bottom: .3rem; }
+.rand-subtitle  { font-size: .83rem; color: var(--text-muted); }
+
+.rand-controls {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem;
+  margin-bottom: 1.2rem;
+}
+.rand-section-label {
+  font-size: .7rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--text-muted);
+  margin-bottom: .45rem; margin-top: .9rem;
+}
+.rand-section-label:first-child { margin-top: 0; }
+
+.rand-sport-filters { display: flex; flex-wrap: wrap; gap: .38rem; }
+.rand-sport-btn {
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 20px; color: var(--text-muted);
+  font-size: .76rem; padding: .28rem .72rem; cursor: pointer;
+  transition: all .18s;
+}
+.rand-sport-btn.active {
+  background: rgba(0,230,118,.12); border-color: var(--accent);
+  color: var(--accent); font-weight: 600;
+}
+
+.rand-count-bar { display: flex; gap: .32rem; flex-wrap: wrap; }
+.rand-count-btn {
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text-muted);
+  font-size: .84rem; padding: .32rem .6rem; cursor: pointer;
+  transition: all .18s; min-width: 2.1rem; text-align: center;
+}
+.rand-count-btn.active {
+  background: var(--accent); border-color: var(--accent);
+  color: #000; font-weight: 700;
+}
+
+.rand-pool-note {
+  font-size: .73rem; color: var(--text-muted);
+  margin-top: .8rem; margin-bottom: .75rem;
+}
+.rand-main-btn {
+  width: 100%; background: var(--accent); color: #000;
+  border: none; border-radius: 10px;
+  font-size: .98rem; font-weight: 700; padding: .72rem;
+  cursor: pointer; transition: all .2s;
+}
+.rand-main-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+.rand-empty {
+  text-align: center; color: var(--text-muted);
+  font-size: .88rem; padding: 2.2rem 0;
+}
+
+.rand-ticket {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+}
+.rand-ticket-hdr {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: .7rem 1rem;
+  background: linear-gradient(90deg, rgba(0,230,118,.09), rgba(0,230,118,.02));
+  border-bottom: 1px solid var(--border);
+}
+.rand-ticket-label {
+  font-size: .78rem; font-weight: 700; color: var(--accent);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.rand-ticket-count {
+  font-size: .73rem; color: var(--text-muted);
+  background: rgba(0,230,118,.1); border: 1px solid rgba(0,230,118,.2);
+  border-radius: 10px; padding: .13rem .5rem;
+}
+
+.rand-pick-row {
+  display: flex; align-items: center; gap: .7rem;
+  padding: .72rem 1rem;
+  border-bottom: 1px solid var(--border);
+  transition: background .18s;
+}
+.rand-pick-row:last-child { border-bottom: none; }
+.rand-pick-row.rand-locked { background: rgba(0,230,118,.04); }
+
+.rand-lock-btn {
+  background: none; border: none; font-size: 1.05rem;
+  cursor: pointer; padding: .18rem; flex-shrink: 0;
+  opacity: .65; transition: opacity .18s, transform .18s;
+}
+.rand-lock-btn:hover { opacity: 1; transform: scale(1.15); }
+
+.rand-pick-info { flex: 1; min-width: 0; }
+.rand-pick-top  { display: flex; align-items: center; gap: .45rem; margin-bottom: .22rem; }
+.rand-pick-sport-pill {
+  font-size: .65rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; background: rgba(255,255,255,.05);
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: .08rem .38rem; color: var(--text-muted);
+}
+.rand-dots { font-size: .68rem; letter-spacing: .04em; color: var(--accent); }
+.rand-pick-matchup {
+  font-size: .76rem; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rand-pick-team { font-size: .88rem; font-weight: 600; color: var(--text); margin-top: .13rem; }
+
+.rand-ticket-footer { padding: .72rem 1rem; text-align: center; }
+.rand-reroll-btn {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-muted); border-radius: 8px;
+  padding: .48rem 1.1rem; font-size: .83rem; cursor: pointer;
+  transition: all .18s;
+}
+.rand-reroll-btn:hover { border-color: var(--accent); color: var(--accent); }
+.rand-all-locked-note { font-size: .78rem; color: var(--text-muted); }
