@@ -2565,6 +2565,7 @@ function switchSport(sport) {
     playersTab.style.display  = 'none';
     lineupsTab.style.display  = 'none';
     picksTab.style.display    = '';
+    picksTab.textContent = '🎾 Picks';
   } else if (sport === 'golf') {
     secTab.style.display   = 'none';
     playersTab.style.display  = 'none';
@@ -2588,7 +2589,13 @@ function switchSport(sport) {
     secTab.style.display   = '';
     playersTab.style.display  = '';
     lineupsTab.style.display  = sport === 'mlb' ? '' : 'none';
-    picksTab.style.display    = ['mlb','nba','nfl','nhl','wnba'].includes(sport) ? '' : 'none';
+    const sportPickIcon = { mlb: '⚾', nba: '🏀', nfl: '🏈', nhl: '🏒', wnba: '🏀' };
+    if (['mlb','nba','nfl','nhl','wnba'].includes(sport)) {
+      picksTab.textContent = (sportPickIcon[sport] || '🎯') + ' Picks';
+      picksTab.style.display = '';
+    } else {
+      picksTab.style.display = 'none';
+    }
   }
 
   S.picksDateOffset = 0;
@@ -9849,7 +9856,20 @@ let _randState = {
   lockedKeys: new Set(), // _pickKey values that are locked
 };
 
-const _RAND_SAVED_KEY = '_baseline_rand_ticket_v1';
+const _RAND_SAVED_KEY   = '_baseline_rand_ticket_v1';
+const _RAND_HISTORY_KEY = '_baseline_rand_history_v1';
+
+function _getRandHistory() {
+  try { return JSON.parse(localStorage.getItem(_RAND_HISTORY_KEY) || '[]'); } catch { return []; }
+}
+
+function _pushRandHistory(entry) {
+  try {
+    const hist = _getRandHistory().filter(e => e.savedAt !== entry.savedAt);
+    hist.unshift(entry);
+    localStorage.setItem(_RAND_HISTORY_KEY, JSON.stringify(hist.slice(0, 14)));
+  } catch {}
+}
 
 function _randGetPool() {
   const today = dateStrLocal(0);
@@ -9880,21 +9900,84 @@ function _randGetPool() {
 
 function saveRandTicket() {
   if (!_randState.ticket.length) return;
+  const savedAt = dateStrLocal(0);
+  const entry = {
+    ticket:  _randState.ticket,
+    count:   _randState.count,
+    sports:  [..._randState.sports],
+    savedAt,
+    savedTs: Date.now(),
+  };
   try {
-    localStorage.setItem(_RAND_SAVED_KEY, JSON.stringify({
-      ticket:     _randState.ticket,
-      lockedKeys: [..._randState.lockedKeys],
-      count:      _randState.count,
-      sports:     [..._randState.sports],
-      savedAt:    dateStrLocal(0),
-    }));
+    localStorage.setItem(_RAND_SAVED_KEY, JSON.stringify({ ...entry, lockedKeys: [..._randState.lockedKeys] }));
   } catch {}
+  _pushRandHistory(entry);
   const btn = document.getElementById('rand-save-btn');
   if (btn) {
     btn.textContent = '✓ Saved!';
     btn.disabled = true;
     setTimeout(() => { const b = document.getElementById('rand-save-btn'); if (b) { b.textContent = '💾 Save Ticket'; b.disabled = false; } }, 2000);
   }
+  renderRandHistory();
+}
+
+function renderRandHistory() {
+  const area = document.getElementById('rand-history-area');
+  if (!area) return;
+  const history = _getRandHistory();
+  if (!history.length) { area.innerHTML = ''; return; }
+  const picks = getPicks();
+
+  const cards = history.map(entry => {
+    const dt    = new Date(entry.savedTs);
+    const label = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const isToday = entry.savedAt === dateStrLocal(0);
+
+    let wins = 0, losses = 0, pending = 0;
+    for (const p of entry.ticket) {
+      const cur    = picks[p._pickKey];
+      const result = cur ? cur.result : p.result;
+      if (result === 'win') wins++;
+      else if (result === 'loss') losses++;
+      else pending++;
+    }
+    const wlHtml = (wins || losses)
+      ? `<span class="rand-hist-wl">${wins}W - ${losses}L${pending ? ` - ${pending} pending` : ''}</span>`
+      : `<span class="rand-hist-pending">${pending} pending</span>`;
+
+    const sportIcons = [...new Set(entry.ticket.map(p => _SPORT_ICON_MAP[p.sport || 'tennis']))].join(' ');
+
+    const pickRows = entry.ticket.map(p => {
+      const cur    = picks[p._pickKey];
+      const result = cur ? cur.result : p.result;
+      const badge  = result === 'win'  ? '<span class="rand-hist-badge win">W</span>'
+                   : result === 'loss' ? '<span class="rand-hist-badge loss">L</span>'
+                   : '';
+      const isPlayer = p.type === 'player';
+      const mainText = isPlayer
+        ? `${esc(p.player || '')} - ${esc(p.prop || '')} ${esc(p.stat || '')}`
+        : `${_SPORT_ICON_MAP[p.sport || 'tennis']} ${esc(p.team || '')}`;
+      const subText  = esc(p.matchup || p.gameMatchup || '');
+      return `<div class="rand-hist-pick">
+        <div class="rand-hist-pick-text">
+          <div class="rand-hist-pick-main">${mainText}</div>
+          ${subText ? `<div class="rand-hist-pick-sub">${subText}</div>` : ''}
+        </div>
+        ${badge}
+      </div>`;
+    }).join('');
+
+    return `<div class="rand-hist-card">
+      <div class="rand-hist-card-hdr">
+        <span class="rand-hist-date">${label}${isToday ? ' <span class="rand-hist-today">Today</span>' : ''}</span>
+        <span class="rand-hist-meta">${entry.ticket.length} picks ${sportIcons}</span>
+        ${wlHtml}
+      </div>
+      <div class="rand-hist-picks">${pickRows}</div>
+    </div>`;
+  }).join('');
+
+  area.innerHTML = `<div class="rand-hist-section"><div class="rand-hist-title">Saved Tickets</div>${cards}</div>`;
 }
 
 function _loadSavedRandTicket() {
@@ -10066,9 +10149,11 @@ function renderRandomizer() {
       <div id="rand-ticket-area">
         <div class="rand-empty">Hit Randomize to build your ticket.</div>
       </div>
+      <div id="rand-history-area"></div>
     </div>`;
 
   if (_randState.ticket.length) renderRandTicket();
+  renderRandHistory();
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────

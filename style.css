@@ -3081,3 +3081,25 @@ body.simple-mode #app-layout { display: none !important; }
 }
 .rand-clear-btn:hover { color: var(--text); }
 .rand-all-locked-note { font-size: .78rem; color: var(--text-muted); }
+
+/* ── RANDOMIZER HISTORY ───────────────────────────────────── */
+.rand-hist-section { margin-top: 1.8rem; }
+.rand-hist-title   { font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); margin-bottom: .8rem; }
+.rand-hist-card    { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: .9rem; overflow: hidden; }
+.rand-hist-card-hdr {
+  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+  padding: .65rem .9rem; border-bottom: 1px solid var(--border);
+}
+.rand-hist-date    { font-size: .82rem; font-weight: 700; color: var(--text); }
+.rand-hist-today   { font-size: .62rem; font-weight: 600; background: rgba(0,230,118,.14); color: var(--accent); border-radius: 5px; padding: .05rem .3rem; margin-left: .2rem; vertical-align: middle; }
+.rand-hist-meta    { font-size: .72rem; color: var(--text-muted); margin-left: auto; }
+.rand-hist-wl      { font-size: .72rem; font-weight: 700; color: var(--accent); }
+.rand-hist-pending { font-size: .72rem; color: var(--text-muted); }
+.rand-hist-picks   { padding: .45rem .9rem .55rem; display: flex; flex-direction: column; gap: .38rem; }
+.rand-hist-pick    { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.rand-hist-pick-text { flex: 1; min-width: 0; }
+.rand-hist-pick-main { font-size: .8rem; font-weight: 600; color: var(--text); }
+.rand-hist-pick-sub  { font-size: .7rem; color: var(--text-muted); margin-top: .05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rand-hist-badge     { font-size: .62rem; font-weight: 700; border-radius: 5px; padding: .08rem .32rem; flex-shrink: 0; margin-top: .1rem; }
+.rand-hist-badge.win  { background: rgba(0,230,118,.16); color: var(--accent); }
+.rand-hist-badge.loss { background: rgba(255,80,80,.12); color: #f87171; }
