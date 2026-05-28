@@ -1465,7 +1465,9 @@ function buildMatchRow(m, idSuffix = '') {
   const live     = isLive(m.event_status);
   const finished = isFinished(m.event_status);
   const sets     = parseSets(m);
-  const serve    = String(m.event_serve ?? '');
+  const _sv = m.event_serve;
+  const serve    = (_sv === '1' || _sv === 1 || _sv === 'First Player')  ? '1'
+                 : (_sv === '2' || _sv === 2 || _sv === 'Second Player') ? '2' : '';
 
   const statusHTML = live
     ? `<span class="status live-status">● LIVE</span>`
@@ -1952,7 +1954,9 @@ function patchSingleRow(row, m) {
   const live     = isLive(m.event_status);
   const finished = isFinished(m.event_status);
   const sets     = parseSets(m);
-  const serve    = String(m.event_serve ?? '');
+  const _sv2 = m.event_serve;
+  const serve    = (_sv2 === '1' || _sv2 === 1 || _sv2 === 'First Player')  ? '1'
+                 : (_sv2 === '2' || _sv2 === 2 || _sv2 === 'Second Player') ? '2' : '';
 
   row.className = `match-row ${live?'live':''} ${finished?'finished':''}`;
 
