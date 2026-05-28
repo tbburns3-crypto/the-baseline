@@ -2623,12 +2623,23 @@ function switchSport(sport) {
   }
 }
 
+function _showPicksTeaser() {
+  if (_hasFullAccess()) return;
+  const panel = document.getElementById('view-mlb-picks');
+  if (!panel || document.getElementById('picks-teaser-overlay')) return;
+  const el = document.createElement('div');
+  el.id = 'picks-teaser-overlay';
+  el.innerHTML = `
+    <div class="picks-teaser-inner">
+      <div class="picks-teaser-lock">🔒</div>
+      <div class="picks-teaser-headline">Unlock Full Picks Access</div>
+      <div class="picks-teaser-sub">Player props, daily tickets, and picks across 8 sports - every day.</div>
+      <button class="picks-teaser-btn" onclick="openUpgradeModal()">See Plans - From $7.99/wk</button>
+    </div>`;
+  panel.appendChild(el);
+}
+
 function switchView(view) {
-  // Gate picks tab — free/unauthenticated users see upgrade modal, stay on current view
-  if (view === 'picks' && !_hasFullAccess()) {
-    openUpgradeModal();
-    return;
-  }
   S.view = view;
   document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
   document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
@@ -2645,6 +2656,7 @@ function switchView(view) {
     } else if (view === 'picks') {
       document.getElementById('view-mlb-picks').classList.add('active');
       loadTennisPicksPage();
+      if (!_hasFullAccess()) setTimeout(_showPicksTeaser, 900);
     } else {
       document.getElementById('view-tennis-rankings').classList.add('active');
       loadRankings();
@@ -2671,6 +2683,7 @@ function switchView(view) {
       else if (S.sport === 'golf') loadGolfPicksPage();
       else if (S.sport === 'soccer') loadSoccerPicksPage();
       else loadOtherPicksPage(S.sport);
+      if (!_hasFullAccess()) setTimeout(_showPicksTeaser, 900);
     } else if (view === 'players') {
       stopScoresTimer();
       document.getElementById('view-sport-players').classList.add('active');
@@ -8025,6 +8038,8 @@ function updateAuthUI() {
         sv.classList.remove('sv-active');
         localStorage.setItem('sv_dismissed', dateStrLocal());
       }
+      // Remove picks teaser overlay now that access is granted
+      document.getElementById('picks-teaser-overlay')?.remove();
       // Admin: push any locally-built tickets that haven't reached Supabase yet
       if (_isAdmin()) _trySyncTicketsToSupabase();
     }
@@ -10294,7 +10309,7 @@ function init() {
     resolveYesterdayPlayerPicks(_autoYst);
   }, 4000);
 
-  const lastSport = localStorage.getItem('_baseline_sport') || 'tennis';
+  const lastSport = localStorage.getItem('_baseline_sport') || 'tickets';
   switchSport(lastSport);
   // Read params BEFORE stripping — replaceState changes location.search immediately
   const _urlParams = new URLSearchParams(location.search);

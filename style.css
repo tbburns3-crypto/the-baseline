@@ -3106,3 +3106,51 @@ body.simple-mode #app-layout { display: none !important; }
 .rand-hist-badge.win  { background: rgba(0,230,118,.16); color: var(--accent); }
 .rand-hist-badge.loss { background: rgba(255,80,80,.12); color: #f87171; }
 .rand-hist-badge.pend { background: rgba(255,255,255,.05); color: var(--text-muted); }
+
+/* ── PICKS TEASER OVERLAY ─────────────────────────────────── */
+#picks-teaser-overlay {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin-top: -260px;
+  height: 260px;
+  background: linear-gradient(to bottom, transparent 0%, var(--bg) 55%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 1.8rem;
+  pointer-events: none;
+  z-index: 10;
+}
+.picks-teaser-inner {
+  text-align: center;
+  pointer-events: all;
+  padding: 0 1rem;
+}
+.picks-teaser-lock  { font-size: 1.6rem; margin-bottom: .5rem; }
+.picks-teaser-headline {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: .35rem;
+}
+.picks-teaser-sub {
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  line-height: 1.4;
+}
+.picks-teaser-btn {
+  background: var(--accent);
+  color: #0a1a0e;
+  border: none;
+  border-radius: 10px;
+  padding: .7rem 1.6rem;
+  font-size: .88rem;
+  font-weight: 800;
+  cursor: pointer;
+  letter-spacing: .01em;
+  transition: filter .18s, transform .15s;
+}
+.picks-teaser-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
