@@ -198,23 +198,87 @@ async function resolvePlayerPicksForGame(espnGameId, gamePk) {
   } catch {}
 }
 
-// Resolve yesterday's player prop picks on any device by fetching MLB final boxscores.
-// Groups pending player picks by game and calls resolvePlayerPicksForGame for each.
-async function resolveYesterdayPlayerPicks(ystDate) {
+// Resolve NBA/WNBA player points props by fetching the ESPN box score summary.
+async function resolveNbaPlayerPicksForGame(espnGameId, league) {
+  const leagueStr = league === 'wnba' ? 'wnba' : 'nba';
   const picks = getPicks();
+  const prefix = `plr_${espnGameId}_`;
   const pending = Object.entries(picks).filter(([k, p]) =>
-    p.type === 'player' && p.result === null && p.date === ystDate && p.sport === 'mlb'
+    p.type === 'player' && p.result === null && k.startsWith(prefix) && (p.sport === 'nba' || p.sport === 'wnba')
   );
   if (!pending.length) return;
-  const gameMap = new Map(); // espnGameId -> gamePk
-  for (const [k, p] of pending) {
-    const espnId = k.split('_')[1];
-    if (espnId && p.gamePk && !gameMap.has(espnId)) gameMap.set(espnId, p.gamePk);
-  }
-  if (!gameMap.size) return;
-  await Promise.allSettled(
-    [...gameMap.entries()].map(([espnId, gamePk]) => resolvePlayerPicksForGame(espnId, gamePk))
+  try {
+    const res  = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${leagueStr}/summary?event=${espnGameId}`);
+    const data = await res.json();
+    const ptMap = new Map(); // player id or name-slug -> points
+    for (const teamStats of (data.boxscore?.players || [])) {
+      for (const statGroup of (teamStats.statistics || [])) {
+        const ptsIdx = (statGroup.names || []).indexOf('PTS');
+        if (ptsIdx === -1) continue;
+        for (const ath of (statGroup.athletes || [])) {
+          const pid  = String(ath.athlete?.id || '');
+          const slug = (ath.athlete?.displayName || '').replace(/\W+/g, '');
+          const pts  = parseFloat(ath.stats?.[ptsIdx] || '0');
+          if (pid)  ptMap.set(pid, pts);
+          if (slug) ptMap.set(slug, pts);
+        }
+      }
+    }
+    let changed = false;
+    for (const [k, p] of pending) {
+      // key format: plr_{espnId}_{pid2}_pts
+      const pid2   = k.split('_')[2];
+      const actual = ptMap.has(pid2) ? ptMap.get(pid2) : ptMap.get((pid2 || '').toLowerCase());
+      if (actual === undefined || isNaN(actual)) continue;
+      const m = (p.stat || '').match(/(OVER|UNDER)\s+([\d.]+)/i);
+      if (!m) continue;
+      const line = parseFloat(m[2]);
+      picks[k].result = m[1].toUpperCase() === 'OVER' ? (actual > line ? 'win' : 'loss') : (actual < line ? 'win' : 'loss');
+      changed = true;
+    }
+    if (changed) { savePicks(picks); updatePicksDisplay(); }
+  } catch {}
+}
+
+// Resolve yesterday's player prop picks on any device by fetching final boxscores.
+// Groups pending picks by sport and game, then resolves each.
+async function resolveYesterdayPlayerPicks(ystDate) {
+  const picks = getPicks();
+
+  // ── MLB ──
+  const pendingMlb = Object.entries(picks).filter(([k, p]) =>
+    p.type === 'player' && p.result === null && p.date === ystDate && p.sport === 'mlb'
   );
+  if (pendingMlb.length) {
+    const mlbMap = new Map(); // espnGameId -> gamePk
+    for (const [k, p] of pendingMlb) {
+      const espnId = k.split('_')[1];
+      if (espnId && p.gamePk && !mlbMap.has(espnId)) mlbMap.set(espnId, p.gamePk);
+    }
+    if (mlbMap.size) {
+      await Promise.allSettled(
+        [...mlbMap.entries()].map(([espnId, gamePk]) => resolvePlayerPicksForGame(espnId, gamePk))
+      );
+    }
+  }
+
+  // ── NBA / WNBA ──
+  const pendingBball = Object.entries(picks).filter(([k, p]) =>
+    p.type === 'player' && p.result === null && p.date === ystDate && (p.sport === 'nba' || p.sport === 'wnba')
+  );
+  if (pendingBball.length) {
+    const bbMap = new Map(); // espnGameId -> sport
+    for (const [k, p] of pendingBball) {
+      const espnId = k.split('_')[1];
+      if (espnId && !bbMap.has(espnId)) bbMap.set(espnId, p.sport);
+    }
+    if (bbMap.size) {
+      await Promise.allSettled(
+        [...bbMap.entries()].map(([espnId, sport]) => resolveNbaPlayerPicksForGame(espnId, sport))
+      );
+    }
+  }
+
   if (S.sport === 'tickets' && _ticketDateOffset === -1) renderTicketsPage();
 }
 
@@ -740,28 +804,39 @@ async function tennisFetch(method, params = {}) {
 async function loadFixtures(offset = 0) {
   showLoading('matches-area', 'Loading matches…');
   try {
-    const d = dateStrLocal(offset); // use user TZ - tennis date bar matches the user's "today"
-    const results = await tennisFetch('get_fixtures', { date_start: d, date_stop: d });
+    const d = dateStrLocal(offset);
+    // Fetch fixtures + today's completed results in parallel so finished matches show FIN, not their scheduled time
+    const [results, todayEvents] = await Promise.all([
+      tennisFetch('get_fixtures', { date_start: d, date_stop: d }),
+      offset === 0 ? tennisFetch('get_events', { date_start: d, date_stop: d }).catch(() => []) : Promise.resolve([]),
+    ]);
+    // Build a map of completed events keyed by event_key so we can override fixture status
+    const finishedMap = new Map();
+    for (const e of todayEvents) {
+      if (isFinished(e.event_status)) finishedMap.set(String(e.event_key), e);
+    }
     const picks = getPicks();
     let picksDirty = false;
     for (const m of results) {
-      S.matches.set(String(m.event_key), m);
-      // Re-date any pick that was stamped with the wrong date (pre-fix migration)
-      // Only move dates forward - never pull a tomorrow pick back to today.
-      if (m.event_date) {
-        const pid = 'tn_' + m.event_key;
+      // If get_events already has a finished result for this match, use that instead of the fixture stub
+      const fin = finishedMap.get(String(m.event_key));
+      const merged = fin ? { ...m, ...fin } : m;
+      S.matches.set(String(m.event_key), merged);
+      if (merged.event_date) {
+        const pid = 'tn_' + merged.event_key;
         const ex  = picks[pid];
-        if (ex && ex.result === null && ex.date !== m.event_date && m.event_date >= ex.date) {
-          ex.date = m.event_date;
+        if (ex && ex.result === null && ex.date !== merged.event_date && merged.event_date >= ex.date) {
+          ex.date = merged.event_date;
           picksDirty = true;
         }
       }
     }
     if (picksDirty) savePicks(picks);
-    renderMatches(results);
-    renderOverview(results);
-    renderSidebar(results);
-    // Picks just got recorded - refresh simple view if it's open
+    // Use merged match objects for rendering
+    const merged = results.map(m => finishedMap.get(String(m.event_key)) ? { ...m, ...finishedMap.get(String(m.event_key)) } : m);
+    renderMatches(merged);
+    renderOverview(merged);
+    renderSidebar(merged);
     if (document.getElementById('simple-view')?.classList.contains('sv-active')) renderSimpleView();
   } catch (err) {
     console.error('Fixtures error:', err);
@@ -1507,7 +1582,7 @@ function buildMatchRow(m, idSuffix = '') {
   const p1Won = finished && m.event_winner === 'First Player';
   const p2Won = finished && m.event_winner === 'Second Player';
 
-  const setsHTML = sets.map((s, i) => {
+  const setsHTML = !(live || finished) ? '' : sets.map((s, i) => {
     const cur = live && i === sets.length - 1;
     if (finished && (p1Won || p2Won)) {
       const p1SetWon = parseInt(s.p1) > parseInt(s.p2);
