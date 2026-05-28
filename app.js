@@ -7955,9 +7955,26 @@ async function openPortal() {
 
 async function _pollForPaidRole(attempts) {
   attempts = attempts || 0;
-  if (attempts > 8) return; // give up after ~16s
-  await _fetchUserRole(_currentUser?.id);
-  if (_hasFullAccess()) return; // done
+  if (attempts > 20) {
+    // Give up — show a manual refresh prompt
+    const b = document.querySelector('.checkout-activating');
+    if (b) b.textContent = 'Subscription active! Please refresh the page to unlock full access.';
+    return;
+  }
+  // Wait for auth to be ready before polling
+  if (!_authReady || !_currentUser) {
+    setTimeout(() => _pollForPaidRole(attempts + 1), 1500);
+    return;
+  }
+  // Clear cached role so we always hit the server
+  try { localStorage.removeItem(_ROLE_CACHE_KEY); } catch {}
+  await _fetchUserRole(_currentUser.id);
+  if (_hasFullAccess()) {
+    const b = document.querySelector('.checkout-activating');
+    if (b) { b.textContent = 'Subscription activated!'; setTimeout(() => b.remove(), 3000); }
+    closeUpgradeModal();
+    return;
+  }
   setTimeout(() => _pollForPaidRole(attempts + 1), 2000);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -9558,7 +9575,7 @@ function init() {
 
   // If returning from payment, poll until role flips to paid
   if (_ckParam === 'success') {
-    setTimeout(() => { if (_currentUser) _pollForPaidRole(); }, 2000);
+    setTimeout(() => _pollForPaidRole(), 1500);
   }
 }
 
