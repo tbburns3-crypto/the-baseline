@@ -7427,9 +7427,10 @@ async function _sbGetTickets(date) {
 
 async function _sbSaveTicket(date, slot, legs) {
   // slot: 'day' | 'night' - stored as separate rows so no UPDATE needed
+  if (!_isAdmin()) return; // only admin writes tickets — prevents race conditions between user devices
   try {
     const { data: { session } } = await _sbClient.auth.getSession();
-    if (!session) return; // must be signed in as admin to write tickets
+    if (!session) return;
     const row = slot === 'day'
       ? { date: date + '_day',   morn_legs: legs, eve_legs: null }
       : { date: date + '_night', morn_legs: null, eve_legs: legs };
@@ -7671,6 +7672,8 @@ async function _fetchUserRole(userId) {
       const role = rows?.[0]?.role || 'free';
       _auth.setRole(role);
       localStorage.setItem(_ROLE_CACHE_KEY, JSON.stringify({ id: userId, role }));
+      // If admin auth settled after preload already ran, trigger ticket build now
+      if (role === 'admin' && _svPreloadDone) buildSplitTicketsIfNeeded();
     } else {
       if (_auth.getRole() === null) _auth.setRole('free');
     }
@@ -8256,6 +8259,12 @@ async function buildSplitTicketsIfNeeded() {
   if (dayBuilt && (nightBuilt || !nightAllowed)) {
     await prefetchYesterday();
     return; // both tickets present — nothing to build
+  }
+
+  // ── Only admin builds tickets — non-admin devices read Supabase only ──
+  if (!_isAdmin()) {
+    await prefetchYesterday();
+    return;
   }
 
   // ── This device is first to build — compute from current picks and lock immediately ──
