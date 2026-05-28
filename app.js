@@ -7918,9 +7918,10 @@ async function startCheckout(plan) {
     else alert(msg);
   };
 
-  // Not logged in — skip network entirely
+  // Not logged in — close upgrade modal first, then prompt sign-in
   if (!_currentUser) {
     if (btn) { btn.disabled = false; btn.textContent = origText; }
+    closeUpgradeModal();
     openAuthModal();
     return;
   }
