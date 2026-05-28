@@ -9076,16 +9076,23 @@ function renderTicketsPage() {
     const eve  = getEveningTicket();
     let etHr = 0;
     try { etHr = parseInt(new Date().toLocaleString('en-US', { hour:'numeric', hour12:false, timeZone:'America/New_York' })) || 0; } catch {}
+    // Main: conf desc → alphabetical within same conf tier (looks like a schedule, not a ranked list)
+    // Mini: conf desc → top 5 (curated most-confident picks)
+    const tAlpha = legs => [...legs].sort((a, b) => {
+      const cd = (b.conf||1) - (a.conf||1);
+      return cd !== 0 ? cd : (a.pick||'').localeCompare(b.pick||'');
+    });
+    const tMini  = legs => [...legs].sort((a, b) => (b.conf||1) - (a.conf||1)).slice(0, 5);
+    const fmtL   = legs => legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')}));
     const cards = [];
-    if (morn?.legs?.length) cards.push(renderTicketBlock('🌤 Day Ticket', morn.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks, '', morn.date));
-    if (eve?.legs?.length)  cards.push(renderTicketBlock('🌙 Night Ticket', eve.legs.map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')})), allPicks, '', eve.date));
+    if (morn?.legs?.length) cards.push(renderTicketBlock('🌤 Day Ticket', fmtL(tAlpha(morn.legs)), allPicks, '', morn.date));
+    if (eve?.legs?.length)  cards.push(renderTicketBlock('🌙 Night Ticket', fmtL(tAlpha(eve.legs)), allPicks, '', eve.date));
     else if (!eve) cards.push(`<div class="sv-ticket sv-ticket-pending"><div class="sv-ticket-hdr">🌙 Night Ticket</div><div class="sv-pending-msg">Check back after 5:00 PM ET for tonight's picks</div></div>`);
-    // Mini ticket — top 5 from each full ticket, members only
+    // Mini ticket — top 5 most confident from each full ticket, members only
     const miniCards = [];
     if (_hasFullAccess()) {
-      const miniLegs = t => t.legs.slice(0, 5).map(l => ({...l, matchup:(l.matchup||'').replace(/ @ /g,' v ')}));
-      if (morn?.legs?.length >= 5) miniCards.push(renderTicketBlock('🌤 Day Mini Ticket', miniLegs(morn), allPicks, '', morn.date));
-      if (eve?.legs?.length  >= 5) miniCards.push(renderTicketBlock('🌙 Night Mini Ticket', miniLegs(eve),  allPicks, '', eve.date));
+      if (morn?.legs?.length >= 5) miniCards.push(renderTicketBlock('🌤 Day Mini Ticket', fmtL(tMini(morn.legs)), allPicks, '', morn.date));
+      if (eve?.legs?.length  >= 5) miniCards.push(renderTicketBlock('🌙 Night Mini Ticket', fmtL(tMini(eve.legs)),  allPicks, '', eve.date));
     }
     if (cards.length) {
       todayPicksHTML = `<div class="tp-sport-section">
