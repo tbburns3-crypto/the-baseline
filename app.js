@@ -1715,7 +1715,8 @@ function buildTennisDetailHTML(m, h2h, surface, p1Recent = [], p2Recent = []) {
       <div class="td-form-row"><span class="td-form-name">${esc(lastName(p2Name))}</span>${formDots(p2Recent, p2key)}</div>
     </div>` : '';
 
-  const predHTML = buildTennisPrediction(m, h2h, onSurface, aw1, aw2, sw1, sw2, surfLabel, p1Recent, p2Recent, p1key, p2key);
+  const finished = isFinished(m.event_status);
+  const predHTML = finished ? '' : buildTennisPrediction(m, h2h, onSurface, aw1, aw2, sw1, sw2, surfLabel, p1Recent, p2Recent, p1key, p2key);
 
   return `<div class="td-panel">
     <div class="td-header">
