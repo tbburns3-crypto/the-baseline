@@ -1192,7 +1192,7 @@ const TOURNAMENT_AFFINITY = {
   keys:      { 'australian open':3, 'us open':2 }, // AO 2025 winner
   gauff:     { 'us open':3, 'roland garros':2, 'miami':2 },
   rybakina:  { 'wimbledon':3, 'australian open':2, 'dubai':2 },
-  paolini:   { 'roland garros':3, 'wimbledon':2, 'dubai':2 },
+  paolini:   { 'roland garros':2, 'wimbledon':2, 'dubai':2 }, // 2024 finalist (not champion); form has declined
   pegula:    { 'us open':2, 'miami':2 },
   andreeva:  { 'roland garros':2, 'french open':2 }, // rising 2024-25, solid clay results
   navarro:   { 'wimbledon':2, 'us open':2 }, // rising 2024-25
@@ -1202,6 +1202,11 @@ const TOURNAMENT_AFFINITY = {
   halep:     { 'roland garros':3, 'french open':3 }, // 2018 RG champion (if active)
   kvitova:   { 'wimbledon':3 }, // 2x Wimbledon champion
 };
+
+// Grass/hard-court specialists who consistently underperform at clay Grand Slams.
+// Applied as -1 when they're seeded at Roland Garros to prevent auto-picking them
+// against unseeded clay-comfortable opponents based on seeding alone.
+const CLAY_WEAK = new Set(['rybakina', 'medvedev', 'shapovalov', 'shelton', 'opelka', 'isner', 'raonic', 'norrie']);
 
 // Players who significantly underperform their ranking as favorites.
 // Negative score applied regardless of surface or opponent.
@@ -1333,8 +1338,8 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   if (s1 && s2) {
     if (s1 < s2)      p1Score += 2;
     else if (s2 < s1) p2Score += 2;
-  } else if (s1) { p1Score += 1; }
-    else if (s2) { p2Score += 1; }
+  } else if (s1) { p1Score += 2; }   // seeded vs unseeded: +2 matches the ranking-path weight
+    else if (s2) { p2Score += 2; }
 
   // 3. Rankings (only when both unseeded — matches buildTennisPrediction)
   const rd1 = S.rankIndex.get(p1key), rd2 = S.rankIndex.get(p2key);
@@ -1433,9 +1438,18 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
     if (p1Score > p2Score) p1Score += 1; else p2Score += 1;
   }
 
+  // 9. Clay-surface weakness: grass/hard specialists seeded at clay slams get a penalty
+  //    so borderline picks against clay-comfortable unseeded players are suppressed.
+  if (surfLow.includes('clay') && tier === 'slam') {
+    if (CLAY_WEAK.has(l1.toLowerCase())) p1Score -= 1;
+    if (CLAY_WEAK.has(l2.toLowerCase())) p2Score -= 1;
+  }
+
   // ── Decide pick ──
   const gap = Math.abs(p1Score - p2Score);
-  const minGap = 2;
+  // Seeds 29-32 are barely-seeded — require stronger signal at Grand Slams before committing.
+  const sMax = (s1 && !s2) ? s1 : (!s1 && s2) ? s2 : 0;
+  const minGap = (sMax >= 29 && tier === 'slam') ? 3 : 2;
   if (gap < minGap) return '';
 
   const winner = p1Score > p2Score ? 1 : 2;
@@ -1766,10 +1780,10 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     else if (s2 < s1) { p2Score += 2; factors.push({ win: true, label: 'Seeding', detail: `${l2} [${s2}] vs [${s1}]`, side: 2 }); }
     else               {               factors.push({ win: null, label: 'Seeding', detail: 'Equal seeds', side: 0 }); }
   } else if (s1) {
-    p1Score += 1;
+    p1Score += 2;
     factors.push({ win: true, label: 'Seeding', detail: `${l1} seeded [${s1}], ${l2} unseeded`, side: 1 });
   } else if (s2) {
-    p2Score += 1;
+    p2Score += 2;
     factors.push({ win: true, label: 'Seeding', detail: `${l2} seeded [${s2}], ${l1} unseeded`, side: 2 });
   }
 
@@ -1897,6 +1911,14 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   const vt2 = PLAYER_VOLATILITY[lastName(p2Name).toLowerCase()] || 0;
   if (vt1 < 0) { p1Score += vt1; factors.push({ win: true, label: 'Volatility', detail: `${l1} known for inconsistency`, side: 2 }); }
   if (vt2 < 0) { p2Score += vt2; factors.push({ win: true, label: 'Volatility', detail: `${l2} known for inconsistency`, side: 1 }); }
+
+  // Clay-surface weakness — grass/hard specialists seeded at clay slams
+  const surf2Low = surfLabel.toLowerCase();
+  if (surf2Low.includes('clay') && (tier === 'slam' || tier === 'masters')) {
+    const cw1 = CLAY_WEAK.has(l1.toLowerCase()), cw2 = CLAY_WEAK.has(l2.toLowerCase());
+    if (cw1) { p1Score -= 1; factors.push({ win: true, label: 'Clay weakness', detail: `${l1} grass/hard specialist`, side: 2 }); }
+    if (cw2) { p2Score -= 1; factors.push({ win: true, label: 'Clay weakness', detail: `${l2} grass/hard specialist`, side: 1 }); }
+  }
 
   if (!factors.length) return '';
 
@@ -9421,7 +9443,9 @@ function renderTicketsPage() {
     tnSlamWTA.length  ? renderTicketBlock("🎾 Women's Grand Slam",  tnSlamWTA, allPicks) : '',
     hasSlamSplit && tnNonSlam.length ? renderTicketBlock('🎾 Main Draws (Masters · 500 · 250)', tnNonSlam, allPicks) : '',
     !hasSlamSplit && tnMain.length   ? renderTicketBlock('🎾 Main Draws (Slam · Masters · 500 · 250)', tnMain, allPicks) : '',
-    tnAll.length      ? renderTicketBlock('🎾 All Tournaments',     tnAll,    allPicks) : '',
+    // Only show "All Tournaments" when no slam/main picks exist — avoids duplicating slam picks
+    // and diluting the ticket with noisy Challenger legs alongside clean Grand Slam picks.
+    !tnMain.length && tnAll.length ? renderTicketBlock('🎾 All Tournaments', tnAll, allPicks) : '',
   ].filter(Boolean);
   const tennisHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">🎾 Tennis</div>
@@ -9769,6 +9793,22 @@ function init() {
     localStorage.removeItem(_MORN_TICKET_KEY);
     localStorage.removeItem(_EVE_TICKET_KEY);
     localStorage.setItem('_rebuild_v216', '1');
+  }
+
+  // One-time v296: clear today's unresolved tennis picks so they recalculate with the
+  // fixed seeding model (seeded vs unseeded now gives +2 instead of +1)
+  if (!localStorage.getItem('_rebuild_v296_seed')) {
+    const _picks296 = getPicks();
+    const _today296 = dateStrLocal(0);
+    let _changed296 = false;
+    for (const [id, pk] of Object.entries(_picks296)) {
+      if (pk.sport === 'tennis' && pk.result === null && pk.date === _today296) {
+        delete _picks296[id];
+        _changed296 = true;
+      }
+    }
+    if (_changed296) savePicks(_picks296);
+    localStorage.setItem('_rebuild_v296_seed', '1');
   }
 
   clearOldPicks();
