@@ -5982,6 +5982,7 @@ const GOLF_PAIRINGS_OVERRIDE = {
   '401811949': {
     date: '2026-05-28',
     round: 1,
+    earlyCount: 0,
     groups: [
       ['Bradley','Harman','Gerard'],
       ['Rooyen','Power','T. Kim'],
@@ -8895,8 +8896,9 @@ function getGolfSplitTickets(date, allPicks) {
   }
 
   // If everything ended up in one bucket, single ticket
+  // Exception: earlyCount===0 means intentionally all-late — keep as Late Tee, not Win Picks
   if (!late.length)  return { early, late: [], singleTicket: true };
-  if (!early.length) return { early: late, late: [], singleTicket: true };
+  if (!early.length && earlyCount !== 0) return { early: late, late: [], singleTicket: true };
   return { early, late, singleTicket: false };
 }
 
