@@ -2454,7 +2454,8 @@ function switchSport(sport) {
     secTab.style.display   = '';
     playersTab.style.display  = '';
     lineupsTab.style.display  = 'none';
-    picksTab.style.display    = 'none';
+    picksTab.textContent = '⚽ Picks';
+    picksTab.style.display    = '';
   } else {
     secTab.textContent = 'Standings'; secTab.dataset.view = 'secondary';
     secTab.style.display   = '';
@@ -2528,6 +2529,7 @@ function switchView(view) {
       document.getElementById('view-mlb-picks').classList.add('active');
       if (S.sport === 'mlb') loadMLBPicksPage();
       else if (S.sport === 'golf') loadGolfPicksPage();
+      else if (S.sport === 'soccer') loadSoccerPicksPage();
       else loadOtherPicksPage(S.sport);
     } else if (view === 'players') {
       stopScoresTimer();
@@ -2845,6 +2847,7 @@ function autoRecordAndResolvePick(g, dateOverride = null) {
   if (fin && g.awayScore !== '' && g.homeScore !== '') {
     const aS = parseFloat(g.awayScore) || 0, hS = parseFloat(g.homeScore) || 0;
     if (aS !== hS) resolvePick(String(g.id), aS > hS ? g.awayTeam.split(' ').pop() : g.homeTeam.split(' ').pop());
+    else if (g.sport === 'soccer') resolvePick(String(g.id), '__draw__'); // draw = pick was for a winner = loss
   }
 }
 
@@ -4609,6 +4612,160 @@ function buildWinPredCard(g) {
     ${recLine}
     ${favLine || oddsLine ? `<div class="pc-meta">${favLine}${oddsLine ? `<span class="pc-meta-sep">·</span>${oddsLine}` : ''}</div>` : ''}
   </div>`;
+}
+
+// ── SOCCER PICKS CARD (3-outcome: win / draw / loss) ─────────
+function buildSoccerPicksCard(g) {
+  const { fin, live } = gameRowState(g);
+  const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
+
+  // Use home/road splits when available for tighter model
+  const homeWP = parseWinPct(g.homeRecs?.home || g.homeRec);
+  const awayWP = parseWinPct(g.awayRecs?.road || g.awayRec);
+
+  const homeAdj = homeWP * HOME_BOOST['soccer'];
+  const rawTotal = homeAdj + awayWP;
+
+  const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
+                    : live ? '<span class="live-badge">LIVE</span>'
+                    : `<span class="pc-time">${esc(g.gameDate ? fmtTimeTZ(g.gameDate) : g.status)}</span>`;
+  const oddsLine = g.odds?.spread
+    ? `<span class="pc-odds">${esc(g.odds.spread)}${g.odds.overUnder ? ` · O/U ${g.odds.overUnder}` : ''}</span>` : '';
+
+  if (!rawTotal) {
+    return `<div class="picks-card">
+      <div class="pc-league-badge">${esc(g.league)}</div>
+      <div class="pc-hdr"><span class="pc-teams">${esc(matchup)}</span>${statusLabel}</div>
+      ${oddsLine ? `<div class="pc-meta">${oddsLine}</div>` : ''}
+    </div>`;
+  }
+
+  const homeNorm = homeAdj / rawTotal;
+  const awayNorm = awayWP  / rawTotal;
+  const margin   = Math.abs(homeNorm - 0.5);
+
+  // Draw probability: ~28% baseline, climbs toward 40% when perfectly even
+  const drawPct     = Math.max(0.18, 0.28 + (0.14 * (1 - margin * 2)));
+  const homeWinPct  = Math.round(homeNorm * (1 - drawPct) * 100);
+  const awayWinPct  = Math.round(awayNorm * (1 - drawPct) * 100);
+  const drawPctDisp = 100 - homeWinPct - awayWinPct;
+
+  // Pick — require clear edge to recommend a team win
+  let pickTeam = null, pickConf = 1;
+  if (homeNorm > awayNorm + 0.12) {
+    pickTeam = g.homeTeam;
+    pickConf = homeNorm > awayNorm + 0.25 ? 3 : homeNorm > awayNorm + 0.18 ? 2 : 1;
+  } else if (awayNorm > homeNorm + 0.08) {
+    pickTeam = g.awayTeam;
+    pickConf = awayNorm > homeNorm + 0.20 ? 3 : awayNorm > homeNorm + 0.13 ? 2 : 1;
+  }
+
+  if (!fin && !live && pickTeam) {
+    recordPick(String(g.id), pickTeam.split(' ').pop(), matchup, 'soccer', pickConf);
+  }
+
+  const stored = getPicks()[String(g.id)];
+  const wlBadge = stored?.result === 'win'  ? '<span class="pick-win-badge">W</span>'
+                : stored?.result === 'loss' ? '<span class="pick-loss-badge">L</span>' : '';
+
+  const recLine = (g.awayRec || g.homeRec)
+    ? `<div class="pc-meta pc-recs">${esc(g.awayTeam)} ${esc(g.awayRec||'?')}  ·  ${esc(g.homeTeam)} ${esc(g.homeRec||'?')}</div>` : '';
+
+  const probBar = `<div class="soccer-prob-bar">
+    <div class="soccer-prob-away" style="width:${awayWinPct}%" title="${esc(g.awayTeam)} win">
+      <span class="soccer-prob-lbl">${awayWinPct}%</span>
+    </div>
+    <div class="soccer-prob-draw" style="width:${drawPctDisp}%" title="Draw">
+      <span class="soccer-prob-lbl">D ${drawPctDisp}%</span>
+    </div>
+    <div class="soccer-prob-home" style="width:${homeWinPct}%" title="${esc(g.homeTeam)} win">
+      <span class="soccer-prob-lbl">${homeWinPct}%</span>
+    </div>
+  </div>`;
+
+  const pickLine = pickTeam
+    ? `<span class="pc-fav">${esc(pickTeam.split(' ').pop())} to Win ${'●'.repeat(pickConf)}${'○'.repeat(3-pickConf)}</span>`
+    : `<span class="pc-fav pc-fav-even">Draw possible — no strong lean</span>`;
+
+  return `<div class="picks-card">
+    <div class="pc-league-badge">${esc(g.league)}</div>
+    <div class="pc-hdr">
+      <span class="pc-teams">${esc(matchup)}</span>
+      <span style="display:flex;align-items:center;gap:4px">${statusLabel}${wlBadge}</span>
+    </div>
+    ${recLine}
+    ${probBar}
+    <div class="pc-meta">${pickLine}${oddsLine ? `<span class="pc-meta-sep">·</span>${oddsLine}` : ''}</div>
+  </div>`;
+}
+
+async function loadSoccerPicksPage() {
+  const seq  = _loadSeq;
+  const area = document.getElementById('mlb-picks-area');
+  area.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading soccer picks…</p></div>';
+  try {
+    const results = await Promise.allSettled(
+      SOCCER_LEAGUES.map(l =>
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${l.id}/scoreboard`)
+          .then(r => r.json())
+      )
+    );
+    const allGames = [];
+    for (let i = 0; i < SOCCER_LEAGUES.length; i++) {
+      if (results[i].status !== 'fulfilled') continue;
+      const d  = results[i].value;
+      const lg = SOCCER_LEAGUES[i];
+      for (const ev of (d.events || [])) {
+        const comp = ev.competitions?.[0]; if (!comp) continue;
+        const home = comp.competitors?.find(c => c.homeAway === 'home') || comp.competitors?.[0];
+        const away = comp.competitors?.find(c => c.homeAway === 'away') || comp.competitors?.[1];
+        const st   = comp.status || ev.status || {};
+        const state = st.type?.state || '';
+        const mkRecs = c => {
+          const rr = c?.records || c?.record || [];
+          return {
+            total: (rr.find(r => r.type === 'total') || rr[0])?.summary || '',
+            home:  rr.find(r => r.type === 'home')?.summary || '',
+            road:  rr.find(r => r.type === 'road')?.summary || '',
+            l10:   rr.find(r => r.name === 'L10' || r.name === 'Last 10')?.summary || ''
+          };
+        };
+        allGames.push({
+          id:        ev.id,
+          league:    `${lg.icon} ${lg.name}`,
+          sport:     'soccer',
+          homeTeam:  home?.team?.shortDisplayName || home?.team?.name || '-',
+          awayTeam:  away?.team?.shortDisplayName || away?.team?.name || '-',
+          homeAbbr:  home?.team?.abbreviation || '',
+          awayAbbr:  away?.team?.abbreviation || '',
+          homeId:    home?.team?.id || '',
+          awayId:    away?.team?.id || '',
+          homeRec:   (home?.records || home?.record || [])[0]?.summary || '',
+          awayRec:   (away?.records || away?.record || [])[0]?.summary || '',
+          homeRecs:  mkRecs(home),
+          awayRecs:  mkRecs(away),
+          gameDate:  ev.date || '',
+          homeScore: state !== 'pre' ? (home?.score ?? '') : '',
+          awayScore: state !== 'pre' ? (away?.score ?? '') : '',
+          status:    st.type?.shortDetail || st.type?.description || '-',
+          series:    comp.series ? { summary: comp.series.summary||'', title: comp.series.title||'' } : null,
+          odds:      (() => { const o = comp.odds?.[0]; return o ? { spread: o.details || '', overUnder: o.overUnder || null } : null; })()
+        });
+      }
+    }
+    if (_loadSeq !== seq) return;
+    if (!allGames.length) {
+      area.innerHTML = '<div class="empty-state"><p>No soccer matches today.</p></div>';
+      return;
+    }
+    allGames.forEach(g => autoRecordAndResolvePick(g));
+    const note  = '<div class="pc-data-note">3-outcome model · Home & away W-D-L form · Odds where available</div>';
+    const cards = allGames.map(g => buildSoccerPicksCard(g)).join('');
+    area.innerHTML = note + `<div class="picks-cards">${cards}</div>`;
+    updatePicksDisplay();
+  } catch (err) {
+    area.innerHTML = `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load soccer picks: ${esc(err.message)}</p></div>`;
+  }
 }
 
 async function loadOtherPicksPage(sport) {

@@ -2220,6 +2220,22 @@ body.simple-mode #app-layout { display: none !important; }
 .pc-odds      { font-size: .78rem; color: var(--text-muted); }
 .pc-meta-sep  { color: var(--border); margin: 0 5px; }
 
+/* ── SOCCER PICKS ── */
+.pc-league-badge {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--text-muted); margin-bottom: 5px;
+}
+.soccer-prob-bar {
+  display: flex; height: 20px; border-radius: 4px; overflow: hidden;
+  margin: 6px 0; font-size: .62rem; font-weight: 700;
+}
+.soccer-prob-away { background: rgba(239,154,154,.25); display:flex; align-items:center; justify-content:center; min-width:18px; }
+.soccer-prob-draw { background: rgba(255,255,255,.08); display:flex; align-items:center; justify-content:center; min-width:18px; }
+.soccer-prob-home { background: rgba(0,230,118,.18);  display:flex; align-items:center; justify-content:center; min-width:18px; }
+.soccer-prob-lbl  { color: var(--text-2); white-space:nowrap; overflow:hidden; }
+.pick-win-badge  { font-size:.7rem; font-weight:800; color:var(--accent); background:var(--accent-glow); border-radius:3px; padding:1px 5px; }
+.pick-loss-badge { font-size:.7rem; font-weight:800; color:#ef9a9a; background:rgba(244,67,54,.15); border-radius:3px; padding:1px 5px; }
+
 /* ── NBA / WNBA PLAYER PICKS ── */
 .nba-players-section { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 6px; }
 .nba-players-hdr { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); margin-bottom: 4px; }
