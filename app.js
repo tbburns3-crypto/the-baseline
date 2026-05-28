@@ -757,6 +757,7 @@ async function loadFixtures(offset = 0) {
 async function loadLivescores() {
   try {
     const results = await tennisFetch('get_livescore');
+    if (results.length) console.log('[serve-debug] livescore sample:', JSON.stringify(results[0]).slice(0, 500));
     for (const m of results) {
       S.matches.set(String(m.event_key), m);
       patchRow(m);
@@ -965,6 +966,7 @@ function wsConnect() {
         let count = 0;
         for (const u of updates) {
           if (!u.event_key) continue;
+          if (count === 0) console.log('[serve-debug] ws sample:', JSON.stringify(u).slice(0, 500));
           const merged = { ...(S.matches.get(String(u.event_key)) || {}), ...u };
           S.matches.set(String(u.event_key), merged);
           patchRow(merged);
