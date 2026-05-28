@@ -2025,8 +2025,7 @@ function patchServe(el, isServing) {
   if (isServing && !dot) {
     dot = document.createElement('span');
     dot.className = 'serve-dot';
-    dot.textContent = '●';
-    el.prepend(dot);  // show before the player name
+    el.prepend(dot);
   } else if (!isServing && dot) {
     dot.remove();
   }
