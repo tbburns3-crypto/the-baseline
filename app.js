@@ -6755,6 +6755,38 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           const maxG = g => Math.max(...g.players.map(p => p.linescores?.[roundForGroups-1]?.linescores?.length || 0));
           const groups = _groups.slice().sort((a, b) => maxG(b) - maxG(a));
 
+          // Migrate stale pick IDs — when override groups are reordered, stored picks end up
+          // under old overrideIdx values. Move them to the current group's canonical ID so
+          // buildGolfGroupPickCard can find them with the standard ID lookup.
+          {
+            const migrNorm = s => (s || '').toLowerCase()
+              .normalize('NFD').replace(/[̀-ͯ]/g, '')
+              .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/å/g, 'a');
+            const todayMigr  = dateStrLocal(0);
+            const evPrefix   = `golf_${ev.id}_`;
+            const migrPicks  = getPicks();
+            let migrated     = false;
+            for (const g of [..._groups, ...upcomingGroups]) {
+              const canonId = normGolfPickId(ev.id, g.time, g.nine, g.overrideIdx, g.overrideDate);
+              if (migrPicks[canonId]) continue;
+              const gLNs = g.players.map(p =>
+                migrNorm((p.athlete?.shortName || p.athlete?.displayName || '').split(' ').pop())
+              );
+              for (const [oldId, pk] of Object.entries(migrPicks)) {
+                if (!oldId.startsWith(evPrefix) || oldId === canonId) continue;
+                if (pk.sport !== 'golf' || pk.date !== todayMigr || !pk.team) continue;
+                const s = migrNorm((pk.team || '') + ' ' + (pk.matchup || ''));
+                if (gLNs.filter(ln => ln && s.includes(ln)).length >= 2) {
+                  migrPicks[canonId] = { ...pk };
+                  delete migrPicks[oldId];
+                  migrated = true;
+                  break;
+                }
+              }
+            }
+            if (migrated) savePicks(migrPicks);
+          }
+
           // Collect pickIds that are already displayed via current groups
           const shownPickIds = new Set([...groups, ...upcomingGroups].flatMap(g => {
             const ids = [normGolfPickId(ev.id, g.time, g.nine, g.overrideIdx, g.overrideDate)];
