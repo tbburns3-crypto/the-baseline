@@ -7628,16 +7628,24 @@ function showYesterdayTickets() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── AUTH STATE ───────────────────────────────────────────────────────────────
-let _currentUser     = null;
-let _currentUserRole = null;  // 'free' | 'paid' | 'admin' | null (not yet loaded)
-let _authReady       = false; // true after first onAuthStateChange fires
+let _currentUser = null;
+let _authReady   = false;
 
-function _hasFullAccess() {
-  return _currentUserRole === 'paid' || _currentUserRole === 'admin';
-}
-function _isAdmin() {
-  return _currentUserRole === 'admin';
-}
+// Role stored in a closure — not accessible as a global variable from DevTools
+const _auth = (() => {
+  let _role = null;
+  return {
+    getRole()         { return _role; },
+    setRole(r)        { _role = (r === 'paid' || r === 'admin' || r === 'free' || r === 'banned') ? r : null; },
+    hasFullAccess()   { return _role === 'paid' || _role === 'admin'; },
+    isAdmin()         { return _role === 'admin'; },
+    isBanned()        { return _role === 'banned'; },
+    clear()           { _role = null; },
+  };
+})();
+
+function _hasFullAccess() { return _auth.hasFullAccess(); }
+function _isAdmin()       { return _auth.isAdmin(); }
 
 const _ROLE_CACHE_KEY = '_usr_role_v1';
 
@@ -7646,7 +7654,7 @@ async function _fetchUserRole(userId) {
   try {
     const cached = JSON.parse(localStorage.getItem(_ROLE_CACHE_KEY) || 'null');
     if (cached?.id === userId) {
-      _currentUserRole = cached.role;
+      _auth.setRole(cached.role);
       updateAuthUI();
     }
   } catch {}
@@ -7660,13 +7668,14 @@ async function _fetchUserRole(userId) {
     );
     if (res.ok) {
       const rows = await res.json();
-      _currentUserRole = rows?.[0]?.role || 'free';
-      localStorage.setItem(_ROLE_CACHE_KEY, JSON.stringify({ id: userId, role: _currentUserRole }));
+      const role = rows?.[0]?.role || 'free';
+      _auth.setRole(role);
+      localStorage.setItem(_ROLE_CACHE_KEY, JSON.stringify({ id: userId, role }));
     } else {
-      if (_currentUserRole === null) _currentUserRole = 'free';
+      if (_auth.getRole() === null) _auth.setRole('free');
     }
   } catch {
-    if (_currentUserRole === null) _currentUserRole = 'free';
+    if (_auth.getRole() === null) _auth.setRole('free');
   }
   updateAuthUI();
 }
@@ -7688,7 +7697,7 @@ function updateAuthUI() {
     const fullBtn = document.querySelector('.sv-full-btn');
     if (fullBtn && fullBtn.disabled) { fullBtn.disabled = false; fullBtn.textContent = 'Full App →'; }
     // Banned users: lock the simple view with a suspension notice
-    if (_currentUserRole === 'banned') {
+    if (_auth.isBanned()) {
       if (fullBtn) { fullBtn.style.display = 'none'; }
       const svContent = document.getElementById('sv-content');
       if (svContent) svContent.innerHTML = `<div class="sv-empty" style="color:#ff5252;font-size:1rem">Your account has been suspended.<br><span style="font-size:.8rem;color:#888">Contact support if you believe this is an error.</span></div>`;
@@ -7742,9 +7751,9 @@ function initAuth() {
       updateAuthUI();
       return;
     }
-    _currentUser     = session?.user || null;
-    _currentUserRole = null;
-    _authReady       = true;
+    _currentUser = session?.user || null;
+    _auth.clear();
+    _authReady   = true;
 
     if (_currentUser) {
       await _fetchUserRole(_currentUser.id);
@@ -9304,12 +9313,12 @@ function hideSimpleView(bypassGate) {
   if (!bypassGate) {
     if (_hasFullAccess()) {
       // fall through to dismiss
-    } else if (_currentUserRole === 'banned') {
+    } else if (_auth.isBanned()) {
       return; // banned users stay on simple view, which shows a suspension notice
     } else if (_authReady && !_currentUser) {
       openAuthModal();
       return;
-    } else if (_currentUser && _currentUserRole === null) {
+    } else if (_currentUser && _auth.getRole() === null) {
       // Role still loading — show feedback, updateAuthUI will auto-dismiss once role arrives
       const btn = document.querySelector('.sv-full-btn');
       if (btn && !btn.disabled) { btn.disabled = true; btn.textContent = 'Checking…'; }
@@ -9515,8 +9524,8 @@ function init() {
     sessionStorage.setItem('_tb_bypass', '1');
   }
   if (sessionStorage.getItem('_tb_bypass')) {
-    _currentUser     = { email: 'tbburns3@gmail.com' };
-    _currentUserRole = 'admin';
+    _currentUser = { email: 'tbburns3@gmail.com' };
+    _auth.setRole('admin');
     updateAuthUI();
   }
   if (_ckParam === 'success') {
