@@ -1493,8 +1493,8 @@ function buildMatchRow(m, idSuffix = '') {
     ? `<span class="game-score">${esc(m.event_game_result).replace('-','<br>')}</span>`
     : '';
 
-  const p1serve = serve === '1' ? '<span class="serve-dot">●</span>' : '';
-  const p2serve = serve === '2' ? '<span class="serve-dot">●</span>' : '';
+  const p1serve = serve === '1' ? '<span class="serve-dot"></span>' : '';
+  const p2serve = serve === '2' ? '<span class="serve-dot"></span>' : '';
 
   // Seed tags - show [N] for seeded players; rank # for unseeded (when rankIndex loaded)
   const s1 = parseInt(m.event_first_player_seed)  || 0;
@@ -6567,10 +6567,9 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId, isFinal 
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 3 ? 3 : gap >= 1 ? 2 : 1;
 
-  // Record pick only for active/in-progress tournaments — not for completed events from prior weeks.
-  // force=false means existing picks are never overwritten (locked pre-round picks stay intact).
+  // Record pick only before group tees off — never change once play has started.
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
-  if (!isFinal) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+  if (!isFinal && !groupStarted) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
 
   // Display: if group has started, show the stored pre-round pick at the top
   const storedLastName = (existingPick?.team || '').toLowerCase();
@@ -9088,7 +9087,7 @@ function renderTicketsPage() {
       todayPicksHTML = `<div class="tp-sport-section">
         <div class="tp-sport-hdr">🎫 Today's Picks</div>
         ${grid(cards)}
-        ${miniCards.length ? `<div class="tp-sub-hdr tp-mini-hdr">&#11088; Mini Ticket &mdash; Top 5 Most Confident</div>${grid(miniCards)}` : ''}
+        ${miniCards.length ? `<div class="tp-sub-hdr tp-mini-hdr">&#11088; Mini Ticket · Top 5 Most Confident</div>${grid(miniCards)}` : ''}
       </div>`;
     }
   }
@@ -9204,9 +9203,15 @@ function renderTicketsPage() {
     if (golfEarly.length) golfCards.push(renderTicketBlock('⛳ Early Tee', golfEarly, allPicks));
     if (golfLate.length)  golfCards.push(renderTicketBlock('⛳ Late Tee',  golfLate,  allPicks));
   }
+  const golfMiniCards = [];
+  if (_hasFullAccess() && !golfSingle) {
+    if (golfEarly.length >= 5) golfMiniCards.push(renderTicketBlock('⛳ Early Mini', golfEarly.slice(0, 5), allPicks));
+    if (golfLate.length  >= 5) golfMiniCards.push(renderTicketBlock('⛳ Late Mini',  golfLate.slice(0,  5), allPicks));
+  }
   const golfHTML = `<div class="tp-sport-section">
     <div class="tp-sport-hdr">⛳ Golf</div>
     ${golfCards.length ? grid(golfCards) : `<div class="tp-sport-empty">No golf picks yet${off===0?' - visit the Golf tab':''}</div>`}
+    ${golfMiniCards.length ? `<div class="tp-sub-hdr tp-mini-hdr">&#11088; Golf Mini Ticket · Top 5 Most Confident</div>${grid(golfMiniCards)}` : ''}
   </div>`;
 
   // ── NBA ──
