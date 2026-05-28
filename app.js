@@ -237,11 +237,15 @@ function showPicksHistory() {
 
   const makeRow = p => {
     const win = p.result === 'win';
-    return `<div class="ph-row ${win ? 'ph-win' : 'ph-loss'}">
-      <div class="ph-result-pill ${win ? 'ph-win-pill' : 'ph-loss-pill'}">${win ? 'W' : 'L'}</div>
+    const ret = p.result === 'retired';
+    const rowCls  = win ? 'ph-win' : ret ? 'ph-pending-row' : 'ph-loss';
+    const pillCls = win ? 'ph-win-pill' : ret ? 'ph-pend-pill' : 'ph-loss-pill';
+    const pillTxt = win ? 'W' : ret ? 'R' : 'L';
+    return `<div class="ph-row ${rowCls}">
+      <div class="ph-result-pill ${pillCls}">${pillTxt}</div>
       <div class="ph-row-info">
         <div class="ph-matchup">${esc(p.matchup || p.team)}</div>
-        <div class="ph-pick-line">Picked: <strong>${esc(p.team)}</strong></div>
+        <div class="ph-pick-line">Picked: <strong>${esc(p.team)}</strong>${ret ? ' <span style="color:var(--text-muted);font-size:.72rem">(retired/walkover)</span>' : ''}</div>
       </div>
     </div>`;
   };
@@ -318,8 +322,8 @@ function showPicksHistory() {
       const dayResolved = dayPicks.filter(p => p.result !== null);
       const dayPending  = dayPicks.filter(p => p.result === null);
       const w = dayResolved.filter(p => p.result === 'win').length;
-      const l = dayResolved.length - w;
-      const recordBadge = dayResolved.length
+      const l = dayResolved.filter(p => p.result === 'loss').length;
+      const recordBadge = (w || l)
         ? `<span class="ph-day-record ${w > l ? 'ph-day-up' : w < l ? 'ph-day-down' : 'ph-day-even'}">${w}W–${l}L</span>` : '';
       const gId = 'phg_' + date.replace(/\D/g,'');
       const pendBadge = dayPending.length
@@ -349,12 +353,13 @@ function showPicksHistory() {
     content += `<div class="ph-cal-section"><div class="ph-cal-title">Accuracy by Confidence</div>${calRows}</div>`;
   }
 
-  // Overall W-L for header badge
+  // Overall W-L for header badge (retired picks excluded from both count and percentage)
   const totalW = resolved.filter(p => p.result === 'win').length;
-  const totalL = resolved.length - totalW;
-  const overallPct = resolved.length ? Math.round(totalW / resolved.length * 100) : null;
+  const totalL = resolved.filter(p => p.result === 'loss').length;
+  const totalWL = totalW + totalL;
+  const overallPct = totalWL ? Math.round(totalW / totalWL * 100) : null;
   const overallCls = overallPct === null ? '' : overallPct >= 55 ? 'ph-cat-good' : overallPct <= 40 ? 'ph-cat-bad' : 'ph-cat-avg';
-  const overallBadge = resolved.length
+  const overallBadge = totalWL
     ? `<span class="ph-hdr-record ${overallCls}">${totalW}W – ${totalL}L${overallPct !== null ? ` · ${overallPct}%` : ''}</span>`
     : '';
 
@@ -380,7 +385,7 @@ function showPicksHistory() {
 function resolvePick(gameId, winnerFull) {
   const picks = getPicks();
   const p = picks[gameId];
-  if (!p || p.result !== null) return;
+  if (!p || p.result !== null || !p.team) return;
   const pickLow   = p.team.toLowerCase();
   const winnerLow = (winnerFull || '').toLowerCase();
   p.result = (winnerLow === pickLow || winnerLow.endsWith(' ' + pickLow) || winnerLow.includes(pickLow)) ? 'win' : 'loss';
@@ -402,12 +407,13 @@ function updatePicksDisplay() {
   const sport      = S.sport;
   const today      = dateStrLocal(0);
 
-  const sportPicks = allVals.filter(p => (p.sport || 'tennis') === sport && p.date === today);
-  const sportRes   = sportPicks.filter(p => p.result !== null);
-  const sportPend  = sportPicks.filter(p => p.result === null);
-  const sWins      = sportRes.filter(p => p.result === 'win').length;
-  const sLosses    = sportRes.length - sWins;
-  const sPct       = sportRes.length ? Math.round((sWins / sportRes.length) * 100) : 0;
+  const sportPicks  = allVals.filter(p => (p.sport || 'tennis') === sport && p.date === today);
+  const sportRes    = sportPicks.filter(p => p.result !== null);
+  const sportPend   = sportPicks.filter(p => p.result === null);
+  const sWins       = sportRes.filter(p => p.result === 'win').length;
+  const sLosses     = sportRes.filter(p => p.result === 'loss').length;
+  const sResolved   = sWins + sLosses; // retired picks excluded from W/L math
+  const sPct        = sResolved ? Math.round((sWins / sResolved) * 100) : 0;
 
   // Small topbar badge
   const badge = document.getElementById('picks-accuracy');
@@ -430,7 +436,7 @@ function updatePicksDisplay() {
 
   banner.style.display = '';
 
-  if (sportRes.length) {
+  if (sResolved) {
     pbWins.textContent = sWins;
     pbLoss.textContent = sLosses;
     pbPct.textContent  = `(${sPct}%)`;
@@ -9659,7 +9665,7 @@ function renderSimpleView() {
 
   const ticketRow = (leg, i) => {
     const live   = allPicks[leg.id] || {};
-    const result = live.result;
+    const result = live.result ?? leg.result ?? null;
     const badge  = result === 'win'     ? '<span class="sv-badge sv-badge-w">W</span>'
                  : result === 'loss'    ? '<span class="sv-badge sv-badge-l">L</span>'
                  : result === 'retired' ? '<span class="sv-badge sv-badge-r">R</span>' : '';
@@ -9684,8 +9690,8 @@ function renderSimpleView() {
 
   const makeBlock = (label, ticket) => {
     const legs   = ticket.legs;
-    const wins   = legs.filter(l => allPicks[l.id]?.result === 'win').length;
-    const losses = legs.filter(l => allPicks[l.id]?.result === 'loss').length;
+    const wins   = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
+    const losses = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'loss').length;
     const status = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
     let dateLabel = '';
     try { dateLabel = new Date((ticket.date || today) + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' }); } catch {}
