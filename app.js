@@ -9940,16 +9940,23 @@ function saveRandTicket() {
   if (btn) {
     btn.textContent = '✓ Saved!';
     btn.disabled = true;
-    setTimeout(() => { const b = document.getElementById('rand-save-btn'); if (b) { b.textContent = '💾 Save Ticket'; b.disabled = false; } }, 2000);
+    setTimeout(() => {
+      const b = document.getElementById('rand-save-btn');
+      if (b) { b.textContent = '💾 Save Ticket'; b.disabled = false; }
+      // Switch to Saved tab so they see it landed
+      switchRandTab('saved');
+    }, 800);
   }
-  renderRandHistory();
 }
 
 function renderRandHistory() {
   const area = document.getElementById('rand-history-area');
   if (!area) return;
   const history = _getRandHistory();
-  if (!history.length) { area.innerHTML = ''; return; }
+  if (!history.length) {
+    area.innerHTML = `<div class="rand-empty" style="margin-top:2rem">No saved tickets yet.<div style="font-size:.78rem;margin-top:.4rem;color:var(--text-muted)">Build a ticket and hit Save to keep it here.</div></div>`;
+    return;
+  }
   const picks = getPicks();
 
   const cards = history.map(entry => {
@@ -10150,11 +10157,23 @@ function renderRandTicket() {
     </div>`;
 }
 
+let _randTab = 'build'; // 'build' | 'saved'
+
+function switchRandTab(tab) {
+  _randTab = tab;
+  document.querySelectorAll('.rand-tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('rand-build-panel').style.display = tab === 'build' ? '' : 'none';
+  document.getElementById('rand-saved-panel').style.display = tab === 'saved' ? '' : 'none';
+  if (tab === 'saved') renderRandHistory();
+}
+
 function renderRandomizer() {
   const area = document.getElementById('rand-area');
   if (!area) return;
-  _loadSavedRandTicket(); // restore saved ticket for today if one exists
-  const pool = _randGetPool();
+  _loadSavedRandTicket();
+  const pool     = _randGetPool();
+  const histCount = _getRandHistory().length;
 
   const sportBtns = _RAND_SPORTS_ALL.map(s =>
     `<button class="rand-sport-btn${_randState.sports.has(s) ? ' active' : ''}" data-sport="${s}" onclick="toggleRandSport('${s}')">${_SPORT_ICON_MAP[s]} ${s.charAt(0).toUpperCase() + s.slice(1)}</button>`
@@ -10166,26 +10185,34 @@ function renderRandomizer() {
 
   area.innerHTML = `
     <div class="rand-container">
-      <div class="rand-header">
-        <div class="rand-title">&#x1F3B2; Ticket Randomizer</div>
-        <div class="rand-subtitle">Pick your sports, choose your count, and get a ticket built from today's best picks.</div>
+      <div class="rand-tab-bar">
+        <button class="rand-tab-btn${_randTab === 'build' ? ' active' : ''}" data-tab="build" onclick="switchRandTab('build')">&#x1F3B2; Build</button>
+        <button class="rand-tab-btn${_randTab === 'saved' ? ' active' : ''}" data-tab="saved" onclick="switchRandTab('saved')">
+          &#x1F4CB; Saved${histCount ? ` <span class="rand-tab-count">${histCount}</span>` : ''}
+        </button>
       </div>
-      <div class="rand-controls">
-        <div class="rand-section-label">Sports</div>
-        <div class="rand-sport-filters">${sportBtns}</div>
-        <div class="rand-section-label">Picks on ticket</div>
-        <div class="rand-count-bar">${countBtns}</div>
-        <div class="rand-pool-note" id="rand-pool-note">${pool.length} pick${pool.length !== 1 ? 's' : ''} available today across selected sports</div>
-        <button class="rand-main-btn" onclick="doRandomize()">&#x1F3B2; Randomize</button>
+
+      <div id="rand-build-panel" style="${_randTab === 'saved' ? 'display:none' : ''}">
+        <div class="rand-controls">
+          <div class="rand-section-label">Sports</div>
+          <div class="rand-sport-filters">${sportBtns}</div>
+          <div class="rand-section-label">Picks on ticket</div>
+          <div class="rand-count-bar">${countBtns}</div>
+          <div class="rand-pool-note" id="rand-pool-note">${pool.length} pick${pool.length !== 1 ? 's' : ''} available today across selected sports</div>
+          <button class="rand-main-btn" onclick="doRandomize()">&#x1F3B2; Randomize</button>
+        </div>
+        <div id="rand-ticket-area">
+          <div class="rand-empty">Hit Randomize to build your ticket.</div>
+        </div>
       </div>
-      <div id="rand-ticket-area">
-        <div class="rand-empty">Hit Randomize to build your ticket.</div>
+
+      <div id="rand-saved-panel" style="${_randTab === 'build' ? 'display:none' : ''}">
+        <div id="rand-history-area"></div>
       </div>
-      <div id="rand-history-area"></div>
     </div>`;
 
   if (_randState.ticket.length) renderRandTicket();
-  renderRandHistory();
+  if (_randTab === 'saved') renderRandHistory();
 }
 
 // ── EVENT LISTENERS ──────────────────────────────────────────

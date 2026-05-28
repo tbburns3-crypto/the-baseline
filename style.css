@@ -2946,6 +2946,39 @@ body.simple-mode #app-layout { display: none !important; }
 .rand-title     { font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-bottom: .3rem; }
 .rand-subtitle  { font-size: .83rem; color: var(--text-muted); }
 
+.rand-tab-bar {
+  display: flex;
+  gap: .4rem;
+  margin-bottom: 1.4rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+.rand-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: .88rem;
+  font-weight: 600;
+  padding: .55rem .9rem;
+  cursor: pointer;
+  transition: color .18s, border-color .18s;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+.rand-tab-btn.active  { color: var(--accent); border-bottom-color: var(--accent); }
+.rand-tab-btn:hover:not(.active) { color: var(--text); }
+.rand-tab-count {
+  background: rgba(0,230,118,.15);
+  color: var(--accent);
+  font-size: .62rem;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: .05rem .38rem;
+}
+
 .rand-controls {
   background: var(--card-bg);
   border: 1px solid var(--border);
