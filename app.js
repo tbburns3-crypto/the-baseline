@@ -388,6 +388,15 @@ function resolvePick(gameId, winnerFull) {
   updatePicksDisplay();
 }
 
+function resolvePickRetired(gameId) {
+  const picks = getPicks();
+  const p = picks[gameId];
+  if (!p || p.result === 'retired') return; // allow overriding loss→retired
+  p.result = 'retired';
+  savePicks(picks);
+  updatePicksDisplay();
+}
+
 function updatePicksDisplay() {
   const allVals    = Object.values(getPicks());
   const sport      = S.sport;
@@ -1527,11 +1536,17 @@ function buildMatchRow(m, idSuffix = '') {
   const pickHTML    = (!live && !finished) ? _pickResult : ''; // only display for upcoming
   // Resolve stored pick once result is known
   if (finished && m.event_winner) {
-    let winnerLN = '';
-    if (m.event_winner === 'First Player')       winnerLN = lastName(m.event_first_player  || '');
-    else if (m.event_winner === 'Second Player') winnerLN = lastName(m.event_second_player || '');
-    else                                          winnerLN = lastName(m.event_winner);
-    if (winnerLN) resolvePick('tn_' + m.event_key, winnerLN);
+    const st = (m.event_status || '').toLowerCase();
+    const isRetired = st.includes('retir') || st.includes('walkover') || st === 'w/o';
+    if (isRetired) {
+      resolvePickRetired('tn_' + m.event_key);
+    } else {
+      let winnerLN = '';
+      if (m.event_winner === 'First Player')       winnerLN = lastName(m.event_first_player  || '');
+      else if (m.event_winner === 'Second Player') winnerLN = lastName(m.event_second_player || '');
+      else                                          winnerLN = lastName(m.event_winner);
+      if (winnerLN) resolvePick('tn_' + m.event_key, winnerLN);
+    }
   }
   const favOn = isFav('match', m.event_key);
   const favLabel = esc((m.event_first_player||'') + ' vs ' + (m.event_second_player||''));
@@ -4006,11 +4021,17 @@ async function loadTennisPicksPage() {
         }
       }
       if (isFinished(m.event_status) && m.event_winner) {
-        let wln = '';
-        if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player || '');
-        else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
-        else                                          wln = lastName(m.event_winner);
-        if (wln) resolvePick('tn_' + m.event_key, wln);
+        const st2 = (m.event_status || '').toLowerCase();
+        const isRet = st2.includes('retir') || st2.includes('walkover') || st2 === 'w/o';
+        if (isRet) {
+          resolvePickRetired('tn_' + m.event_key);
+        } else {
+          let wln = '';
+          if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player || '');
+          else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
+          else                                          wln = lastName(m.event_winner);
+          if (wln) resolvePick('tn_' + m.event_key, wln);
+        }
       }
     }
     if (picksDirty) savePicks(picks);
@@ -9066,8 +9087,9 @@ function renderTicketBlock(title, legs, allPicks, footer = '', ticketDate = '') 
   const row = (leg, i) => {
     const live   = allPicks[leg.id] || {};
     const result = live.result ?? leg.result ?? null;
-    const badge  = result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
-                 : result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+    const badge  = result === 'win'     ? '<span class="sv-badge sv-badge-w">W</span>'
+                 : result === 'loss'    ? '<span class="sv-badge sv-badge-l">L</span>'
+                 : result === 'retired' ? '<span class="sv-badge sv-badge-r">R</span>' : '';
     const conf   = Math.min(3, Math.max(1, leg.conf || 1));
     const dots   = '●'.repeat(conf) + '○'.repeat(3 - conf);
     const icon   = leg.icon || SPORT_ICONS[leg.sport] || '🏅';
@@ -9421,8 +9443,9 @@ function renderSimpleView() {
   const ticketRow = (leg, i) => {
     const live   = allPicks[leg.id] || {};
     const result = live.result;
-    const badge  = result === 'win'  ? '<span class="sv-badge sv-badge-w">W</span>'
-                 : result === 'loss' ? '<span class="sv-badge sv-badge-l">L</span>' : '';
+    const badge  = result === 'win'     ? '<span class="sv-badge sv-badge-w">W</span>'
+                 : result === 'loss'    ? '<span class="sv-badge sv-badge-l">L</span>'
+                 : result === 'retired' ? '<span class="sv-badge sv-badge-r">R</span>' : '';
     const conf   = Math.min(3, Math.max(1, leg.conf || 1));
     const dots   = '●'.repeat(conf) + '○'.repeat(3 - conf);
     const icon   = SPORT_ICONS[leg.sport] || '🏅';

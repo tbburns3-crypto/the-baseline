@@ -1996,6 +1996,7 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-badge { font-weight: 900; font-size: .8rem; border-radius: 4px; padding: 1px 5px; }
 .sv-badge-w { background: rgba(0,230,118,.15); color: var(--accent); }
 .sv-badge-l { background: rgba(255,255,255,.06); color: var(--text-muted); }
+.sv-badge-r { background: rgba(255,210,0,.12); color: #f5c400; }
 /* Tap hint */
 .sv-tap-hint { font-size: .65rem; color: var(--text-muted); margin-top: 6px; }
 .sv-pick-card.sv-expanded .sv-tap-hint { display: none; }
