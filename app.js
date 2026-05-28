@@ -585,6 +585,7 @@ function isFinished(status = '') {
 
 function matchCategory(eventType = '') {
   const t = eventType.toLowerCase();
+  if (t.includes('junior') || t.includes('boys') || t.includes('girls')) return 'junior';
   if (t.includes('double')) return 'doubles';
   if (t.includes('atp'))    return 'atp';
   if (t.includes('wta'))    return 'wta';
@@ -1017,7 +1018,7 @@ function renderMatches(all) {
   }
 
   // ── LIVE NOW section ──
-  const liveMatches = filtered.filter(m => isLive(m.event_status));
+  const liveMatches = filtered.filter(m => isLive(m.event_status) && !['junior','other'].includes(matchCategory(m.event_type_type || '')));
   let html = '';
   if (liveMatches.length) {
     // Group live matches by tournament + category so ATP/WTA never merge
@@ -1072,7 +1073,6 @@ function renderMatches(all) {
     { key: 'itf-m',        label: 'ITF Men' },
     { key: 'itf-w',        label: 'ITF Women' },
     { key: 'doubles',      label: 'Doubles' },
-    { key: 'other',        label: 'Other' },
   ];
 
   // Group by category then tournament
