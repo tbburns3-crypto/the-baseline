@@ -8029,7 +8029,7 @@ function _selectTicketLegs(candidates) {
 function buildSecretTicket() {
   const today    = dateStrLocal(0);
   const allPicks = getPicks();
-  const candidates = _buildPickCandidates(allPicks, today);
+  const candidates = _buildPickCandidates(allPicks, today).filter(c => c.sport !== 'soccer');
 
   // Score all sports — MLB player props use mlbPickMerit; everything else scales base score
   const scored = [];

@@ -2507,10 +2507,15 @@ body.simple-mode #app-layout { display: none !important; }
 
 @media (max-width: 600px) {
   /* Topbar — strip non-essential chrome to free space for sport tabs */
-  .logo-text    { display: none; }
-  #conn-label   { display: none; }        /* dot still shows */
-  #tz-selector  { display: none; }        /* not needed on mobile */
-  #picks-accuracy { display: none; }      /* shown in Picks tab instead */
+  .logo-text           { display: none; }
+  #conn-label          { display: none; }        /* dot still shows */
+  #tz-selector         { display: none; }        /* not needed on mobile */
+  #picks-accuracy      { display: none; }        /* shown in Picks tab instead */
+  .auth-user-email-chip { display: none; }       /* too wide for mobile row */
+  #admin-topbar-link   { display: none; }        /* admin uses desktop */
+  .auth-manage-btn, .auth-signout-btn {
+    padding: 3px 7px; font-size: .62rem;
+  }
 
   /* Picks banner — show record only, drop breakdown + tap hint */
   .pb-breakdown { display: none; }
