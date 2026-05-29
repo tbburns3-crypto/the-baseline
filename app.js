@@ -8717,7 +8717,7 @@ function showSecretTicket() {
   document.body.appendChild(modal);
 }
 
-// Day ticket: built ONCE after 5am ET — locked immediately, never changes.
+// Day ticket: built ONCE after 1am ET — locked immediately, never changes.
 // Night ticket: built ONCE at 5pm ET (games starting at/after 5pm) — locked immediately.
 // Supabase is canonical: first device to build pushes to DB; every other device reads it.
 // Once a ticket exists (locally or in Supabase) it is NEVER rebuilt or modified.
@@ -8730,7 +8730,7 @@ async function buildSplitTicketsIfNeeded() {
     etHour = parseInt(s) || 0;
   } catch {}
 
-  const dayAllowed   = etHour >= 5;  // wait until 5am ET — RG and other early picks are loaded by then
+  const dayAllowed   = etHour >= 1;  // 1am ET — all overnight picks (tennis, golf) are loaded by then
   const nightAllowed = etHour >= 17; // night ticket unlocks at 5pm ET
 
   let dayBuilt   = localStorage.getItem('_day_built_v1')   === today;
