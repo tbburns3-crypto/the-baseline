@@ -8177,17 +8177,43 @@ async function verifyOtpCode() {
     inp?.focus();
   };
 
-  const safetyTimer = setTimeout(() => showVerifyErr('Verification timed out. Please try again.'), 12000);
   try {
-    const { data, error } = await _sbClient.auth.verifyOtp({ email: _otpEmail, token: code, type: 'email' });
-    clearTimeout(safetyTimer);
-    if (error) throw error;
+    // Direct fetch with AbortController so we can truly cancel on timeout
+    const ctrl = new AbortController();
+    const tmo  = setTimeout(() => ctrl.abort(), 10000);
+    let res, resData;
+    try {
+      res     = await fetch(`${_SB_URL}/auth/v1/verify`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': _SB_KEY },
+        body:    JSON.stringify({ email: _otpEmail, token: code, type: 'email', gotrue_meta_security: {} }),
+        signal:  ctrl.signal,
+      });
+      clearTimeout(tmo);
+      resData = await res.json();
+    } catch (fetchErr) {
+      clearTimeout(tmo);
+      throw new Error(fetchErr.name === 'AbortError' ? 'Verification timed out. Check your connection and try again.' : 'Network error. Check your connection and try again.');
+    }
+
+    if (!res.ok) {
+      const raw = resData?.msg || resData?.error_description || resData?.message || 'Invalid or expired code.';
+      throw new Error(/expired|invalid/i.test(raw) ? 'Code expired or invalid. Tap "Use a different email" to request a new one.' : raw);
+    }
+
+    // Set session on the Supabase client - triggers onAuthStateChange
+    if (resData.access_token) {
+      await _sbClient.auth.setSession({ access_token: resData.access_token, refresh_token: resData.refresh_token });
+    }
     closeAuthModal();
+    // If user clicked Subscribe before signing in, pick up where they left off
+    if (_pendingCheckoutPlan) {
+      const plan = _pendingCheckoutPlan;
+      _pendingCheckoutPlan = null;
+      setTimeout(() => startCheckout(plan), 800);
+    }
   } catch (err) {
-    clearTimeout(safetyTimer);
-    let msg = err.message || 'Invalid code. Please try again.';
-    if (/expired|invalid.*token|otp/i.test(msg)) msg = 'Code expired or invalid. Please request a new one.';
-    showVerifyErr(msg);
+    showVerifyErr(err.message || 'Invalid code. Please try again.');
   }
 }
 
