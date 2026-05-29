@@ -10395,8 +10395,7 @@ function init() {
     resolveYesterdayPlayerPicks(_autoYst);
   }, 4000);
 
-  const lastSport = localStorage.getItem('_baseline_sport') || 'tickets';
-  switchSport(lastSport);
+  switchSport('tickets');
   // Read params BEFORE stripping — replaceState changes location.search immediately
   const _urlParams = new URLSearchParams(location.search);
   const _ckParam   = _urlParams.get('checkout');
