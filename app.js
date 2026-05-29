@@ -3750,7 +3750,8 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
   const windMult  = wind.bonus >= 2 ? 1.16 : wind.bonus === 1 ? 1.08 : wind.bonus <= -2 ? 0.85 : wind.bonus === -1 ? 0.93 : 1.0;
 
   // ── ERA-informed team win pick (recorded for ticket) ──
-  if (!fin && !live) {
+  // Runs for all game states so visiting the MLB tab at any time stores the pick
+  {
     const awayWP = parseWinPct(espnGame.awayRec);
     const homeWP = parseWinPct(espnGame.homeRec);
     const rawHome = homeWP * 1.03 * (0.5 + (homeMom - 0.5) * 0.4);
@@ -3778,6 +3779,11 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     if (eraConf >= 1) {
       const short = (homeFrac >= 0.5 ? espnGame.homeTeam : espnGame.awayTeam).split(' ').pop();
       recordPick(String(espnGame.id), short, gameMatchup, 'mlb', eraConf, true, null, '', { gameTime: espnGame.gameDate });
+      // Resolve immediately if game is already finished
+      if (fin && espnGame.awayScore !== '' && espnGame.homeScore !== '') {
+        const aS = parseFloat(espnGame.awayScore)||0, hS = parseFloat(espnGame.homeScore)||0;
+        if (aS !== hS) resolvePick(String(espnGame.id), aS > hS ? espnGame.awayTeam.split(' ').pop() : espnGame.homeTeam.split(' ').pop());
+      }
     }
   }
 
@@ -5135,7 +5141,7 @@ async function renderMLBGamePreview(espnGame, panel) {
     });
     const pickHTML = pickResult.html;
     const _gs = gameRowState(espnGame);
-    if (pickResult.team && !_gs.fin && !_gs.live) {
+    if (pickResult.team && !_gs.fin) {
       recordPick(String(espnGame.id), pickResult.team, gameMatchup, 'mlb', pickResult.conf, true, null, '', { gameTime: espnGame.gameDate });
     }
 
@@ -6715,6 +6721,19 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId, isFinal 
     const totalNum = total === 'E' ? 0 : parseInt(total) || 0;
     return { p, score, factors, sa, pos, total, totalNum, todayNum };
   });
+
+  // Colonial Country Club: accuracy and iron play matter most - bonus for historically strong performers
+  if (eventId === '401811949') {
+    const COLONIAL_BONUS = {
+      'Fowler':8,'Thomas':7,'Bradley':6,'Henley':5,'Im':5,'Harman':5,
+      'Homa':4,'Matsuyama':4,'Theegala':4,'Snedeker':3,'Coody':3,'Woodland':2,
+    };
+    for (const s of scored) {
+      const ln = (s.p.athlete?.shortName || s.p.athlete?.displayName || '').split(' ').pop();
+      const bonus = COLONIAL_BONUS[ln] || 0;
+      if (bonus) { s.score += bonus; s.factors.push(`Colonial+${bonus}`); }
+    }
+  }
 
   scored.sort((a, b) => b.score - a.score);
   const winner = scored[0];
