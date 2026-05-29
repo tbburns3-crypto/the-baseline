@@ -8203,10 +8203,14 @@ async function verifyOtpCode() {
 
     // Set session on the Supabase client - triggers onAuthStateChange
     if (resData.access_token) {
-      await _sbClient.auth.setSession({ access_token: resData.access_token, refresh_token: resData.refresh_token });
+      if (btn) btn.textContent = 'Signing in…';
+      // Wrap setSession in a 6s timeout — it makes a network call that can hang
+      await Promise.race([
+        _sbClient.auth.setSession({ access_token: resData.access_token, refresh_token: resData.refresh_token }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Session setup timed out. Please try again.')), 6000))
+      ]);
     }
     closeAuthModal();
-    // If user clicked Subscribe before signing in, pick up where they left off
     if (_pendingCheckoutPlan) {
       const plan = _pendingCheckoutPlan;
       _pendingCheckoutPlan = null;

@@ -1,5 +1,5 @@
 // ── Bump CACHE_VER with every deploy so stale caches are wiped ──
-const CACHE_VER = 'baseline-v314';
+const CACHE_VER = 'baseline-v315';
 
 const PRECACHE = [
   '/manifest.json',
@@ -17,14 +17,12 @@ self.addEventListener('install', e => {
   );
 });
 
-// Activate: delete every old cache, claim all tabs, then tell them to reload
+// Activate: delete every old cache, claim all tabs
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
       .then(keys => Promise.all(keys.filter(k => k !== CACHE_VER).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
-      .then(() => self.clients.matchAll({ type: 'window' }))
-      .then(clients => clients.forEach(c => c.postMessage({ type: 'SW_UPDATED' })))
   );
 });
 
