@@ -544,6 +544,19 @@ function clearOldPicks() {
   if (changed) savePicks(picks);
 }
 
+let _favsMatchLoading = false;
+async function _loadMatchesForFavorites() {
+  if (_favsMatchLoading) return;
+  _favsMatchLoading = true;
+  try {
+    const today = dateStrLocal(0);
+    const results = await tennisFetch('get_fixtures', { date_start: today, date_stop: today });
+    for (const m of results) S.matches.set(String(m.event_key), m);
+    if (S.view === 'favorites') renderFavoritesView();
+  } catch {}
+  _favsMatchLoading = false;
+}
+
 function renderFavoritesView() {
   const panel = document.getElementById('view-favorites');
   if (!panel) return;
@@ -564,9 +577,10 @@ function renderFavoritesView() {
       } else {
         html += `<div class="fav-stale-row">
           <span class="fav-stale-label">${esc(fav.label)}</span>
-          <span class="fav-stale-meta">Go to Tennis tab to load live data</span>
+          <span class="fav-stale-meta fav-loading-meta">Loading…</span>
           <button class="fav-remove-btn" onclick="toggleFav('match','${esc(fav.id)}','')">✕</button>
         </div>`;
+        _loadMatchesForFavorites();
       }
     }
     html += '</div>';
@@ -2641,7 +2655,8 @@ function switchSport(sport) {
   }
 
   S.picksDateOffset = 0;
-  switchView('scores');
+  const _savedView = localStorage.getItem('_baseline_view_' + sport) || 'scores';
+  switchView(_savedView);
   updatePicksDisplay();
 
   if (isTennis) {
@@ -2678,6 +2693,7 @@ function _showPicksTeaser() {
 
 function switchView(view) {
   S.view = view;
+  try { localStorage.setItem('_baseline_view_' + S.sport, view); } catch {}
   document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
   document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
 
@@ -10770,7 +10786,7 @@ function init() {
     resolveYesterdayPlayerPicks(_autoYst);
   }, 4000);
 
-  switchSport('tickets');
+  switchSport(localStorage.getItem('_baseline_sport') || 'tickets');
   // Read params BEFORE stripping — replaceState changes location.search immediately
   const _urlParams = new URLSearchParams(location.search);
   const _ckParam   = _urlParams.get('checkout');
