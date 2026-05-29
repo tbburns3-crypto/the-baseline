@@ -7953,8 +7953,9 @@ function showYesterdayTickets() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── AUTH STATE ───────────────────────────────────────────────────────────────
-let _currentUser = null;
-let _authReady   = false;
+let _currentUser        = null;
+let _authReady          = false;
+let _pendingCheckoutPlan = null;
 
 // Role stored in a closure — not accessible as a global variable from DevTools
 const _auth = (() => {
@@ -8092,6 +8093,11 @@ function initAuth() {
 
     if (event === 'SIGNED_IN') {
       closeAuthModal();
+      if (_pendingCheckoutPlan) {
+        const plan = _pendingCheckoutPlan;
+        _pendingCheckoutPlan = null;
+        setTimeout(() => startCheckout(plan), 1000);
+      }
     }
   });
 }
@@ -8223,23 +8229,26 @@ async function startCheckout(plan) {
     else alert(msg);
   };
 
-  // Not logged in — close upgrade modal first, then prompt sign-in
+  // Not logged in — save pending plan, close upgrade modal, open sign-in
   if (!_currentUser) {
+    _pendingCheckoutPlan = plan;
     if (btn) { btn.disabled = false; btn.textContent = origText; }
     closeUpgradeModal();
     openAuthModal();
     return;
   }
 
-  // Safety net — always re-enable button after 20s no matter what
-  const safetyTimer = setTimeout(() => showErr('Request timed out. Please try again.'), 20000);
+  // Safety net — always re-enable button after 25s no matter what
+  const safetyTimer = setTimeout(() => showErr('Request timed out. Please try again.'), 25000);
+
+  const _withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
   try {
-    // Get session — if expired, refresh it (avoids race-timeout on slow connections)
+    // Get session — if expired, refresh it. Wrapped in 4s timeout to prevent hang after fresh sign-up.
     let session;
-    try { session = (await _sbClient.auth.getSession())?.data?.session; } catch { session = null; }
+    try { session = (await _withTimeout(_sbClient.auth.getSession(), 4000))?.data?.session; } catch { session = null; }
     if (!session) {
-      try { session = (await _sbClient.auth.refreshSession())?.data?.session; } catch { session = null; }
+      try { session = (await _withTimeout(_sbClient.auth.refreshSession(), 4000))?.data?.session; } catch { session = null; }
     }
     if (!session) {
       clearTimeout(safetyTimer);
