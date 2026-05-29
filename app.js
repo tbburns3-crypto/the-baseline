@@ -7823,6 +7823,7 @@ async function _sbForceUpdateTicket(date, slot, legs) {
 // After admin signs in, push any locally-built tickets that aren't yet in Supabase.
 // This handles the race where buildSplitTicketsIfNeeded ran before auth completed.
 let _ticketSyncedThisSession = false;
+let _ticketsLiveRefreshing   = false;
 async function _trySyncTicketsToSupabase() {
   if (_ticketSyncedThisSession) return;
   _ticketSyncedThisSession = true;
@@ -10122,6 +10123,25 @@ function renderTicketsPage() {
       Round robins are your best friend, especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
     </div>
   </div>`;
+
+  // Live-refresh morning ticket from Supabase every time tickets tab opens.
+  // Picks up admin corrections (e.g. TENNIS_PICK_OVERRIDES) without waiting for preload.
+  if (off === 0 && !_ticketsLiveRefreshing) {
+    _ticketsLiveRefreshing = true;
+    _sbGetTickets(dateStrLocal()).then(sbData => {
+      _ticketsLiveRefreshing = false;
+      if (!sbData?.morn) return;
+      const today = dateStrLocal();
+      const newLegs = JSON.stringify(sbData.morn);
+      const oldLegs = JSON.stringify(_morningTicketCache?.legs || []);
+      if (newLegs === oldLegs) return; // nothing changed
+      const mo = { date: today, legs: sbData.morn };
+      _morningTicketCache = mo;
+      try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
+      localStorage.setItem('_day_built_v1', today);
+      renderTicketsPage(); // re-render with updated data
+    }).catch(() => { _ticketsLiveRefreshing = false; });
+  }
 }
 
 function showSimpleView() {
