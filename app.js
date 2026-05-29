@@ -2010,6 +2010,11 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   if (vt1 < 0) { p1Score += vt1; factors.push({ win: true, label: 'Volatility', detail: `${l1} known for inconsistency`, side: 2 }); }
   if (vt2 < 0) { p2Score += vt2; factors.push({ win: true, label: 'Volatility', detail: `${l2} known for inconsistency`, side: 1 }); }
 
+  // Round + tier + BO5 weighting (declared here so clay-surface check below can use tier)
+  const round = tennisRound(m);
+  const tier  = tournamentTier(m);
+  const bo5   = isBestOf5(m);
+
   // Clay-surface weakness — grass/hard specialists seeded at clay slams
   const surf2Low = surfLabel.toLowerCase();
   if (surf2Low.includes('clay') && (tier === 'slam' || tier === 'masters')) {
@@ -2019,11 +2024,6 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   }
 
   if (!factors.length) return '';
-
-  // Round + tier + BO5 weighting
-  const round = tennisRound(m);
-  const tier  = tournamentTier(m);
-  const bo5   = isBestOf5(m);
   const earlyRound = ['r1','r2'].includes(round);
   const lateRound  = ['quarter','semi','final'].includes(round);
 
