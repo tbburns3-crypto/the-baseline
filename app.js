@@ -5141,7 +5141,7 @@ async function renderMLBGamePreview(espnGame, panel) {
     });
     const pickHTML = pickResult.html;
     const _gs = gameRowState(espnGame);
-    if (pickResult.team && !_gs.fin) {
+    if (pickResult.team && !_gs.fin && (pickResult.conf || 0) >= 1) {
       recordPick(String(espnGame.id), pickResult.team, gameMatchup, 'mlb', pickResult.conf, true, null, '', { gameTime: espnGame.gameDate });
     }
 
@@ -8946,14 +8946,12 @@ async function preloadPicksForSimpleView() {
   _svPreloadedAt = now;
   const isActive = () => document.getElementById('simple-view')?.classList.contains('sv-active');
 
-  // Purge any MLB picks that were seeded by simple win% math (conf=0) and have already
-  // been resolved. These are wrong retroactive predictions, not real analysis picks.
-  // Analysis picks always have conf >= 1 (from buildPickSection's pickedConf logic).
+  // Purge stale seeded player prop picks (conf=0, resolved) — game picks are kept all day
   const today = dateStrLocal();
   const stalePicks = getPicks();
   let purged = false;
   for (const [id, p] of Object.entries(stalePicks)) {
-    if (p.sport === 'mlb' && p.date === today && (p.conf || 0) === 0 && p.result !== null) {
+    if (p.type === 'player' && p.sport === 'mlb' && p.date === today && (p.conf || 0) === 0 && p.result !== null) {
       delete stalePicks[id];
       purged = true;
     }
@@ -9384,7 +9382,7 @@ function getMLBPerGameTickets(date, allPicks) {
 
   for (const [id, p] of entries) {
     if (!p.type) {
-      if ((p.conf||0) < 1) continue; // skip toss-up moneylines
+      if (!p.team) continue;
       if (!games.has(id)) games.set(id, { gameId: id, matchup: p.matchup||id, legs: [] });
       games.get(id).legs.push({ id, pick: p.team||'', matchup:'', conf: p.conf||1, sport:'mlb', propType:'game', result: p.result, icon:'🏆' });
     } else if (p.type === 'player' && RELEVANT.has(p.prop)) {
