@@ -7740,6 +7740,59 @@ async function _trySyncTicketsToSupabase() {
   } catch {}
 }
 
+// ── Today's picks sync ── Save today's picks to Supabase so any device (APK,
+// browser, fresh install) can display sport sections without visiting each tab.
+// Stored under date+'_picks' row; first write wins so only admin can seed it.
+let _picksSyncedThisSession = false;
+async function _sbSaveTodayPicks() {
+  if (_picksSyncedThisSession || !_isAdmin()) return;
+  try {
+    const today = dateStrLocal();
+    const allPicks = getPicks();
+    const todayArr = Object.entries(allPicks)
+      .filter(([, p]) => p.date === today)
+      .map(([pickId, p]) => ({ pickId, ...p }));
+    if (!todayArr.length) return;
+    const sbKey = `sb-${_SB_URL.replace('https://','').split('.')[0]}-auth-token`;
+    const stored = JSON.parse(localStorage.getItem(sbKey) || 'null');
+    const token = stored?.access_token || _SB_KEY;
+    const res = await fetch(`${_SB_URL}/rest/v1/baseline_tickets`, {
+      method: 'POST',
+      headers: {
+        apikey: _SB_KEY, Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=ignore-duplicates'
+      },
+      body: JSON.stringify({ date: today + '_picks', morn_legs: todayArr, eve_legs: null })
+    });
+    if (res.ok || res.status === 409) _picksSyncedThisSession = true;
+  } catch {}
+}
+
+async function _sbLoadTodayPicksIfEmpty() {
+  try {
+    const today = dateStrLocal();
+    const allPicks = getPicks();
+    const hasTodayPicks = Object.values(allPicks).some(p => p.date === today);
+    if (hasTodayPicks) return; // already have local picks — no need to fetch
+    const url = `${_SB_URL}/rest/v1/baseline_tickets?date=eq.${encodeURIComponent(today + '_picks')}&select=morn_legs`;
+    const res = await fetch(url, { headers: { apikey: _SB_KEY, Authorization: `Bearer ${_SB_KEY}` } });
+    if (!res.ok) return;
+    const rows = await res.json();
+    const arr = rows?.[0]?.morn_legs;
+    if (!Array.isArray(arr) || !arr.length) return;
+    const merged = getPicks();
+    let added = 0;
+    for (const entry of arr) {
+      const { pickId, ...data } = entry;
+      if (!pickId || merged[pickId]) continue;
+      merged[pickId] = data;
+      added++;
+    }
+    if (added > 0) { savePicks(merged); renderTicketsPage(); }
+  } catch {}
+}
+
 // Save all MLB player-prop picks for `date` to Supabase so cross-device
 // yesterday views get the full per-game breakdown, not just top-10 ticket legs.
 // Requires admin auth — called silently on builds, skips if not signed in.
@@ -8655,13 +8708,13 @@ async function buildSplitTicketsIfNeeded() {
   };
 
   if (dayBuilt && (nightBuilt || !nightAllowed)) {
-    await prefetchYesterday();
+    await Promise.all([prefetchYesterday(), _sbLoadTodayPicksIfEmpty()]);
     return; // both tickets present — nothing to build
   }
 
   // ── Only admin builds tickets — non-admin devices read Supabase only ──
   if (!_isAdmin()) {
-    await prefetchYesterday();
+    await Promise.all([prefetchYesterday(), _sbLoadTodayPicksIfEmpty()]);
     return;
   }
 
@@ -8676,6 +8729,7 @@ async function buildSplitTicketsIfNeeded() {
       try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
       _morningTicketCache = mo;
       _sbSaveTicket(today, 'day', mornLegs); // first write wins in Supabase
+      _sbSaveTodayPicks(); // snapshot all of today's picks for cross-device display
     }
     localStorage.setItem('_day_built_v1', today);
   }
