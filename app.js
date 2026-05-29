@@ -167,6 +167,13 @@ async function resolvePlayerPicksForGame(espnGameId, gamePk) {
         kMap[side] = parseInt(ps?.stats?.pitching?.strikeOuts || 0);
       }
     }
+    // Guard: if no batter has any at-bats the game hasn't been played yet — don't resolve
+    let anyAtBats = false;
+    for (const stats of statMap.values()) {
+      if (parseInt(stats.atBats || 0) > 0) { anyAtBats = true; break; }
+    }
+    if (!anyAtBats) return;
+
     let changed = false;
     for (const [k, p] of pending) {
       const parts = k.split('_'); // ['plr', espnId, pid_or_k, prop_or_side]
@@ -9235,16 +9242,19 @@ async function preloadPicksForSimpleView() {
   } catch (e) { mlbFallback(mlbFallbackGames); }
 
   // Resolve any still-unresolved MLB player picks for today using stored gamePk values.
-  // Catches picks whose game card couldn't fire resolvePlayerPicksForGame (e.g. MLB schedule mismatch).
+  // Only resolve for games that are actually finished — avoids marking live/future picks as losses.
   try {
     const mlbTodayPending = Object.entries(getPicks()).filter(([k, p]) =>
       p.type === 'player' && p.result === null && p.date === today && p.sport === 'mlb'
     );
     if (mlbTodayPending.length) {
+      const finishedIds = new Set(
+        mlbFallbackGames.filter(g => /^Final/i.test(g.status) || /^F(\/|$)/i.test(g.status)).map(g => g.id)
+      );
       const mlbResMap = new Map();
       for (const [k, p] of mlbTodayPending) {
         const espnId = k.split('_')[1];
-        if (espnId && p.gamePk && !mlbResMap.has(espnId)) mlbResMap.set(espnId, p.gamePk);
+        if (espnId && p.gamePk && !mlbResMap.has(espnId) && finishedIds.has(espnId)) mlbResMap.set(espnId, p.gamePk);
       }
       if (mlbResMap.size) {
         await Promise.allSettled([...mlbResMap.entries()].map(([espnId, gPk]) => resolvePlayerPicksForGame(espnId, gPk)));
