@@ -204,37 +204,50 @@ async function resolveNbaPlayerPicksForGame(espnGameId, league) {
   const picks = getPicks();
   const prefix = `plr_${espnGameId}_`;
   const pending = Object.entries(picks).filter(([k, p]) =>
-    p.type === 'player' && p.result === null && k.startsWith(prefix) && (p.sport === 'nba' || p.sport === 'wnba')
+    p.type === 'player' && k.startsWith(prefix) && (p.sport === 'nba' || p.sport === 'wnba')
   );
   if (!pending.length) return;
   try {
     const res  = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${leagueStr}/summary?event=${espnGameId}`);
     const data = await res.json();
-    const ptMap = new Map(); // player id or name-slug -> points
+    // Build per-player stat map covering points, rebounds, and assists
+    const statMap = new Map();
     for (const teamStats of (data.boxscore?.players || [])) {
       for (const statGroup of (teamStats.statistics || [])) {
-        const ptsIdx = (statGroup.names || []).indexOf('PTS');
-        if (ptsIdx === -1) continue;
+        const names  = statGroup.names || [];
+        const ptsIdx = names.indexOf('PTS');
+        const rebIdx = names.indexOf('REB');
+        const astIdx = names.indexOf('AST');
+        if (ptsIdx === -1 && rebIdx === -1 && astIdx === -1) continue;
         for (const ath of (statGroup.athletes || [])) {
           const pid  = String(ath.athlete?.id || '');
           const slug = (ath.athlete?.displayName || '').replace(/\W+/g, '');
-          const pts  = parseFloat(ath.stats?.[ptsIdx] || '0');
-          if (pid)  ptMap.set(pid, pts);
-          if (slug) ptMap.set(slug, pts);
+          const entry = {
+            points:   ptsIdx >= 0 ? parseFloat(ath.stats?.[ptsIdx] || '0') : NaN,
+            rebounds: rebIdx >= 0 ? parseFloat(ath.stats?.[rebIdx] || '0') : NaN,
+            assists:  astIdx >= 0 ? parseFloat(ath.stats?.[astIdx] || '0') : NaN,
+          };
+          if (pid)  statMap.set(pid, entry);
+          if (slug) statMap.set(slug, entry);
         }
       }
     }
     let changed = false;
     for (const [k, p] of pending) {
-      // key format: plr_{espnId}_{pid2}_pts
-      const pid2   = k.split('_')[2];
-      const actual = ptMap.has(pid2) ? ptMap.get(pid2) : ptMap.get((pid2 || '').toLowerCase());
+      const parts   = k.split('_');
+      const pid2    = parts[2];
+      const propRaw = parts.slice(3).join('_').toLowerCase();
+      const player  = statMap.get(pid2) || statMap.get((pid2 || '').toLowerCase());
+      if (!player) continue;
+      const actual = propRaw.includes('rebound') ? player.rebounds
+                   : propRaw.includes('assist')  ? player.assists
+                   : player.points;
       if (actual === undefined || isNaN(actual)) continue;
       const m = (p.stat || '').match(/(OVER|UNDER)\s+([\d.]+)/i);
       if (!m) continue;
-      const line = parseFloat(m[2]);
-      picks[k].result = m[1].toUpperCase() === 'OVER' ? (actual > line ? 'win' : 'loss') : (actual < line ? 'win' : 'loss');
-      changed = true;
+      const line   = parseFloat(m[2]);
+      const result = m[1].toUpperCase() === 'OVER' ? (actual > line ? 'win' : 'loss') : (actual < line ? 'win' : 'loss');
+      if (picks[k].result !== result) { picks[k].result = result; changed = true; }
     }
     if (changed) { savePicks(picks); updatePicksDisplay(); }
   } catch {}
@@ -9059,6 +9072,24 @@ async function preloadPicksForSimpleView() {
     await loadMLBPicksPage();
     mlbFallback(mlbFallbackGames);
   } catch (e) { mlbFallback(mlbFallbackGames); }
+
+  // Resolve any still-unresolved MLB player picks for today using stored gamePk values.
+  // Catches picks whose game card couldn't fire resolvePlayerPicksForGame (e.g. MLB schedule mismatch).
+  try {
+    const mlbTodayPending = Object.entries(getPicks()).filter(([k, p]) =>
+      p.type === 'player' && p.result === null && p.date === today && p.sport === 'mlb'
+    );
+    if (mlbTodayPending.length) {
+      const mlbResMap = new Map();
+      for (const [k, p] of mlbTodayPending) {
+        const espnId = k.split('_')[1];
+        if (espnId && p.gamePk && !mlbResMap.has(espnId)) mlbResMap.set(espnId, p.gamePk);
+      }
+      if (mlbResMap.size) {
+        await Promise.allSettled([...mlbResMap.entries()].map(([espnId, gPk]) => resolvePlayerPicksForGame(espnId, gPk)));
+      }
+    }
+  } catch {}
 
   try { await loadSoccerScores(); } catch (e) {}
   try { await loadGolfPicksPage(); } catch (e) {}
