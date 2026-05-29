@@ -8946,17 +8946,7 @@ async function preloadPicksForSimpleView() {
   _svPreloadedAt = now;
   const isActive = () => document.getElementById('simple-view')?.classList.contains('sv-active');
 
-  // Purge stale seeded player prop picks (conf=0, resolved) — game picks are kept all day
   const today = dateStrLocal();
-  const stalePicks = getPicks();
-  let purged = false;
-  for (const [id, p] of Object.entries(stalePicks)) {
-    if (p.type === 'player' && p.sport === 'mlb' && p.date === today && (p.conf || 0) === 0 && p.result !== null) {
-      delete stalePicks[id];
-      purged = true;
-    }
-  }
-  if (purged) { savePicks(stalePicks); updatePicksDisplay(); }
 
   // ESPN summary paths + which stat categories to record as player picks (per team)
   const sportCfg = {
