@@ -9295,20 +9295,7 @@ async function preloadPicksForSimpleView() {
   }
 
   // Apply manual tennis pick overrides — force the correct player pick before the ticket builds.
-  if (TENNIS_PICK_OVERRIDES.length) {
-    const _today = dateStrLocal();
-    const _allPicks = getPicks();
-    for (const ov of TENNIS_PICK_OVERRIDES) {
-      if (ov.date !== _today) continue;
-      for (const [id, p] of Object.entries(_allPicks)) {
-        if (p.sport !== 'tennis' || p.result !== null || p.date !== _today) continue;
-        const mu = (p.matchup || '').toLowerCase();
-        if (mu.includes(ov.p1) && mu.includes(ov.p2) && p.team !== ov.pick) {
-          recordPick(id, ov.pick, p.matchup, 'tennis', p.conf, true, _today, p.tier || '', { ...(p), fullAnalysis: true });
-        }
-      }
-    }
-  }
+  applyTennisPickOverrides();
 
   // Fix any stored golf pick matchup strings using the manual override before
   // the ticket reads them - ensures the ticket shows correct 3-ball groupings.
@@ -9839,9 +9826,39 @@ function renderTicketBlock(title, legs, allPicks, footer = '', ticketDate = '') 
   </div>`;
 }
 
+function applyTennisPickOverrides() {
+  if (!TENNIS_PICK_OVERRIDES.length) return;
+  const today = dateStrLocal();
+  const allPicks = getPicks();
+  let changed = false;
+  for (const ov of TENNIS_PICK_OVERRIDES) {
+    if (ov.date !== today) continue;
+    for (const [id, p] of Object.entries(allPicks)) {
+      if (p.sport !== 'tennis' || p.result !== null || p.date !== today) continue;
+      const mu = (p.matchup || '').toLowerCase();
+      if (mu.includes(ov.p1) && mu.includes(ov.p2) && p.team !== ov.pick) {
+        // Only pass fullAnalysis in meta — never spread existing pick or team gets overwritten
+        recordPick(id, ov.pick, p.matchup, 'tennis', p.conf, true, today, p.tier || '', { fullAnalysis: true });
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    // Invalidate locked tickets so they rebuild with the corrected pick
+    _dailyTicketCache = null;
+    _morningTicketCache = null;
+    localStorage.removeItem('_ticket_built_v10');
+    localStorage.removeItem(_TICKET_KEY);
+    localStorage.removeItem('_day_built_v1');
+    localStorage.removeItem(_MORN_TICKET_KEY);
+  }
+}
+
 function renderTicketsPage() {
   const el = document.getElementById('tickets-area');
   if (!el) return;
+  // Apply manual overrides immediately — don't wait for the preload cycle
+  applyTennisPickOverrides();
 
   const off      = _ticketDateOffset;
   const date     = dateStrLocal(off);
