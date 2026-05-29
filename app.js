@@ -8134,6 +8134,7 @@ function showYesterdayTickets() {
 let _currentUser        = null;
 let _authReady          = false;
 let _pendingCheckoutPlan = null;
+let _pendingPromoCode    = null;
 
 // Role stored in a closure — not accessible as a global variable from DevTools
 const _auth = (() => {
@@ -8489,12 +8490,14 @@ async function startCheckout(plan) {
       return;
     }
 
+    const _promoCode = _pendingPromoCode;
+    _pendingPromoCode = null;
     const ctrl = new AbortController();
     const tmo  = setTimeout(() => ctrl.abort(), 12000);
     const res = await fetch(`${_SB_URL}/functions/v1/create-checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify({ plan, promoCode: _promoCode || undefined }),
       signal: ctrl.signal,
     });
     clearTimeout(tmo);
@@ -10315,15 +10318,16 @@ function renderSimpleView() {
       </div>`;
     });
     // Promo card — shown to non-subscribers only; wire up Stripe promo code when ready
-    const promoCard = _hasFullAccess() ? '' : `<div class="sv-promo-card" style="--rot:${winCards.length % 2 === 0 ? '-1.5deg' : '2deg'}" onclick="openUpgradeModal()">
+    const promoCard = _hasFullAccess() ? '' : `<div class="sv-promo-card" style="--rot:${winCards.length % 2 === 0 ? '-1.5deg' : '2deg'}" onclick="_pendingPromoCode='BASELINE';openUpgradeModal()">
       <div class="sv-promo-inner">
         <div class="sv-promo-eyebrow">FIRST TIME OFFER</div>
         <div class="sv-promo-pct">15%</div>
         <div class="sv-promo-off">OFF</div>
         <div class="sv-promo-sub">your first subscription</div>
+        <div class="sv-promo-code">BASELINE</div>
         <div class="sv-promo-btn">Claim now</div>
       </div>
-      <div class="sv-promo-caption">Applied at checkout</div>
+      <div class="sv-promo-caption">Auto-applied at checkout</div>
     </div>`;
     const allCards = [...winCards, promoCard].filter(Boolean);
     if (!allCards.length) return '';

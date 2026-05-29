@@ -35,9 +35,18 @@ Deno.serve(async (req) => {
     )
     if (error || !user) throw new Error('Unauthorized')
 
-    const { plan } = await req.json()
+    const { plan, promoCode } = await req.json()
     const priceId = PRICE_IDS[plan]
     if (!priceId) throw new Error('Invalid plan')
+
+    // Auto-apply promo code if provided — look up promotion code ID by human-readable code
+    let discounts: { promotion_code: string }[] | undefined
+    if (promoCode) {
+      try {
+        const promos = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 })
+        if (promos.data.length > 0) discounts = [{ promotion_code: promos.data[0].id }]
+      } catch {}
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -46,7 +55,7 @@ Deno.serve(async (req) => {
       cancel_url:  APP_URL + '?checkout=cancel',
       customer_email: user.email,
       client_reference_id: user.id,
-      allow_promotion_codes: true,
+      ...(discounts ? { discounts } : { allow_promotion_codes: true }),
     })
 
     return new Response(JSON.stringify({ url: session.url }), {

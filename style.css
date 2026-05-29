@@ -2101,7 +2101,8 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-promo-eyebrow { font-size: .5rem; font-weight: 800; letter-spacing: .14em; color: #f5a623; margin-bottom: 4px; }
 .sv-promo-pct { font-size: 2.6rem; font-weight: 900; color: #f5a623; line-height: 1; }
 .sv-promo-off { font-size: .7rem; font-weight: 900; color: #f5c842; letter-spacing: .14em; margin-bottom: 8px; }
-.sv-promo-sub { font-size: .56rem; color: #c8a96e; line-height: 1.5; margin-bottom: 9px; }
+.sv-promo-sub { font-size: .56rem; color: #c8a96e; line-height: 1.5; margin-bottom: 6px; }
+.sv-promo-code { font-size: .68rem; font-weight: 900; color: #f5c842; letter-spacing: .12em; background: rgba(245,166,35,.12); border: 1px dashed rgba(245,166,35,.4); border-radius: 3px; padding: 2px 6px; display: inline-block; margin-bottom: 8px; }
 .sv-promo-btn { background: #f5a623; color: #000; border-radius: 3px; padding: 4px 10px; font-size: .6rem; font-weight: 800; letter-spacing: .04em; display: inline-block; }
 .sv-promo-caption { font-size: .56rem; color: #666; text-align: center; margin-top: 7px; font-style: italic; }
 
