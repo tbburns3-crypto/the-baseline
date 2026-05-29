@@ -1559,9 +1559,12 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   conf = Math.max(1, Math.min(3, conf + getConfCalibration('tennis')));
 
   const injTag = (winner === 1 && p2Hurt) || (winner === 2 && p1Hurt) ? ' ⚕' : '';
-  // force=false: first pick wins — prevents H2H re-evaluation on every load from
-  // changing a stored pick and causing the ticket to show different players on login.
-  recordPick(pickId, pick, matchup, 'tennis', conf, false, pickDate, tier, { matchDate, bo5: isBestOf5(m) || undefined, cat: matchCategory(m.event_type_type || '') });
+  // force=true when H2H data was available: ensures the fuller analysis beats a seed-only guess
+  // from an earlier pass that ran before the H2H cache was populated.
+  // Never force-overwrite a live or finished match pick.
+  const _hasH2H = !!(h2hDat && (h2hDat.h2h.length > 0 || h2hDat.p1Recent.length > 0 || h2hDat.p2Recent?.length > 0));
+  const _isUpcoming = !isLive(m.event_status) && !isFinished(m.event_status);
+  recordPick(pickId, pick, matchup, 'tennis', conf, _hasH2H && _isUpcoming, pickDate, tier, { matchDate, bo5: isBestOf5(m) || undefined, cat: matchCategory(m.event_type_type || '') });
   return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
@@ -4430,8 +4433,8 @@ function buildTomorrowPickCard(m) {
   if (s1 && s2) {
     if (s1 < s2)      { p1Score += 2; factors.push({ label:'Seeding', detail:`${l1} [${s1}] vs [${s2}]`, side:1 }); }
     else if (s2 < s1) { p2Score += 2; factors.push({ label:'Seeding', detail:`${l2} [${s2}] vs [${s1}]`, side:2 }); }
-  } else if (s1) { p1Score += 1; factors.push({ label:'Seeding', detail:`${l1} seeded, ${l2} unseeded`, side:1 }); }
-    else if (s2) { p2Score += 1; factors.push({ label:'Seeding', detail:`${l2} seeded, ${l1} unseeded`, side:2 }); }
+  } else if (s1) { p1Score += 2; factors.push({ label:'Seeding', detail:`${l1} seeded, ${l2} unseeded`, side:1 }); }
+    else if (s2) { p2Score += 2; factors.push({ label:'Seeding', detail:`${l2} seeded, ${l1} unseeded`, side:2 }); }
 
   // Rankings
   const tr1 = S.rankIndex.get(p1key), tr2 = S.rankIndex.get(p2key);
