@@ -8982,6 +8982,14 @@ async function preloadPicksForSimpleView() {
       todayGames.forEach(g => autoRecordAndResolvePick(g));
       tomorrowGames.forEach(g => autoRecordAndResolvePick(g, tomorrow));
 
+      // Resolve player picks for finished NBA/WNBA games today
+      if (sport === 'nba' || sport === 'wnba') {
+        const finishedToday = todayGames.filter(g => gameRowState(g).fin);
+        if (finishedToday.length) {
+          await Promise.allSettled(finishedToday.map(g => resolveNbaPlayerPicksForGame(String(g.id), sport)));
+        }
+      }
+
       const cfg = sportCfg[sport];
       if (cfg) {
         // Max plausible per-game averages - anything above these is a season total, not per-game
