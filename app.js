@@ -8185,7 +8185,7 @@ async function verifyOtpCode() {
     try {
       res     = await fetch(`${_SB_URL}/functions/v1/verify-otp`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': _SB_KEY },
+        headers: { 'Content-Type': 'text/plain' },
         body:    JSON.stringify({ email: _otpEmail, token: code }),
         signal:  ctrl.signal,
       });

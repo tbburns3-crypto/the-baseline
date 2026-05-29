@@ -7,7 +7,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    const { email, token } = await req.json();
+    const { email, token } = JSON.parse(await req.text());
     if (!email || !token) {
       return new Response(JSON.stringify({ error: 'Missing email or token' }), {
         status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
