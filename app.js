@@ -7975,7 +7975,7 @@ function _isAdmin()       { return _auth.isAdmin(); }
 
 const _ROLE_CACHE_KEY = '_usr_role_v1';
 
-async function _fetchUserRole(userId) {
+async function _fetchUserRole(userId, accessToken) {
   // Apply cached role immediately so UI doesn't block while fetching
   try {
     const cached = JSON.parse(localStorage.getItem(_ROLE_CACHE_KEY) || 'null');
@@ -7986,8 +7986,8 @@ async function _fetchUserRole(userId) {
   } catch {}
 
   try {
-    const { data: { session } } = await _sbClient.auth.getSession();
-    const token = session?.access_token || _SB_KEY;
+    // Use passed token if available — avoids an extra getSession() network call
+    const token = accessToken || (await _sbClient.auth.getSession())?.data?.session?.access_token || _SB_KEY;
     const res = await fetch(
       `${_SB_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=role&limit=1`,
       { headers: { apikey: _SB_KEY, Authorization: `Bearer ${token}` } }
@@ -8086,7 +8086,7 @@ function initAuth() {
     _authReady   = true;
 
     if (_currentUser) {
-      await _fetchUserRole(_currentUser.id);
+      _fetchUserRole(_currentUser.id, session?.access_token); // fire-and-forget — never block sign-in
     } else {
       updateAuthUI();
     }
