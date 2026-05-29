@@ -2081,10 +2081,20 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-ticket-pending { opacity: .75; }
 .sv-pending-msg { text-align: center; padding: 28px 16px; color: var(--text-muted); font-size: .82rem; line-height: 1.5; }
 
-/* ── HOT WINNER SPOTLIGHT ── */
-.sv-hot-winner { margin-bottom: 14px; }
-.sv-hot-winner-hdr { font-size: .82rem; font-weight: 800; color: var(--accent); padding: 0 2px 4px; letter-spacing: .01em; }
-.sv-hot-winner-sub { font-size: .68rem; color: var(--text-muted); padding: 0 2px 8px; font-style: italic; }
+/* ── WINNING TICKET STRIP ── */
+.sv-wins-wrap { margin-bottom: 16px; }
+.sv-wins-hdr { font-size: .72rem; font-weight: 800; color: var(--accent); letter-spacing: .05em; text-transform: uppercase; margin-bottom: 10px; }
+.sv-wins-strip { display: flex; gap: 16px; overflow-x: auto; padding: 4px 2px 14px; scrollbar-width: none; }
+.sv-wins-strip::-webkit-scrollbar { display: none; }
+.sv-win-card { flex-shrink: 0; width: 158px; background: #e8ede9; border-radius: 3px; padding: 7px 7px 22px; box-shadow: 0 6px 18px rgba(0,0,0,.55), 0 2px 5px rgba(0,0,0,.3); transform: rotate(var(--rot, -2deg)); transition: transform .18s, box-shadow .18s; cursor: pointer; position: relative; }
+.sv-win-card:hover { transform: rotate(0deg) scale(1.05) !important; box-shadow: 0 12px 28px rgba(0,0,0,.65); z-index: 2; }
+.sv-win-card-inner { background: #0c1d12; border-radius: 2px; padding: 9px 8px 7px; }
+.sv-wc-sport { font-size: .6rem; font-weight: 700; color: var(--accent); letter-spacing: .04em; margin-bottom: 3px; }
+.sv-wc-rec { font-size: .95rem; font-weight: 900; color: #e8f5e9; margin-bottom: 6px; letter-spacing: .02em; }
+.sv-wc-picks { display: flex; flex-direction: column; gap: 3px; }
+.sv-wc-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.sv-wc-name { font-size: .63rem; color: #b2dfb8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
+.sv-wc-caption { font-size: .56rem; color: #555; text-align: center; margin-top: 7px; font-style: italic; line-height: 1.3; }
 
 /* ── UPSELL BANNER ── */
 .sv-upsell-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: linear-gradient(135deg, #0d2414, #152e1c); border: 1px solid rgba(0,230,118,.45); border-radius: 12px; padding: 18px 20px; margin-top: 14px; cursor: pointer; transition: border-color .15s, background .15s; }

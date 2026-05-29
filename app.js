@@ -10285,7 +10285,7 @@ function renderSimpleView() {
     { key: 'nba',                  label: 'NBA',                icon: '🏀' },
     { key: 'nhl',                  label: 'NHL',                icon: '🏒' },
   ];
-  let _wBest = null;
+  const _wWinners = [];
   for (const g of _wGroups) {
     const legs = getPicksForTicket(g.key, today, allPicks);
     if (!legs.length) continue;
@@ -10293,17 +10293,31 @@ function renderSimpleView() {
     if (resolved.length < 2) continue;
     const wins = resolved.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
     if (wins !== resolved.length) continue;
-    if (!_wBest || wins > _wBest.wins) _wBest = { ...g, legs, wins };
+    // skip if all legs already covered by a more specific group
+    const legIds = new Set(legs.map(l => l.id));
+    if (_wWinners.some(w => w.legs.every(l => legIds.has(l.id)))) continue;
+    _wWinners.push({ ...g, legs, wins });
   }
   const hotStreakBanner = (() => {
-    if (!_wBest) return '';
-    const _wMsgs = ['','','2 picks. 2 wins. The algorithm is dialed in.','3 for 3. Picks hitting on all cylinders.','4 for 4. The algorithm sees something today.','5 straight wins. The algorithm does not lie.','6 picks. 6 wins. Pure precision.','7 picks. 7 wins. The algorithm does not miss.'];
-    const _wMsg = _wMsgs[Math.min(_wBest.wins, _wMsgs.length - 1)] || `${_wBest.wins} picks. ${_wBest.wins} wins. The algorithm is locked in.`;
-    const ticketHtml = renderTicketBlock(`${_wBest.icon} ${_wBest.label}`, _wBest.legs, allPicks);
-    return `<div class="sv-hot-winner">
-      <div class="sv-hot-winner-hdr">🔥 ${_wMsg}</div>
-      <div class="sv-hot-winner-sub">This ticket is available in the subscriber Tickets tab.</div>
-      ${ticketHtml}
+    if (!_wWinners.length) return '';
+    const cards = _wWinners.map((w, i) => {
+      const rot = i % 2 === 0 ? '-2deg' : '1.5deg';
+      const pickRows = w.legs.slice(0, 7).map(l => {
+        const name = (l.pick || '').split(' ').slice(-1)[0];
+        return `<div class="sv-wc-row"><span class="sv-wc-name">${esc(name)}</span><span class="sv-badge sv-badge-w">W</span></div>`;
+      }).join('');
+      return `<div class="sv-win-card" style="--rot:${rot}" onclick="switchSport('tickets')">
+        <div class="sv-win-card-inner">
+          <div class="sv-wc-sport">${w.icon} ${w.label}</div>
+          <div class="sv-wc-rec">${w.wins}W · 0L</div>
+          <div class="sv-wc-picks">${pickRows}</div>
+        </div>
+        <div class="sv-wc-caption">From subscriber Tickets tab</div>
+      </div>`;
+    }).join('');
+    return `<div class="sv-wins-wrap">
+      <div class="sv-wins-hdr">🔥 Locked In Today</div>
+      <div class="sv-wins-strip">${cards}</div>
     </div>`;
   })();
 

@@ -1,5 +1,5 @@
 // ── Bump CACHE_VER with every deploy so stale caches are wiped ──
-const CACHE_VER = 'baseline-v349';
+const CACHE_VER = 'baseline-v350';
 
 const PRECACHE = [
   '/manifest.json',
