@@ -8982,21 +8982,34 @@ async function preloadTennisPicksQuiet() {
       .filter(m => (isUpcoming(m) || isLive(m.event_status)) && isMainDraw(m) && m.first_player_key && m.second_player_key)
       .slice(0, 50); // cap at 50 API calls
 
-    await Promise.allSettled(needsH2H.map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
+    // Fetch in small batches to avoid API rate limits (50 parallel calls all fail together)
+    for (let _bi = 0; _bi < needsH2H.length; _bi += 5) {
+      await Promise.allSettled(needsH2H.slice(_bi, _bi + 5).map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
+    }
 
     // Track which match keys got a full-analysis pick so inlineTennisPick is skipped for them.
     const _fullAnalysisDone = new Set();
 
     // Run the full prediction engine for every upcoming main-draw match.
-    // Uses cached H2H data when available; falls back to seeding+affinity when not.
-    // Records with fullAnalysis=true — inlineTennisPick must not overwrite these.
+    // Only runs buildTennisPrediction when real H2H data was fetched — never overwrite
+    // an existing pick with a seeding-only guess when H2H came back empty.
     for (const m of needsH2H) {
       if (isLive(m.event_status) || isFinished(m.event_status)) continue;
       const p1key = String(m.first_player_key || '');
       const p2key = String(m.second_player_key || '');
-      // Use cached H2H or fall back to empty arrays (seeding+affinity still work)
       const h2hDat = _h2hCache.get(`${p1key}_${p2key}`) || { h2h: [], p1Recent: [], p2Recent: [] };
       const { h2h = [], p1Recent = [], p2Recent = [] } = h2hDat;
+      // H2H fetch failed or returned nothing — don't overwrite an existing pick with a guess
+      const hasRealH2H = h2h.length > 0 || p1Recent.length > 0 || (p2Recent?.length || 0) > 0;
+      if (!hasRealH2H) {
+        const _existPick = getPicks()['tn_' + m.event_key];
+        if (_existPick && _existPick.result === null) {
+          _fullAnalysisDone.add(String(m.event_key)); // preserve existing pick, skip inlineTennisPick
+          continue;
+        }
+        // No existing pick yet — let inlineTennisPick handle it below
+        continue;
+      }
       const surface   = m.tournament_surface || inferSurface(m.tournament_name || '');
       const surfLabel = surface || 'Hard';
       const surfLow   = surfLabel.toLowerCase();
