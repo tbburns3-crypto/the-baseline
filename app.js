@@ -9218,6 +9218,31 @@ async function preloadPicksForSimpleView() {
   } catch {}
   try { await preloadTennisPicksQuiet(); } catch (e) {}
 
+  // If tennis preload corrected any pick that's already locked inside the day ticket,
+  // clear the lock so buildDailyTicketIfNeeded rebuilds with the right player.
+  {
+    const _nowPicks = getPicks();
+    const _nowDate  = dateStrLocal();
+    let   _ticketStale = false;
+    try {
+      const _raw = localStorage.getItem(_TICKET_KEY);
+      if (_raw) {
+        const _t = JSON.parse(_raw);
+        if (_t?.date === _nowDate && Array.isArray(_t.legs)) {
+          for (const leg of _t.legs) {
+            const sp = _nowPicks[leg.id];
+            if (sp?.team && leg.pick && sp.team !== leg.pick) { _ticketStale = true; break; }
+          }
+        }
+      }
+    } catch {}
+    if (_ticketStale) {
+      _dailyTicketCache = null;
+      localStorage.removeItem('_ticket_built_v10');
+      localStorage.removeItem(_TICKET_KEY);
+    }
+  }
+
   // Fix any stored golf pick matchup strings using the manual override before
   // the ticket reads them - ensures the ticket shows correct 3-ball groupings.
   fixGolfPickMatchupsFromOverride();
