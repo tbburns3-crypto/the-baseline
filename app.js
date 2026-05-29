@@ -7793,9 +7793,6 @@ async function _sbSaveTodayPicks() {
 async function _sbLoadTodayPicksIfEmpty() {
   try {
     const today = dateStrLocal();
-    const allPicks = getPicks();
-    const hasTodayPicks = Object.values(allPicks).some(p => p.date === today);
-    if (hasTodayPicks) return; // already have local picks — no need to fetch
     const url = `${_SB_URL}/rest/v1/baseline_tickets?date=eq.${encodeURIComponent(today + '_picks')}&select=morn_legs`;
     const res = await fetch(url, { headers: { apikey: _SB_KEY, Authorization: `Bearer ${_SB_KEY}` } });
     if (!res.ok) return;
