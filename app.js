@@ -8169,17 +8169,25 @@ async function verifyOtpCode() {
   const btn = document.getElementById('auth-verify-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
 
-  try {
-    const { error } = await _sbClient.auth.verifyOtp({ email: _otpEmail, token: code, type: 'email' });
-    if (error) throw error;
-    // Close immediately — don't wait for onAuthStateChange + _fetchUserRole to settle
-    closeAuthModal();
-  } catch (err) {
-    errEl.textContent   = err.message || 'Invalid code. Please try again.';
+  const showVerifyErr = msg => {
+    errEl.textContent   = msg;
     errEl.style.display = '';
     if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
     if (inp) inp.value = '';
     inp?.focus();
+  };
+
+  const safetyTimer = setTimeout(() => showVerifyErr('Verification timed out. Please try again.'), 12000);
+  try {
+    const { data, error } = await _sbClient.auth.verifyOtp({ email: _otpEmail, token: code, type: 'email' });
+    clearTimeout(safetyTimer);
+    if (error) throw error;
+    closeAuthModal();
+  } catch (err) {
+    clearTimeout(safetyTimer);
+    let msg = err.message || 'Invalid code. Please try again.';
+    if (/expired|invalid.*token|otp/i.test(msg)) msg = 'Code expired or invalid. Please request a new one.';
+    showVerifyErr(msg);
   }
 }
 
