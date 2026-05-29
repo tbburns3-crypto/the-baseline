@@ -4036,7 +4036,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     // Record both teams' picks per category
     const gKey   = String(espnGame.id);
     const gamePk = mlbGame?.gamePk || null;
-    if (!fin && !live) {
+    if (!live) {
       const propLabel = p => ({ hit:'Hit', hr:'HR', rbi:'RBI', walk:'Walk', sb:'SB', dbl:'Double', xbh:'XBH' }[p] || p);
       for (const [b, prop] of [[aHit,'hit'],[hHit,'hit'],[aHR,'hr'],[hHR,'hr'],[aRBI,'rbi'],[hRBI,'rbi'],[aBB,'walk'],[hBB,'walk'],[aSB,'sb'],[hSB,'sb'],[aDbl,'dbl'],[hDbl,'dbl'],[aXBH,'xbh'],[hXBH,'xbh']]) {
         if (b) recordPlayerPick('plr_'+gKey+'_'+b.id+'_'+prop, 'mlb', b.name, propLabel(prop), statStr[prop](b), gameMatchup, gamePk);
@@ -4072,20 +4072,23 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
         recordPlayerPick(`runs_${gKey}`, 'mlb', `${dir} ${ouLine}`, 'RunTotal',
           `proj ${projTotalRuns} runs`, gameMatchup, gamePk);
       }
-    } else if (fin) {
-      // Only grade picks once the game is truly final - never during live play
-      resolvePlayerPicksForGame(gKey, gamePk);
-      // Resolve run total pick once game is final
-      const _rtKey = `runs_${gKey}`;
-      const _pks = getPicks(); const _rtp = _pks[_rtKey];
-      if (_rtp && _rtp.result === null) {
-        const _total = parseFloat(espnGame.awayScore||0) + parseFloat(espnGame.homeScore||0);
-        const _m = (_rtp.player||'').match(/^(OVER|UNDER)\s+(\d+\.?\d*)/);
-        if (_m && _total > 0) {
-          _pks[_rtKey].result = (_m[1]==='OVER' ? _total > parseFloat(_m[2]) : _total < parseFloat(_m[2])) ? 'win' : 'loss';
-          savePicks(_pks);
+      if (fin) {
+        // Game already finished — resolve all player picks immediately
+        resolvePlayerPicksForGame(gKey, gamePk);
+        const _rtKey = `runs_${gKey}`;
+        const _pks = getPicks(); const _rtp = _pks[_rtKey];
+        if (_rtp && _rtp.result === null) {
+          const _total = parseFloat(espnGame.awayScore||0) + parseFloat(espnGame.homeScore||0);
+          const _m = (_rtp.player||'').match(/^(OVER|UNDER)\s+(\d+\.?\d*)/);
+          if (_m && _total > 0) {
+            _pks[_rtKey].result = (_m[1]==='OVER' ? _total > parseFloat(_m[2]) : _total < parseFloat(_m[2])) ? 'win' : 'loss';
+            savePicks(_pks);
+          }
         }
       }
+    } else if (fin) {
+      // live guard is false here but fin check kept for safety
+      resolvePlayerPicksForGame(gKey, gamePk);
     }
 
     // Two rows per category (away top + home top), skip if both absent
