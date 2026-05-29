@@ -2081,6 +2081,22 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-ticket-pending { opacity: .75; }
 .sv-pending-msg { text-align: center; padding: 28px 16px; color: var(--text-muted); font-size: .82rem; line-height: 1.5; }
 
+/* ── HOT STREAK BANNER ── */
+.sv-hot-streak { background: linear-gradient(135deg, #0a1e12 0%, #0e2918 60%, #091810 100%); border: 1.5px solid #00e676; border-radius: 12px; padding: 16px; margin-bottom: 14px; cursor: pointer; transition: border-color .15s, transform .1s; }
+.sv-hot-streak:hover { border-color: #00ff87; transform: translateY(-1px); }
+.sv-hs-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.sv-hs-eyebrow { font-size: .6rem; font-weight: 800; letter-spacing: .14em; color: #ff9800; }
+.sv-hs-record { font-size: 1.05rem; font-weight: 900; color: var(--accent); letter-spacing: .04em; }
+.sv-hs-label { font-size: .8rem; font-weight: 700; color: #e8f5e9; margin-bottom: 4px; }
+.sv-hs-msg { font-size: .74rem; color: #6abf7b; margin-bottom: 10px; line-height: 1.4; font-style: italic; }
+.sv-hs-rows { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.sv-hs-row { display: flex; align-items: center; gap: 6px; font-size: .71rem; }
+.sv-hs-row-icon { flex-shrink: 0; }
+.sv-hs-row-match { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.sv-hs-row-arrow { color: var(--text-muted); flex-shrink: 0; }
+.sv-hs-row-pick { font-weight: 700; color: #e8f5e9; flex-shrink: 0; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-hs-cta { font-size: .7rem; font-weight: 700; color: var(--accent); text-align: right; letter-spacing: .03em; }
+
 /* ── UPSELL BANNER ── */
 .sv-upsell-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: linear-gradient(135deg, #0d2414, #152e1c); border: 1px solid rgba(0,230,118,.45); border-radius: 12px; padding: 18px 20px; margin-top: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
 .sv-upsell-banner:hover { border-color: var(--accent); background: linear-gradient(135deg, #102a18, #1a3820); }

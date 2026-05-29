@@ -10274,6 +10274,47 @@ function renderSimpleView() {
     </div>`;
   };
 
+  // ── Hot streak banner ──
+  const _hsGroups = [
+    { key: 'tennis_slam_wta',      label: "Women's Grand Slam", icon: '🎾' },
+    { key: 'tennis_slam_atp',      label: "Men's Grand Slam",   icon: '🎾' },
+    { key: 'tennis_non_slam_main', label: 'Tennis Main Draw',   icon: '🎾' },
+    { key: 'tennis_all',           label: 'Tennis',             icon: '🎾' },
+    { key: 'golf',                 label: 'Golf',               icon: '⛳' },
+    { key: 'mlb',                  label: 'MLB',                icon: '⚾' },
+    { key: 'nba',                  label: 'NBA',                icon: '🏀' },
+    { key: 'nhl',                  label: 'NHL',                icon: '🏒' },
+  ];
+  let _hsBest = null;
+  for (const g of _hsGroups) {
+    const legs = getPicksForTicket(g.key, today, allPicks);
+    if (!legs.length) continue;
+    const resolved = legs.filter(l => { const r = allPicks[l.id]?.result ?? l.result; return r === 'win' || r === 'loss'; });
+    if (resolved.length < 2) continue;
+    const wins = resolved.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
+    if (wins !== resolved.length) continue; // perfect record only
+    if (!_hsBest || wins > _hsBest.wins) _hsBest = { ...g, legs, wins };
+  }
+  const hotStreakBanner = (() => {
+    if (!_hsBest) return '';
+    const _hsMsgs = ['','','Two for two. Algorithm is dialed in.','Perfect 3–0. Picks hitting on all cylinders.','Four for four. The algorithm sees something.','Five straight. The algorithm doesn\'t lie.','Six picks. Six wins. Pure precision.','Unstoppable — 7 picks, 7 wins. The algorithm is locked in.'];
+    const _hsMsg = _hsMsgs[Math.min(_hsBest.wins, _hsMsgs.length - 1)] || `${_hsBest.wins} picks. ${_hsBest.wins} wins. Algorithm is on fire.`;
+    const _hsRows = _hsBest.legs
+      .filter(l => (allPicks[l.id]?.result ?? l.result) === 'win')
+      .map(l => {
+        const match = (l.matchup || '').replace(/ @ /g, ' v ');
+        const icon = SPORT_ICONS[l.sport] || '🏅';
+        return `<div class="sv-hs-row"><span class="sv-hs-row-icon">${icon}</span><span class="sv-hs-row-match">${esc(match)}</span><span class="sv-hs-row-arrow">→</span><span class="sv-hs-row-pick">${esc(l.pick)}</span><span class="sv-badge sv-badge-w">W</span></div>`;
+      }).join('');
+    return `<div class="sv-hot-streak" onclick="switchSport('tickets')">
+      <div class="sv-hs-top"><div class="sv-hs-eyebrow">🔥 ALGORITHM ON FIRE</div><div class="sv-hs-record">${_hsBest.wins}W – 0L</div></div>
+      <div class="sv-hs-label">${_hsBest.icon} ${_hsBest.label}</div>
+      <div class="sv-hs-msg">${_hsMsg}</div>
+      <div class="sv-hs-rows">${_hsRows}</div>
+      <div class="sv-hs-cta">See full tickets →</div>
+    </div>`;
+  })();
+
   const dayHTML   = morn ? makeBlock('🌤 Day Ticket', morn) : '';
   const nightHTML = eve
     ? makeBlock('🌙 Night Ticket', eve)
@@ -10320,7 +10361,7 @@ function renderSimpleView() {
       Round robins are your best friend, especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
     </div>`;
 
-  el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${upsellBanner}${lockedSection}`;
+  el.innerHTML = `${hotStreakBanner}<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${upsellBanner}${lockedSection}`;
 }
 
 // BFCache restore: reset checkout buttons that were disabled before navigating to Stripe
