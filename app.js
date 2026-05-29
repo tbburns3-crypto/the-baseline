@@ -10319,12 +10319,13 @@ function renderSimpleView() {
     });
     // Promo card — shown to non-subscribers only; wire up Stripe promo code when ready
     const promoCard = _hasFullAccess() ? '' : `<div class="sv-promo-card" onclick="_pendingPromoCode='BASELINE';openUpgradeModal()">
-      <div class="sv-promo-eyebrow">FIRST TIME OFFER</div>
-      <div class="sv-promo-pct">15%</div>
-      <div class="sv-promo-off">OFF</div>
-      <div class="sv-promo-sub">your first subscription</div>
+      <div class="sv-promo-tag">★ NEW SUBSCRIBER DEAL ★</div>
+      <div class="sv-promo-hero"><span class="sv-promo-num">15%</span><span class="sv-promo-offbig">OFF</span></div>
+      <div class="sv-promo-sub">on your first subscription</div>
+      <div class="sv-promo-divider"></div>
+      <div class="sv-promo-codelabel">USE CODE</div>
       <div class="sv-promo-code">BASELINE</div>
-      <div class="sv-promo-btn">Claim now</div>
+      <div class="sv-promo-btn">Claim Now</div>
       <div class="sv-promo-caption">Auto-applied at checkout</div>
     </div>`;
     const allCards = [...winCards, promoCard].filter(Boolean);
