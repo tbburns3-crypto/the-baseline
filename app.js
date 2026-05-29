@@ -8247,7 +8247,11 @@ async function signOut() {
 // never spawns duplicate tabs.
 function openAdminPanel(e) {
   if (e) e.preventDefault();
-  window.open('admin.html', 'baseline-admin');
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+    window.location.href = 'admin.html';
+  } else {
+    window.open('admin.html', 'baseline-admin');
+  }
 }
 
 function _resetCheckoutButtons() {
