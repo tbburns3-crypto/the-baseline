@@ -10318,15 +10318,13 @@ function renderSimpleView() {
       </div>`;
     });
     // Promo card — shown to non-subscribers only; wire up Stripe promo code when ready
-    const promoCard = _hasFullAccess() ? '' : `<div class="sv-promo-card" style="--rot:${winCards.length % 2 === 0 ? '-1.5deg' : '2deg'}" onclick="_pendingPromoCode='BASELINE';openUpgradeModal()">
-      <div class="sv-promo-inner">
-        <div class="sv-promo-eyebrow">FIRST TIME OFFER</div>
-        <div class="sv-promo-pct">15%</div>
-        <div class="sv-promo-off">OFF</div>
-        <div class="sv-promo-sub">your first subscription</div>
-        <div class="sv-promo-code">BASELINE</div>
-        <div class="sv-promo-btn">Claim now</div>
-      </div>
+    const promoCard = _hasFullAccess() ? '' : `<div class="sv-promo-card" onclick="_pendingPromoCode='BASELINE';openUpgradeModal()">
+      <div class="sv-promo-eyebrow">FIRST TIME OFFER</div>
+      <div class="sv-promo-pct">15%</div>
+      <div class="sv-promo-off">OFF</div>
+      <div class="sv-promo-sub">your first subscription</div>
+      <div class="sv-promo-code">BASELINE</div>
+      <div class="sv-promo-btn">Claim now</div>
       <div class="sv-promo-caption">Auto-applied at checkout</div>
     </div>`;
     const allCards = [...winCards, promoCard].filter(Boolean);
