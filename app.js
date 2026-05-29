@@ -491,8 +491,12 @@ function updatePicksDisplay() {
   const sport      = S.sport;
   const today      = dateStrLocal(0);
 
-  const sportPicks  = allVals.filter(p => (p.sport || 'tennis') === sport && p.date === today);
-  const sportRes    = sportPicks.filter(p => p.result !== null);
+  // On tickets/randomizer tab show all-sport today totals; otherwise filter to current sport
+  const isAggregate = sport === 'tickets' || sport === 'randomizer';
+  const sportPicks  = isAggregate
+    ? allVals.filter(p => p.date === today)
+    : allVals.filter(p => (p.sport || 'tennis') === sport && p.date === today);
+  const sportRes    = sportPicks.filter(p => p.result !== null && p.result !== 'retired');
   const sportPend   = sportPicks.filter(p => p.result === null);
   const sWins       = sportRes.filter(p => p.result === 'win').length;
   const sLosses     = sportRes.filter(p => p.result === 'loss').length;
@@ -10783,6 +10787,28 @@ function init() {
   }
 
   clearOldPicks();
+
+  // Reset any today's MLB player picks that were wrongly resolved before their game finished.
+  // Runs async: fetches ESPN game statuses, resets result to null for unfinished games.
+  (async () => {
+    try {
+      const _today = dateStrLocal(0);
+      const _pks = getPicks();
+      const _mlbBadPicks = Object.entries(_pks).filter(([k, p]) =>
+        p.type === 'player' && p.sport === 'mlb' && p.date === _today && p.result !== null
+      );
+      if (!_mlbBadPicks.length) return;
+      const _games = await espnGames('mlb', 0).catch(() => []);
+      const _finishedIds = new Set(_games.filter(g => /^Final/i.test(g.status) || /^F(\/|$)/i.test(g.status)).map(g => g.id));
+      let _fixed = false;
+      for (const [k, p] of _mlbBadPicks) {
+        const espnId = k.split('_')[1];
+        if (!_finishedIds.has(espnId)) { _pks[k].result = null; _fixed = true; }
+      }
+      if (_fixed) { savePicks(_pks); updatePicksDisplay(); }
+    } catch {}
+  })();
+
   updatePicksDisplay();
   renderTZSelector();
   renderDateBar();
