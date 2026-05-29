@@ -8954,16 +8954,18 @@ async function preloadTennisPicksQuiet() {
 
     await Promise.allSettled(needsH2H.map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
 
-    // Run the full prediction engine (same algorithm as the match-card analysis) for every
-    // upcoming main-draw match using the just-fetched H2H data. This records authoritative
-    // picks with fullAnalysis=true so the ticket always matches the display pick,
-    // no user tapping required, and cross-device sync carries the correct pick to Supabase.
+    // Track which match keys got a full-analysis pick so inlineTennisPick is skipped for them.
+    const _fullAnalysisDone = new Set();
+
+    // Run the full prediction engine for every upcoming main-draw match.
+    // Uses cached H2H data when available; falls back to seeding+affinity when not.
+    // Records with fullAnalysis=true — inlineTennisPick must not overwrite these.
     for (const m of needsH2H) {
       if (isLive(m.event_status) || isFinished(m.event_status)) continue;
       const p1key = String(m.first_player_key || '');
       const p2key = String(m.second_player_key || '');
-      const h2hDat = _h2hCache.get(`${p1key}_${p2key}`);
-      if (!h2hDat) continue;
+      // Use cached H2H or fall back to empty arrays (seeding+affinity still work)
+      const h2hDat = _h2hCache.get(`${p1key}_${p2key}`) || { h2h: [], p1Recent: [], p2Recent: [] };
       const { h2h = [], p1Recent = [], p2Recent = [] } = h2hDat;
       const surface   = m.tournament_surface || inferSurface(m.tournament_name || '');
       const surfLabel = surface || 'Hard';
@@ -8986,7 +8988,10 @@ async function preloadTennisPicksQuiet() {
         if (w === 'First Player')       { if (gp1 === p1key) sw1++; else sw2++; }
         else if (w === 'Second Player') { if (gp1 === p1key) sw2++; else sw1++; }
       }
-      try { buildTennisPrediction(m, h2h, onSurface, aw1, aw2, sw1, sw2, surfLabel, p1Recent, p2Recent, p1key, p2key); } catch {}
+      try {
+        buildTennisPrediction(m, h2h, onSurface, aw1, aw2, sw1, sw2, surfLabel, p1Recent, p2Recent, p1key, p2key);
+        _fullAnalysisDone.add(String(m.event_key));
+      } catch {}
     }
 
     const existingPicks = getPicks();
@@ -8994,6 +8999,23 @@ async function preloadTennisPicksQuiet() {
     // Process today's matches
     for (const m of todayMatches) {
       S.matches.set(String(m.event_key), m);
+      // Skip inlineTennisPick for matches that already got a full-analysis pick — no overwrite.
+      if (_fullAnalysisDone.has(String(m.event_key))) {
+        // Still resolve finished matches
+        if (isFinished(m.event_status) && m.event_winner) {
+          const st3 = (m.event_status || '').toLowerCase();
+          if (st3.includes('retir') || st3.includes('walkover') || st3 === 'w/o') {
+            resolvePickRetired('tn_' + m.event_key);
+          } else {
+            let wln = '';
+            if (m.event_winner === 'First Player')       wln = lastName(m.event_first_player  || '');
+            else if (m.event_winner === 'Second Player') wln = lastName(m.event_second_player || '');
+            else                                          wln = lastName(m.event_winner);
+            if (wln) resolvePick('tn_' + m.event_key, wln);
+          }
+        }
+        continue;
+      }
       // For live matches: record a pick only if one wasn't already stored (pre-game analysis).
       const pickId = 'tn_' + m.event_key;
       const alreadyHasPick = !!existingPicks[pickId];
@@ -9164,6 +9186,36 @@ async function preloadPicksForSimpleView() {
 
   try { await loadSoccerScores(); } catch (e) {}
   try { await loadGolfPicksPage(); } catch (e) {}
+  // Golf fallback: if loadGolfPicksPage recorded no picks (ESPN data unavailable or sparse)
+  // but a manual override exists for today, seed picks from override groups using the
+  // Colonial bonus scores for player quality. Picks flagged golfPlaceholder=true so
+  // buildGolfGroupPickCard will overwrite them with real ESPN-scored picks when data loads.
+  try {
+    const _golfToday = dateStrLocal(0);
+    const _golfOv = Object.values(GOLF_PAIRINGS_OVERRIDE).find(o => o.date === _golfToday);
+    if (_golfOv && _golfOv.groups?.length) {
+      const _existGolf = Object.values(getPicks()).filter(p => p.sport === 'golf' && p.date === _golfToday && !p.golfPlaceholder);
+      if (!_existGolf.length) {
+        _golfTournamentActive = true;
+        const _ovKey = Object.keys(GOLF_PAIRINGS_OVERRIDE).find(k => GOLF_PAIRINGS_OVERRIDE[k] === _golfOv) || 'unknown';
+        const _FB_BONUS = { 'Fowler':8,'Thomas':7,'Bradley':6,'Henley':5,'Im':5,'Harman':5,'Homa':4,'Matsuyama':4,'Theegala':4,'Snedeker':3,'Coody':3,'Woodland':2 };
+        for (let gi = 0; gi < _golfOv.groups.length; gi++) {
+          const names = _golfOv.groups[gi];
+          if (names.length < 2) continue;
+          const pickId = `golf_${_ovKey}_${_golfToday}_ov${gi}`;
+          const matchup = names.map(n => n.split(' ').pop()).join(' v ');
+          const bestName = names.reduce((best, n) => {
+            const ln = n.split(' ').pop();
+            return (_FB_BONUS[ln] || 0) > (_FB_BONUS[best.split(' ').pop()] || 0) ? n : best;
+          });
+          const allPicksNow = getPicks();
+          if (!allPicksNow[pickId]) {
+            recordPick(pickId, bestName.split(' ').pop(), matchup, 'golf', 1, false, null, '', { golfPlaceholder: true });
+          }
+        }
+      }
+    }
+  } catch {}
   try { await preloadTennisPicksQuiet(); } catch (e) {}
 
   // Fix any stored golf pick matchup strings using the manual override before
