@@ -2090,7 +2090,8 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-win-card:hover { transform: rotate(0deg) scale(1.05) !important; box-shadow: 0 12px 28px rgba(0,0,0,.65); z-index: 2; }
 .sv-win-card-inner { background: #0c1d12; border-radius: 2px; padding: 9px 8px 7px; }
 .sv-wc-sport { font-size: .6rem; font-weight: 700; color: var(--accent); letter-spacing: .04em; margin-bottom: 3px; }
-.sv-wc-rec { font-size: .95rem; font-weight: 900; color: #e8f5e9; margin-bottom: 6px; letter-spacing: .02em; }
+.sv-wc-rec { font-size: .95rem; font-weight: 900; color: #e8f5e9; margin-bottom: 6px; letter-spacing: .02em; display: flex; align-items: baseline; gap: 6px; }
+.sv-wc-date { font-size: .58rem; font-weight: 600; color: #6abf7b; letter-spacing: .03em; }
 .sv-wc-picks { display: flex; flex-direction: column; gap: 3px; }
 .sv-wc-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .sv-wc-name { font-size: .63rem; color: #b2dfb8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }

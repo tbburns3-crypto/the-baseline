@@ -10311,7 +10311,7 @@ function renderSimpleView() {
       return `<div class="sv-win-card" style="--rot:${rot}" onclick="switchSport('tickets')">
         <div class="sv-win-card-inner">
           <div class="sv-wc-sport">${w.icon} ${w.label}</div>
-          <div class="sv-wc-rec">${w.wins}W · 0L</div>
+          <div class="sv-wc-rec">${w.wins}W · 0L <span class="sv-wc-date">${new Date(today + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}</span></div>
           <div class="sv-wc-picks">${pickRows}</div>
         </div>
         <div class="sv-wc-caption">From subscriber Tickets tab</div>
@@ -10329,7 +10329,7 @@ function renderSimpleView() {
     </div>`;
     const allCards = [...winCards, promoCard].filter(Boolean);
     if (!allCards.length) return '';
-    const hdr = winCards.length ? '<div class="sv-wins-hdr">🔥 Locked In Today</div>' : '';
+    const hdr = winCards.length ? '<div class="sv-wins-hdr">🔥 Locked In</div>' : '';
     return `<div class="sv-wins-wrap">${hdr}<div class="sv-wins-strip">${allCards.join('')}</div></div>`;
   })();
 
