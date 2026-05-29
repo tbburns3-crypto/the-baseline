@@ -10299,8 +10299,7 @@ function renderSimpleView() {
     _wWinners.push({ ...g, legs, wins });
   }
   const hotStreakBanner = (() => {
-    if (!_wWinners.length) return '';
-    const cards = _wWinners.map((w, i) => {
+    const winCards = _wWinners.map((w, i) => {
       const rot = i % 2 === 0 ? '-2deg' : '1.5deg';
       const pickRows = w.legs.slice(0, 7).map(l => {
         const name = (l.pick || '').split(' ').slice(-1)[0];
@@ -10314,11 +10313,22 @@ function renderSimpleView() {
         </div>
         <div class="sv-wc-caption">From subscriber Tickets tab</div>
       </div>`;
-    }).join('');
-    return `<div class="sv-wins-wrap">
-      <div class="sv-wins-hdr">🔥 Locked In Today</div>
-      <div class="sv-wins-strip">${cards}</div>
+    });
+    // Promo card — shown to non-subscribers only; wire up Stripe promo code when ready
+    const promoCard = _hasFullAccess() ? '' : `<div class="sv-promo-card" style="--rot:${winCards.length % 2 === 0 ? '-1.5deg' : '2deg'}" onclick="openUpgradeModal()">
+      <div class="sv-promo-inner">
+        <div class="sv-promo-eyebrow">FIRST TIME OFFER</div>
+        <div class="sv-promo-pct">15%</div>
+        <div class="sv-promo-off">OFF</div>
+        <div class="sv-promo-sub">your first subscription</div>
+        <div class="sv-promo-btn">Claim now</div>
+      </div>
+      <div class="sv-promo-caption">Applied at checkout</div>
     </div>`;
+    const allCards = [...winCards, promoCard].filter(Boolean);
+    if (!allCards.length) return '';
+    const hdr = winCards.length ? '<div class="sv-wins-hdr">🔥 Locked In Today</div>' : '';
+    return `<div class="sv-wins-wrap">${hdr}<div class="sv-wins-strip">${allCards.join('')}</div></div>`;
   })();
 
   const dayHTML   = morn ? makeBlock('🌤 Day Ticket', morn) : '';
