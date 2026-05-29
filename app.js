@@ -8178,15 +8178,15 @@ async function verifyOtpCode() {
   };
 
   try {
-    // Direct fetch with AbortController so we can truly cancel on timeout
+    // Route through Edge Function — server-side verify avoids mobile network issues
     const ctrl = new AbortController();
-    const tmo  = setTimeout(() => ctrl.abort(), 10000);
+    const tmo  = setTimeout(() => ctrl.abort(), 20000);
     let res, resData;
     try {
-      res     = await fetch(`${_SB_URL}/auth/v1/verify`, {
+      res     = await fetch(`${_SB_URL}/functions/v1/verify-otp`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': _SB_KEY },
-        body:    JSON.stringify({ email: _otpEmail, token: code, type: 'email', gotrue_meta_security: {} }),
+        body:    JSON.stringify({ email: _otpEmail, token: code }),
         signal:  ctrl.signal,
       });
       clearTimeout(tmo);
