@@ -1559,12 +1559,14 @@ function inlineTennisPick(m, dateOverride = null, allowLive = false) {
   conf = Math.max(1, Math.min(3, conf + getConfCalibration('tennis')));
 
   const injTag = (winner === 1 && p2Hurt) || (winner === 2 && p1Hurt) ? ' ⚕' : '';
-  // force=true when H2H data was available: ensures the fuller analysis beats a seed-only guess
-  // from an earlier pass that ran before the H2H cache was populated.
-  // Never force-overwrite a live or finished match pick.
+  // force=true when H2H data is available and match is upcoming — lets a fuller pass beat a seed-only guess.
+  // Never overwrite a pick that was written by buildTennisPrediction (fullAnalysis=true); that function
+  // has H2H + form data fetched fresh and is authoritative for display vs. ticket consistency.
+  const _existingPick = getPicks()[pickId];
+  const _hasFullAnalysis = _existingPick?.fullAnalysis === true && _existingPick?.result === null;
   const _hasH2H = !!(h2hDat && (h2hDat.h2h.length > 0 || h2hDat.p1Recent.length > 0 || h2hDat.p2Recent?.length > 0));
   const _isUpcoming = !isLive(m.event_status) && !isFinished(m.event_status);
-  recordPick(pickId, pick, matchup, 'tennis', conf, _hasH2H && _isUpcoming, pickDate, tier, { matchDate, bo5: isBestOf5(m) || undefined, cat: matchCategory(m.event_type_type || '') });
+  recordPick(pickId, pick, matchup, 'tennis', conf, !_hasFullAnalysis && _hasH2H && _isUpcoming, pickDate, tier, { matchDate, bo5: isBestOf5(m) || undefined, cat: matchCategory(m.event_type_type || '') });
   return `<span class="match-pick-inline" title="Multi-factor pick (click for full analysis)">→ ${esc(pick)}${injTag}</span>`;
 }
 
@@ -2078,7 +2080,7 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
     const _today = dateStrLocal(0);
     const _pd    = m.event_date && m.event_date >= _today ? m.event_date : _today;
     recordPick('tn_' + m.event_key, lastName(_pName), _mu, 'tennis', _conf, true, _pd, tier,
-      { matchDate: m.event_date, bo5: bo5 || undefined, cat: matchCategory(m.event_type_type || '') });
+      { matchDate: m.event_date, bo5: bo5 || undefined, cat: matchCategory(m.event_type_type || ''), fullAnalysis: true });
   }
 
   const factorsHTML = factors.map(f => {
@@ -6282,8 +6284,12 @@ function normGolfPickId(eventId, teeTime, nine, overrideIdx, overrideDate) {
 // ESPN tee-time guessing so correct 3-ball pairings are always displayed.
 function groupByTeeTime(players, round = 1, eventId = '') {
   // ── Manual override path ──────────────────────────────────────────────────
-  const ov = eventId && GOLF_PAIRINGS_OVERRIDE[eventId];
-  if (ov && ov.round === round && ov.date === dateStrLocal(0)) {
+  // Match by event ID first; fall back to any today-dated override so the correct
+  // groups are used even when ESPN generates a new event ID for the same annual tournament.
+  const _todayGBT = dateStrLocal(0);
+  const ov = (eventId && GOLF_PAIRINGS_OVERRIDE[eventId]) ||
+    Object.values(GOLF_PAIRINGS_OVERRIDE).find(o => o.date === _todayGBT);
+  if (ov && ov.round === round && ov.date === _todayGBT) {
     // Normalize: strip diacritics, replace Scandinavian chars, lowercase
     const norm = s => s.toLowerCase()
       .normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -6940,7 +6946,9 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           // Mark tournament active whenever a live, upcoming, or between-rounds event is today
           if (!isFinal) _golfTournamentActive = true;
 
-          const todayOv = GOLF_PAIRINGS_OVERRIDE[ev.id];
+          const _todayLP = dateStrLocal(0);
+          const todayOv = GOLF_PAIRINGS_OVERRIDE[ev.id] ||
+            Object.values(GOLF_PAIRINGS_OVERRIDE).find(o => o.date === _todayLP);
           const roundForGroups = (todayOv && todayOv.date === dateStrLocal(0)) ? todayOv.round : round;
           const { groups: _groups, upcomingGroups } = groupByTeeTime(allComp, roundForGroups, ev.id);
           // Sort groups by holes completed descending (finished/live groups first)
@@ -9380,8 +9388,10 @@ function getGolfSplitTickets(date, allPicks) {
     const [id] = entry;
     let isEarly = true;
 
-    if (activeOv && ovEventId && id.startsWith(`golf_${ovEventId}_${activeOv.date}_ov`)) {
-      const idx = parseInt(id.slice(`golf_${ovEventId}_${activeOv.date}_ov`.length), 10);
+    // Match override picks by date pattern — event ID may differ year to year
+    if (activeOv && id.includes(`_${activeOv.date}_ov`)) {
+      const ovMatch = id.match(/_ov(\d+)$/);
+      const idx = ovMatch ? parseInt(ovMatch[1], 10) : NaN;
       isEarly = !isNaN(idx) && earlyCount !== null ? idx < earlyCount : true;
     } else {
       // Non-override: parse HHMM from pick ID (UTC)
