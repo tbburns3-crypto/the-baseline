@@ -6152,6 +6152,14 @@ const GOLF_TOURS = [
   { key:'liv',  label:'LIV Golf',      icon:'🏌️' }
 ];
 
+// ── MANUAL TENNIS PICK OVERRIDES ──────────────────────────────────────────────
+// Force a specific player pick when the algorithm gets it wrong.
+// Add { date, p1, p2, pick } — p1/p2 are lowercase last-name substrings to match
+// both players in the matchup. Remove entries after the match is over.
+const TENNIS_PICK_OVERRIDES = [
+  { date: '2026-05-29', p1: 'fonseca', p2: 'djokovic', pick: 'Djokovic' },
+];
+
 // ── MANUAL PAIRING OVERRIDES ──────────────────────────────────────────────────
 // When ESPN's tee-time grouping produces wrong 3-balls, set correct pairings here.
 // Key = ESPN event ID. Update date/round/groups each round from a screenshot.
@@ -9283,6 +9291,22 @@ async function preloadPicksForSimpleView() {
       _dailyTicketCache = null;
       localStorage.removeItem('_ticket_built_v10');
       localStorage.removeItem(_TICKET_KEY);
+    }
+  }
+
+  // Apply manual tennis pick overrides — force the correct player pick before the ticket builds.
+  if (TENNIS_PICK_OVERRIDES.length) {
+    const _today = dateStrLocal();
+    const _allPicks = getPicks();
+    for (const ov of TENNIS_PICK_OVERRIDES) {
+      if (ov.date !== _today) continue;
+      for (const [id, p] of Object.entries(_allPicks)) {
+        if (p.sport !== 'tennis' || p.result !== null || p.date !== _today) continue;
+        const mu = (p.matchup || '').toLowerCase();
+        if (mu.includes(ov.p1) && mu.includes(ov.p2) && p.team !== ov.pick) {
+          recordPick(id, ov.pick, p.matchup, 'tennis', p.conf, true, _today, p.tier || '', { ...(p), fullAnalysis: true });
+        }
+      }
     }
   }
 
