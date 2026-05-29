@@ -8139,7 +8139,7 @@ async function sendOtpCode() {
   try {
     const { error } = await _sbClient.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true, emailRedirectTo: 'https://thebaseline.pro' }
+      options: { shouldCreateUser: true }
     });
     if (error) throw error;
     _otpEmail = email;
