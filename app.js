@@ -6114,43 +6114,41 @@ const GOLF_TOURS = [
 const GOLF_PAIRINGS_OVERRIDE = {
   '401811949': {
     date: '2026-05-28',
-    round: 1,
+    round: 2,
+    earlyCount: 16,
     groups: [
-      ['Bradley','Harman','Gerard'],
-      ['Rooyen','Power','T. Kim'],
-      ['Thompson','Brennan','McCarty'],
-      ['Blair','Thorbjornsen','Hardy'],
-      ['Streelman','Hubbard','Greyserman'],
-      ['Whaley','Walker','McGreevy'],
-      ['Hoge','Fowler','B. Griffin'],
-      ['Hall','Echavarria','Castillo'],
-      ['Jaeger','Simpson','Vilips'],
-      ['A. Svensson','Ryder','Grillo'],
-      ['Ghim','Hoey','Kohles'],
-      ['Spaun','Woodland','Aberg'],
-      ['Ventura','Hirata','Lamprecht'],
-      ['Schenk','Yu','Higgo'],
-      ['C. Phillips','Hisatsune','Roy'],
-      ['Pavon','Kanaya','Smotherman'],
-      ['Poston','Mouw','Campbell'],
-      ['Tosti','Parry','Clanton'],
-      ['Lipsky','Lebioda','Putnam'],
-      ['Crowe','Chassart','Chatfield'],
+      ['Homa','Hojgaard','L. Griffin'],
       ['MacIntyre','Matsuyama','Smalley'],
-      ['Garnett','Wu','J. Smith'],
-      ['Saddier','Nyholm','Dou'],
-      ['Kuchar','Glover','Horschel'],
-      ['Novak','Riley','Highsmith'],
-      ['Henley','Thomas','Im'],
-      ['Rodgers','Mitchell','Keefer'],
-      ['Bhatia','Finau','Snedeker'],
-      ['Theegala','Moore','M. Kim'],
+      ['Rooyen','Power','T. Kim'],
+      ['Crowe','Chassart','Chatfield'],
+      ['Lipsky','Lebioda','Putnam'],
       ['Olesen','Hughes','Kizzire'],
-      ['Peterson','VanDerLaan','Shipley'],
       ['Eckroat','Meissner','Coody'],
-      ['Homa','L. Griffin','Hojgaard'],
-      ['Skinns','Nakajima','Suber'],
+      ['Novak','Riley','Highsmith'],
+      ['Whaley','Walker','McGreevy'],
+      ['Garnett','Wu','J. Smith'],
+      ['Henley','Thomas','Im'],
+      ['Theegala','Moore','M. Kim'],
+      ['Bhatia','Finau','Snedeker'],
+      ['Peterson','VanDerLaan','Shipley'],
+      ['Hall','Echavarria','Castillo'],
+      ['Bradley','Harman','Gerard'],
+      ['A. Svensson','Ryder','Grillo'],
+      ['Poston','Mouw','Campbell'],
+      ['Ventura','Hirata','Lamprecht'],
+      ['Spaun','Woodland','Aberg'],
+      ['Streelman','Hubbard','Greyserman'],
+      ['Tosti','Parry','Clanton'],
+      ['Rodgers','Mitchell','Keefer'],
+      ['C. Phillips','Hisatsune','Roy'],
       ['Hoffman','Villegas','Cole'],
+      ['Hoge','Fowler','B. Griffin'],
+      ['Thompson','Brennan','McCarty'],
+      ['Hodges','Stevens','Fishburn'],
+      ['Pavon','Kanaya','Smotherman'],
+      ['Saddier','Nyholm','Dou'],
+      ['Blair','Thorbjornsen','Hardy'],
+      ['Schenk','Yu','Higgo'],
     ]
   }
 };
@@ -8129,7 +8127,7 @@ function updateSvAuthBar() {
 function initAuth() {
   _sbClient.auth.onAuthStateChange(async (event, session) => {
     // Don't overwrite bypass session with a null Supabase session
-    if (!session && sessionStorage.getItem('_tb_bypass')) {
+    if (!session && localStorage.getItem('_tb_bypass')) {
       _authReady = true;
       updateAuthUI();
       return;
@@ -8287,7 +8285,7 @@ async function verifyOtpCode() {
 }
 
 async function signOut() {
-  sessionStorage.removeItem('_tb_bypass');
+  localStorage.removeItem('_tb_bypass');
   localStorage.removeItem(_ROLE_CACHE_KEY);
   _currentUser = null;
   _auth.clear();
@@ -10461,9 +10459,9 @@ function init() {
   if (location.search) history.replaceState({}, '', location.pathname);
   // Temporary admin bypass — grants session access without email, stripped from URL immediately
   if (_bypassKey === 'tbl-admin-2026') {
-    sessionStorage.setItem('_tb_bypass', '1');
+    localStorage.setItem('_tb_bypass', '1');
   }
-  if (sessionStorage.getItem('_tb_bypass')) {
+  if (localStorage.getItem('_tb_bypass')) {
     _currentUser = { email: 'tbburns3@gmail.com' };
     _auth.setRole('admin');
     updateAuthUI();
