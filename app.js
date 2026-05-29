@@ -8954,6 +8954,41 @@ async function preloadTennisPicksQuiet() {
 
     await Promise.allSettled(needsH2H.map(m => fetchH2HCached(m.first_player_key, m.second_player_key)));
 
+    // Run the full prediction engine (same algorithm as the match-card analysis) for every
+    // upcoming main-draw match using the just-fetched H2H data. This records authoritative
+    // picks with fullAnalysis=true so the ticket always matches the display pick,
+    // no user tapping required, and cross-device sync carries the correct pick to Supabase.
+    for (const m of needsH2H) {
+      if (isLive(m.event_status) || isFinished(m.event_status)) continue;
+      const p1key = String(m.first_player_key || '');
+      const p2key = String(m.second_player_key || '');
+      const h2hDat = _h2hCache.get(`${p1key}_${p2key}`);
+      if (!h2hDat) continue;
+      const { h2h = [], p1Recent = [], p2Recent = [] } = h2hDat;
+      const surface   = m.tournament_surface || inferSurface(m.tournament_name || '');
+      const surfLabel = surface || 'Hard';
+      const surfLow   = surfLabel.toLowerCase();
+      const onSurface = h2h.filter(g => {
+        const gs = inferSurface(g.tournament_name || '').toLowerCase();
+        return surfLow.includes('clay')   ? gs.includes('clay')
+             : surfLow.includes('grass')  ? gs.includes('grass')
+             : surfLow.includes('indoor') ? gs.includes('indoor')
+             : gs === 'hard';
+      });
+      let aw1 = 0, aw2 = 0, sw1 = 0, sw2 = 0;
+      for (const g of h2h) {
+        const w = g.event_winner, gp1 = String(g.first_player_key || '');
+        if (w === 'First Player')       { if (gp1 === p1key) aw1++; else aw2++; }
+        else if (w === 'Second Player') { if (gp1 === p1key) aw2++; else aw1++; }
+      }
+      for (const g of onSurface) {
+        const w = g.event_winner, gp1 = String(g.first_player_key || '');
+        if (w === 'First Player')       { if (gp1 === p1key) sw1++; else sw2++; }
+        else if (w === 'Second Player') { if (gp1 === p1key) sw2++; else sw1++; }
+      }
+      try { buildTennisPrediction(m, h2h, onSurface, aw1, aw2, sw1, sw2, surfLabel, p1Recent, p2Recent, p1key, p2key); } catch {}
+    }
+
     const existingPicks = getPicks();
 
     // Process today's matches
@@ -9140,6 +9175,7 @@ async function preloadPicksForSimpleView() {
   buildDailyTicketIfNeeded();
   await buildSplitTicketsIfNeeded();
   _sbSaveMlbPicks(dateStrLocal()); // persist MLB player picks to Supabase for cross-device yesterday views
+  _lastPicksSyncAt = 0; // reset throttle so corrected picks are always pushed after each preload
   _sbSaveTodayPicks(); // sync all of today's picks so new users see sport sections immediately
   _svPreloadDone = true;
   if (isActive()) renderSimpleView();
