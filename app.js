@@ -10302,6 +10302,7 @@ function renderSimpleView() {
     const ticketHtml = renderTicketBlock(`${_wBest.icon} ${_wBest.label}`, _wBest.legs, allPicks);
     return `<div class="sv-hot-winner">
       <div class="sv-hot-winner-hdr">🔥 ${_wMsg}</div>
+      <div class="sv-hot-winner-sub">This ticket is available in the subscriber Tickets tab.</div>
       ${ticketHtml}
     </div>`;
   })();
