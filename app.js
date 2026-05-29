@@ -7736,14 +7736,18 @@ async function _trySyncTicketsToSupabase() {
     if (morn?.date === today && !sbData?.morn) _sbSaveTicket(today, 'day',   morn.legs);
     if (eve?.date  === today && !sbData?.eve)  _sbSaveTicket(today, 'night', eve.legs);
   } catch {}
+  _sbSaveTodayPicks(); // sync today's picks so all devices can show sport sections
 }
 
 // ── Today's picks sync ── Save today's picks to Supabase so any device (APK,
 // browser, fresh install) can display sport sections without visiting each tab.
-// Stored under date+'_picks' row; first write wins so only admin can seed it.
-let _picksSyncedThisSession = false;
+// Syncs at most once per 10 min (throttled) and updates on every sync so picks
+// added later in the day (e.g. round 2 golf) reach all devices.
+let _lastPicksSyncAt = 0;
 async function _sbSaveTodayPicks() {
-  if (_picksSyncedThisSession || !_isAdmin()) return;
+  if (!_isAdmin()) return;
+  const now = Date.now();
+  if (now - _lastPicksSyncAt < 10 * 60 * 1000) return; // throttle: at most once per 10 min
   try {
     const today = dateStrLocal();
     const allPicks = getPicks();
@@ -7759,11 +7763,11 @@ async function _sbSaveTodayPicks() {
       headers: {
         apikey: _SB_KEY, Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
-        Prefer: 'resolution=ignore-duplicates'
+        Prefer: 'resolution=merge-duplicates' // always update so new picks from later tabs get synced
       },
       body: JSON.stringify({ date: today + '_picks', morn_legs: todayArr, eve_legs: null })
     });
-    if (res.ok || res.status === 409) _picksSyncedThisSession = true;
+    if (res.ok) _lastPicksSyncAt = now;
   } catch {}
 }
 
@@ -9054,6 +9058,7 @@ async function preloadPicksForSimpleView() {
   buildDailyTicketIfNeeded();
   await buildSplitTicketsIfNeeded();
   _sbSaveMlbPicks(dateStrLocal()); // persist MLB player picks to Supabase for cross-device yesterday views
+  _sbSaveTodayPicks(); // sync all of today's picks so new users see sport sections immediately
   _svPreloadDone = true;
   if (isActive()) renderSimpleView();
   if (S.sport === 'tickets') renderTicketsPage();
