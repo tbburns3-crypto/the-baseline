@@ -7793,6 +7793,25 @@ async function _sbSaveTicket(date, slot, legs) {
   } catch {}
 }
 
+async function _sbForceUpdateTicket(date, slot, legs) {
+  if (!_isAdmin()) return;
+  try {
+    const { data: { session } } = await _sbClient.auth.getSession();
+    if (!session) return;
+    const dateKey = encodeURIComponent(date + '_' + slot);
+    const body = slot === 'day' ? { morn_legs: legs } : { eve_legs: legs };
+    await fetch(`${_SB_URL}/rest/v1/baseline_tickets?date=eq.${dateKey}`, {
+      method: 'PATCH',
+      headers: {
+        apikey: _SB_KEY, Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal'
+      },
+      body: JSON.stringify(body)
+    });
+  } catch {}
+}
+
 // After admin signs in, push any locally-built tickets that aren't yet in Supabase.
 // This handles the race where buildSplitTicketsIfNeeded ran before auth completed.
 let _ticketSyncedThisSession = false;
@@ -8747,11 +8766,19 @@ async function buildSplitTicketsIfNeeded() {
   // ── Supabase is always the source of truth — read every load so all devices converge ──
   const sbData = await _sbGetTickets(today);
   if (sbData?.morn) {
-    const mo = { date: today, legs: sbData.morn };
-    try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
-    _morningTicketCache = mo;
-    localStorage.setItem('_day_built_v1', today);
-    dayBuilt = true;
+    // Admin: check if any leg's pick was corrected since the ticket was locked in Supabase.
+    // If stale, skip setting dayBuilt so the admin rebuilds and force-overwrites Supabase.
+    const _sbMornStale = _isAdmin() && sbData.morn.some(leg => {
+      const p = getPicks()[leg.id];
+      return p?.team && leg.pick && p.team !== leg.pick;
+    });
+    if (!_sbMornStale) {
+      const mo = { date: today, legs: sbData.morn };
+      try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
+      _morningTicketCache = mo;
+      localStorage.setItem('_day_built_v1', today);
+      dayBuilt = true;
+    }
   }
   if (sbData?.eve && nightAllowed) {
     const eo = { date: today, legs: sbData.eve };
@@ -8798,7 +8825,10 @@ async function buildSplitTicketsIfNeeded() {
       const mo = { date: today, legs: mornLegs };
       try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(mo)); } catch {}
       _morningTicketCache = mo;
-      _sbSaveTicket(today, 'day', mornLegs); // first write wins in Supabase
+      // If a row already exists in Supabase (stale ticket case), PATCH overwrites it;
+      // if no row exists yet (first build), try POST first then PATCH as fallback.
+      _sbSaveTicket(today, 'day', mornLegs);
+      _sbForceUpdateTicket(today, 'day', mornLegs);
       _sbSaveTodayPicks(); // snapshot all of today's picks for cross-device display
     }
     localStorage.setItem('_day_built_v1', today);
