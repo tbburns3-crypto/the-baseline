@@ -6135,7 +6135,7 @@ const GOLF_TOURS = [
 // Scores/stats still come from ESPN - only group membership changes.
 const GOLF_PAIRINGS_OVERRIDE = {
   '401811949': {
-    date: '2026-05-28',
+    date: '2026-05-29',
     round: 2,
     earlyCount: 16,
     groups: [
@@ -6910,8 +6910,10 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
           </div>`;
 
         } else if (tab === 'today') {
-          const isFinal = state === 'post' || comp.status?.type?.completed;
-          // Mark tournament active only when there's a live or upcoming event today
+          // isFinal = true only when the tournament is fully over, NOT just between rounds.
+          // state==='post' means the current ESPN period (round) finished, not the whole tournament.
+          const isFinal = !!(comp.status?.type?.completed);
+          // Mark tournament active whenever a live, upcoming, or between-rounds event is today
           if (!isFinal) _golfTournamentActive = true;
 
           const todayOv = GOLF_PAIRINGS_OVERRIDE[ev.id];
