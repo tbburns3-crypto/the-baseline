@@ -10274,8 +10274,8 @@ function renderSimpleView() {
     </div>`;
   };
 
-  // ── Hot streak banner ──
-  const _hsGroups = [
+  // ── Winning ticket spotlight ──
+  const _wGroups = [
     { key: 'tennis_slam_wta',      label: "Women's Grand Slam", icon: '🎾' },
     { key: 'tennis_slam_atp',      label: "Men's Grand Slam",   icon: '🎾' },
     { key: 'tennis_non_slam_main', label: 'Tennis Main Draw',   icon: '🎾' },
@@ -10285,33 +10285,24 @@ function renderSimpleView() {
     { key: 'nba',                  label: 'NBA',                icon: '🏀' },
     { key: 'nhl',                  label: 'NHL',                icon: '🏒' },
   ];
-  let _hsBest = null;
-  for (const g of _hsGroups) {
+  let _wBest = null;
+  for (const g of _wGroups) {
     const legs = getPicksForTicket(g.key, today, allPicks);
     if (!legs.length) continue;
     const resolved = legs.filter(l => { const r = allPicks[l.id]?.result ?? l.result; return r === 'win' || r === 'loss'; });
     if (resolved.length < 2) continue;
     const wins = resolved.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
-    if (wins !== resolved.length) continue; // perfect record only
-    if (!_hsBest || wins > _hsBest.wins) _hsBest = { ...g, legs, wins };
+    if (wins !== resolved.length) continue;
+    if (!_wBest || wins > _wBest.wins) _wBest = { ...g, legs, wins };
   }
   const hotStreakBanner = (() => {
-    if (!_hsBest) return '';
-    const _hsMsgs = ['','','Two for two. Algorithm is dialed in.','Perfect 3–0. Picks hitting on all cylinders.','Four for four. The algorithm sees something.','Five straight. The algorithm doesn\'t lie.','Six picks. Six wins. Pure precision.','Unstoppable — 7 picks, 7 wins. The algorithm is locked in.'];
-    const _hsMsg = _hsMsgs[Math.min(_hsBest.wins, _hsMsgs.length - 1)] || `${_hsBest.wins} picks. ${_hsBest.wins} wins. Algorithm is on fire.`;
-    const _hsRows = _hsBest.legs
-      .filter(l => (allPicks[l.id]?.result ?? l.result) === 'win')
-      .map(l => {
-        const match = (l.matchup || '').replace(/ @ /g, ' v ');
-        const icon = SPORT_ICONS[l.sport] || '🏅';
-        return `<div class="sv-hs-row"><span class="sv-hs-row-icon">${icon}</span><span class="sv-hs-row-match">${esc(match)}</span><span class="sv-hs-row-arrow">→</span><span class="sv-hs-row-pick">${esc(l.pick)}</span><span class="sv-badge sv-badge-w">W</span></div>`;
-      }).join('');
-    return `<div class="sv-hot-streak" onclick="switchSport('tickets')">
-      <div class="sv-hs-top"><div class="sv-hs-eyebrow">🔥 ALGORITHM ON FIRE</div><div class="sv-hs-record">${_hsBest.wins}W – 0L</div></div>
-      <div class="sv-hs-label">${_hsBest.icon} ${_hsBest.label}</div>
-      <div class="sv-hs-msg">${_hsMsg}</div>
-      <div class="sv-hs-rows">${_hsRows}</div>
-      <div class="sv-hs-cta">See full tickets →</div>
+    if (!_wBest) return '';
+    const _wMsgs = ['','','2 picks. 2 wins. The algorithm is dialed in.','3 for 3. Picks hitting on all cylinders.','4 for 4. The algorithm sees something today.','5 straight wins. The algorithm does not lie.','6 picks. 6 wins. Pure precision.','7 picks. 7 wins. The algorithm does not miss.'];
+    const _wMsg = _wMsgs[Math.min(_wBest.wins, _wMsgs.length - 1)] || `${_wBest.wins} picks. ${_wBest.wins} wins. The algorithm is locked in.`;
+    const ticketHtml = renderTicketBlock(`${_wBest.icon} ${_wBest.label}`, _wBest.legs, allPicks);
+    return `<div class="sv-hot-winner">
+      <div class="sv-hot-winner-hdr">🔥 ${_wMsg}</div>
+      ${ticketHtml}
     </div>`;
   })();
 
