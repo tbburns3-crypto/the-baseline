@@ -2062,6 +2062,25 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   }
 
   const pickSide = p1Score > p2Score ? 1 : p2Score > p1Score ? 2 : 0;
+
+  // Record pick with force=true — this function has the fullest data (H2H + form + all factors),
+  // so it must always win over an earlier seed-only guess from inlineTennisPick.
+  // Never overwrite a pick for a live or finished match.
+  if (pickSide && !isFinished(m.event_status) && !isLive(m.event_status)) {
+    const _pName  = pickSide === 1 ? p1Name : p2Name;
+    const _gap    = Math.abs(p1Score - p2Score);
+    let _conf = _gap >= 8 ? 3 : _gap >= 5 ? 2 : 1;
+    if (earlyRound && tier !== 'slam') _conf = Math.min(_conf, 2);
+    if (lateRound && tier === 'slam' && _gap >= 5) _conf = Math.min(3, _conf + 1);
+    _conf = Math.max(1, Math.min(3, _conf + getConfCalibration('tennis')));
+    const _surf = m.tournament_surface || inferSurface(m.tournament_name || '');
+    const _mu   = `${lastName(p1Name)} vs ${lastName(p2Name)}${_surf ? ` (${_surf})` : ''}`;
+    const _today = dateStrLocal(0);
+    const _pd    = m.event_date && m.event_date >= _today ? m.event_date : _today;
+    recordPick('tn_' + m.event_key, lastName(_pName), _mu, 'tennis', _conf, true, _pd, tier,
+      { matchDate: m.event_date, bo5: bo5 || undefined, cat: matchCategory(m.event_type_type || '') });
+  }
+
   const factorsHTML = factors.map(f => {
     const myFactor = f.side === pickSide;
     const isTie    = f.side === 0;
@@ -6850,7 +6869,9 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
     <button class="golf-tab${tab==='today'   ?' active':''}" onclick="loadGolfPicksPage('today')">Today</button>
     <button class="golf-tab${tab==='tomorrow'?' active':''}" onclick="loadGolfPicksPage('tomorrow')">Tomorrow</button>
   </div>`;
-  area.innerHTML = tabBar + '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf groups…</p></div>';
+  // area may be null when called from preload (user not on picks screen) — skip DOM writes but
+  // still run the data fetch so picks are recorded and _golfTournamentActive is set.
+  if (area) area.innerHTML = tabBar + '<div class="loading-spinner"><div class="spinner"></div><p>Loading golf groups…</p></div>';
 
   try {
     // ESPN scoreboard ignores ?dates= and always returns the current tournament state.
@@ -7127,10 +7148,12 @@ async function loadGolfPicksPage(tab = _golfPicksTab) {
     }
 
     if (_loadSeq !== seq) return;
-    area.innerHTML = tabBar + note + (html || `<div class="empty-state"><p>No golf groups for ${tab}.</p><p class="muted">Picks appear when a tournament is in progress or tee times are posted.</p></div>`);
-    updatePicksDisplay();
+    if (area) {
+      area.innerHTML = tabBar + note + (html || `<div class="empty-state"><p>No golf groups for ${tab}.</p><p class="muted">Picks appear when a tournament is in progress or tee times are posted.</p></div>`);
+      updatePicksDisplay();
+    }
   } catch (err) {
-    area.innerHTML = tabBar + `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load golf: ${esc(err.message)}</p></div>`;
+    if (area) area.innerHTML = tabBar + `<div class="error-state"><div class="error-icon">⚠</div><p>Could not load golf: ${esc(err.message)}</p></div>`;
   }
 }
 
