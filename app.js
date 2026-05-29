@@ -8204,11 +8204,23 @@ async function verifyOtpCode() {
     // Set session on the Supabase client - triggers onAuthStateChange
     if (resData.access_token) {
       if (btn) btn.textContent = 'Signing in…';
-      // Wrap setSession in a 6s timeout — it makes a network call that can hang
-      await Promise.race([
-        _sbClient.auth.setSession({ access_token: resData.access_token, refresh_token: resData.refresh_token }),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Session setup timed out. Please try again.')), 6000))
-      ]);
+      // Decode JWT locally — no network call, no hanging
+      const [, b64] = resData.access_token.split('.');
+      const payload = JSON.parse(atob(b64.replace(/-/g, '+').replace(/_/g, '/')));
+      _currentUser = { id: payload.sub, email: payload.email, app_metadata: payload.app_metadata || {}, user_metadata: payload.user_metadata || {} };
+      _authReady   = true;
+      // Write session to localStorage so getSession() calls find it
+      const sbKey = `sb-${_SB_URL.replace('https://','').split('.')[0]}-auth-token`;
+      localStorage.setItem(sbKey, JSON.stringify({
+        access_token:  resData.access_token,
+        refresh_token: resData.refresh_token,
+        expires_in:    resData.expires_in || 3600,
+        expires_at:    Math.floor(Date.now() / 1000) + (resData.expires_in || 3600),
+        token_type:    'bearer',
+        user:          resData.user || _currentUser,
+      }));
+      _fetchUserRole(_currentUser.id, resData.access_token);
+      updateAuthUI();
     }
     closeAuthModal();
     if (_pendingCheckoutPlan) {
