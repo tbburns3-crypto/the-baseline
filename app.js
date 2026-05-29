@@ -9851,6 +9851,19 @@ function applyTennisPickOverrides() {
     localStorage.removeItem(_TICKET_KEY);
     localStorage.removeItem('_day_built_v1');
     localStorage.removeItem(_MORN_TICKET_KEY);
+    // Push corrected ticket to Supabase immediately so all other devices get Djokovic
+    if (_isAdmin()) {
+      const _ovPicks = getPicks();
+      const _ovCands = _buildPickCandidates(_ovPicks, today);
+      const _ovLegs  = _selectTicketLegs(_ovCands.filter(c => !isEveningGame(_ovPicks[c.id] || {})));
+      if (_ovLegs) {
+        const _ovMo = { date: today, legs: _ovLegs };
+        try { localStorage.setItem(_MORN_TICKET_KEY, JSON.stringify(_ovMo)); } catch {}
+        _morningTicketCache = _ovMo;
+        localStorage.setItem('_day_built_v1', today);
+        _sbForceUpdateTicket(today, 'day', _ovLegs);
+      }
+    }
   }
 }
 
