@@ -10435,6 +10435,9 @@ function _randGetPool() {
         }
       }
 
+      // Exclude SB (stolen base) picks from randomizer
+      if (p.prop === 'SB') return false;
+
       return true;
     })
     .map(([k, p]) => ({ ...p, _pickKey: k }));
