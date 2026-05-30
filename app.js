@@ -6196,7 +6196,7 @@ const GOLF_PAIRINGS_OVERRIDE = {
   '401811949': {
     date: '2026-05-30',
     round: 3,
-    earlyCount: 0,
+    earlyCount: 12,
     groups: [
       ['Harman','Spaun','Matsuyama'],
       ['Streelman','Hubbard','Hoey'],
