@@ -4934,7 +4934,7 @@ function buildSoccerPicksCard(g) {
                 : stored?.result === 'loss' ? '<span class="pick-loss-badge">L</span>' : '';
 
   // Form summary line — show L10 and home/road splits when available
-  const fmtRec = r => r || '–';
+  const fmtRec = r => r || '-';
   const formParts = [];
   if (g.homeRecs?.l10 || g.awayRecs?.l10) {
     formParts.push(`L10: ${esc(g.awayTeam)} ${fmtRec(g.awayRecs?.l10)} · ${esc(g.homeTeam)} ${fmtRec(g.homeRecs?.l10)}`);
