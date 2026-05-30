@@ -65,7 +65,7 @@ const _restDaysCache = new Map();
 
 // ── INJURY PENALTY CACHE ─────────────────────────────────────
 // Populated by fetchInjuryPenalties() during preload for NBA/WNBA.
-// Key: "sport:ABBR" (e.g. "nba:GSW"), value: win-probability penalty (0–0.12)
+// Key: "sport:ABBR" (e.g. "nba:GSW"), value: win-probability penalty (0-0.12)
 const _injuryPenalty = new Map();
 
 // ── NHL TEAM STATS CACHE ─────────────────────────────────────
@@ -394,7 +394,7 @@ function showPicksHistory() {
     if (Object.keys(cats).length) {
       content += `<div class="ph-cat-summary">${Object.entries(cats).map(([prop, r]) => {
         const tot = r.w + r.l, pct = Math.round(r.w / tot * 100);
-        return `<span class="ph-cat-chip ph-cat-${pct >= 55 ? 'good' : pct <= 40 ? 'bad' : 'avg'}">${PROP_ICON[prop]||''} ${prop} ${r.w}–${r.l}</span>`;
+        return `<span class="ph-cat-chip ph-cat-${pct >= 55 ? 'good' : pct <= 40 ? 'bad' : 'avg'}">${PROP_ICON[prop]||''} ${prop} ${r.w}-${r.l}</span>`;
       }).join('')}</div>`;
     }
   }
@@ -408,7 +408,7 @@ function showPicksHistory() {
       const w = dayResolved.filter(p => p.result === 'win').length;
       const l = dayResolved.filter(p => p.result === 'loss').length;
       const recordBadge = (w || l)
-        ? `<span class="ph-day-record ${w > l ? 'ph-day-up' : w < l ? 'ph-day-down' : 'ph-day-even'}">${w}W–${l}L</span>` : '';
+        ? `<span class="ph-day-record ${w > l ? 'ph-day-up' : w < l ? 'ph-day-down' : 'ph-day-even'}">${w}W-${l}L</span>` : '';
       const gId = 'phg_' + date.replace(/\D/g,'');
       const pendBadge = dayPending.length
         ? `<button class="ph-day-pend-btn" onclick="(function(b){var g=document.getElementById('${gId}');var open=g.style.display!=='none';g.style.display=open?'none':'block';b.textContent=open?'${dayPending.length} pending ▾':'${dayPending.length} pending ▴';})(this)">${dayPending.length} pending ▾</button>`
@@ -431,7 +431,7 @@ function showPicksHistory() {
       return `<div class="ph-cal-row">
         <span class="ph-cal-dots">${dots}</span>
         <span class="ph-cal-label">${c === 3 ? 'High' : c === 2 ? 'Medium' : 'Low'} confidence</span>
-        <span class="ph-cal-stat ph-cat-${cls}">${tiers[c].w}–${tiers[c].t-tiers[c].w} <em>${pct}%</em></span>
+        <span class="ph-cal-stat ph-cat-${cls}">${tiers[c].w}-${tiers[c].t-tiers[c].w} <em>${pct}%</em></span>
       </div>`;
     }).join('');
     content += `<div class="ph-cal-section"><div class="ph-cal-title">Accuracy by Confidence</div>${calRows}</div>`;
@@ -444,7 +444,7 @@ function showPicksHistory() {
   const overallPct = totalWL ? Math.round(totalW / totalWL * 100) : null;
   const overallCls = overallPct === null ? '' : overallPct >= 55 ? 'ph-cat-good' : overallPct <= 40 ? 'ph-cat-bad' : 'ph-cat-avg';
   const overallBadge = totalWL
-    ? `<span class="ph-hdr-record ${overallCls}">${totalW}W – ${totalL}L${overallPct !== null ? ` · ${overallPct}%` : ''}</span>`
+    ? `<span class="ph-hdr-record ${overallCls}">${totalW}W - ${totalL}L${overallPct !== null ? ` · ${overallPct}%` : ''}</span>`
     : '';
 
   const modal = document.createElement('div');
@@ -1958,16 +1958,16 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
       const p1won = (g.event_winner === 'First Player' && gp1 === p1key) || (g.event_winner === 'Second Player' && gp1 !== p1key);
       if (p1won) hw1 += wt; else hw2 += wt;
     }
-    if (hw1 > hw2)      { p1Score += 2; factors.push({ win: true, label: 'H2H (weighted)', detail: `${l1} leads ${aw1}–${aw2}`, side: 1 }); }
-    else if (hw2 > hw1) { p2Score += 2; factors.push({ win: true, label: 'H2H (weighted)', detail: `${l2} leads ${aw2}–${aw1}`, side: 2 }); }
-    else                {               factors.push({ win: null,  label: 'H2H', detail: `Even ${aw1}–${aw2}`, side: 0 }); }
+    if (hw1 > hw2)      { p1Score += 2; factors.push({ win: true, label: 'H2H (weighted)', detail: `${l1} leads ${aw1}-${aw2}`, side: 1 }); }
+    else if (hw2 > hw1) { p2Score += 2; factors.push({ win: true, label: 'H2H (weighted)', detail: `${l2} leads ${aw2}-${aw1}`, side: 2 }); }
+    else                {               factors.push({ win: null,  label: 'H2H', detail: `Even ${aw1}-${aw2}`, side: 0 }); }
   }
 
   // H2H on this surface
   if (h2hSurf.length >= 2) {
-    if (sw1 > sw2)      { p1Score += 3; factors.push({ win: true, label: `On ${esc(surfLabel)}`, detail: `${l1} leads ${sw1}–${sw2}`, side: 1 }); }
-    else if (sw2 > sw1) { p2Score += 3; factors.push({ win: true, label: `On ${esc(surfLabel)}`, detail: `${l2} leads ${sw2}–${sw1}`, side: 2 }); }
-    else                 {               factors.push({ win: null, label: `On ${esc(surfLabel)}`, detail: `Even ${sw1}–${sw2}`, side: 0 }); }
+    if (sw1 > sw2)      { p1Score += 3; factors.push({ win: true, label: `On ${esc(surfLabel)}`, detail: `${l1} leads ${sw1}-${sw2}`, side: 1 }); }
+    else if (sw2 > sw1) { p2Score += 3; factors.push({ win: true, label: `On ${esc(surfLabel)}`, detail: `${l2} leads ${sw2}-${sw1}`, side: 2 }); }
+    else                 {               factors.push({ win: null, label: `On ${esc(surfLabel)}`, detail: `Even ${sw1}-${sw2}`, side: 0 }); }
   }
 
   // Recent form (last 10 matches)
@@ -2274,7 +2274,7 @@ function renderRankings(atp, wta) {
         const country = p.country || p.player_country || p.nationality || '';
         const mov     = p.movement === 'up' ? '<span class="rank-up">▲</span>'
                       : p.movement === 'down' ? '<span class="rank-down">▼</span>'
-                      : '<span class="rank-same">–</span>';
+                      : '<span class="rank-same">-</span>';
         return `
           <div class="ranking-row">
             <span class="rank-num">${esc(rank)}</span>
@@ -3148,7 +3148,7 @@ function renderOtherScores(games, sport, src) {
     const off     = S.otherDateOffset;
     const dateDesc = off === 0 ? 'today' : 'on this date';
     const hint     = sport === 'nfl'
-      ? '<p class="muted">NFL season runs Sep–Jan · use the arrows above to browse the schedule</p>'
+      ? '<p class="muted">NFL season runs Sep-Jan · use the arrows above to browse the schedule</p>'
       : '';
     area.innerHTML = `${nav}<div class="empty-state"><p>No ${sport.toUpperCase()} games ${dateDesc}.</p>${hint}</div>`;
     return;
@@ -3955,7 +3955,7 @@ async function buildMLBPicksGameCard(espnGame, mlbGame) {
     const hScore   = platAvg * 600 + (ab > 0 ? h / ab : 0) * 400;
     const dblScore = dblRate * 1000 * parkHit;
     const xbhScore = xbhRate * 1000 * Math.sqrt(parkHR * parkHit);
-    // Confidence: 0–3 based on platoon avg quality, streak, sample size + historical calibration
+    // Confidence: 0-3 based on platoon avg quality, streak, sample size + historical calibration
     const conf = Math.max(0, Math.min(3,
       (platAvg >= 0.310 ? 2 : platAvg >= 0.270 ? 1 : 0) +
       (streak === '🔥' ? 1 : 0) +
@@ -4522,16 +4522,16 @@ function buildTomorrowPickCard(m) {
       const p1won = (g.event_winner === 'First Player' && gp1 === p1key) || (g.event_winner === 'Second Player' && gp1 !== p1key);
       if (p1won) hw1 += wt; else hw2 += wt;
     }
-    if (hw1 > hw2)      { p1Score += 2; factors.push({ label:'H2H (weighted)', detail:`${l1} leads ${aw1}–${aw2}`, side:1 }); }
-    else if (hw2 > hw1) { p2Score += 2; factors.push({ label:'H2H (weighted)', detail:`${l2} leads ${aw2}–${aw1}`, side:2 }); }
-    else                {               factors.push({ label:'H2H',             detail:`Even ${aw1}–${aw2}`,      side:0 }); }
+    if (hw1 > hw2)      { p1Score += 2; factors.push({ label:'H2H (weighted)', detail:`${l1} leads ${aw1}-${aw2}`, side:1 }); }
+    else if (hw2 > hw1) { p2Score += 2; factors.push({ label:'H2H (weighted)', detail:`${l2} leads ${aw2}-${aw1}`, side:2 }); }
+    else                {               factors.push({ label:'H2H',             detail:`Even ${aw1}-${aw2}`,      side:0 }); }
   }
 
   // H2H on surface (weight 3 - most predictive)
   if (h2hSurf.length >= 2) {
-    if (sw1 > sw2)      { p1Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l1} leads ${sw1}–${sw2}`, side:1 }); }
-    else if (sw2 > sw1) { p2Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l2} leads ${sw2}–${sw1}`, side:2 }); }
-    else                 {               factors.push({ label:`${surface} H2H`, detail:`Even ${sw1}–${sw2}`,       side:0 }); }
+    if (sw1 > sw2)      { p1Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l1} leads ${sw1}-${sw2}`, side:1 }); }
+    else if (sw2 > sw1) { p2Score += 3; factors.push({ label:`${surface} H2H`, detail:`${l2} leads ${sw2}-${sw1}`, side:2 }); }
+    else                 {               factors.push({ label:`${surface} H2H`, detail:`Even ${sw1}-${sw2}`,       side:0 }); }
   }
 
   // Recent form (up to 10 matches)
@@ -4689,7 +4689,7 @@ function buildTomorrowPickCard(m) {
       <span class="tp-vs">vs</span>
       <span class="tp-p2 ${pickSide===2?'tp-favored':''}">${esc(p2Name)}${seedTag(s2)}${rankTag(r2, s2)}${p2Tired?'<span class="tp-tired-dot" title="Played today">⚡</span>':''}</span>
     </div>
-    ${h2h.length ? `<div class="tp-h2h">H2H: <strong>${aw1}–${aw2}</strong>${h2hSurf.length ? ` · ${surface}: <strong>${sw1}–${sw2}</strong>` : ''}</div>` : ''}
+    ${h2h.length ? `<div class="tp-h2h">H2H: <strong>${aw1}-${aw2}</strong>${h2hSurf.length ? ` · ${surface}: <strong>${sw1}-${sw2}</strong>` : ''}</div>` : ''}
     ${(p1Recent.length || p2Recent.length) ? `<div class="tp-form">
       <span class="tp-form-player">${esc(l1)}</span>${fmtForm(p1Recent, p1key)}
       <span class="tp-form-sep">·</span>
@@ -5585,7 +5585,7 @@ async function renderSoccerGamePreview(game, panel) {
 
     const statusBar = `<div class="gp-status-bar">
       <span class="gp-away-name">${esc(game.awayTeam)}</span>
-      <span class="gp-score-block">${(awayScore !== '' && homeScore !== '') ? `<strong>${esc(String(awayScore))}</strong> – <strong>${esc(String(homeScore))}</strong>` : 'vs'}</span>
+      <span class="gp-score-block">${(awayScore !== '' && homeScore !== '') ? `<strong>${esc(String(awayScore))}</strong> - <strong>${esc(String(homeScore))}</strong>` : 'vs'}</span>
       <span class="gp-home-name">${esc(game.homeTeam)}</span>
     </div>
     <div class="gp-status-line">${fin ? '<span class="fin-badge">FT</span>' : live ? '<span class="live-badge">LIVE</span>' : ''} ${esc(statusStr)}</div>`;
@@ -6203,7 +6203,7 @@ function renderMLBLineups(games) {
     const statusBadge   = isLiveGame ? `<span class="live-badge pulse">LIVE ${esc(inning)}</span>`
                         : isFinal   ? `<span class="fin-badge">FINAL</span>`
                         :             `<span class="lineup-time">${esc(gameTime)}</span>`;
-    const score         = (isLiveGame || isFinal) ? `<span class="lineup-score">${away.score ?? 0}–${home.score ?? 0}</span>` : '';
+    const score         = (isLiveGame || isFinal) ? `<span class="lineup-score">${away.score ?? 0}-${home.score ?? 0}</span>` : '';
     const lineupStatus  = awayLineup.length ? '<span class="lineup-confirmed">✓ Lineups In</span>' : '<span class="lineup-pending">Probable Pitchers</span>';
 
     return `
@@ -7560,12 +7560,12 @@ function renderMLBStandingsView(activeKey) {
         <div class="league-group">
           <div class="league-header">${esc(divName)}</div>
           <div class="standings-list">
-            <div class="standing-row standing-head"><span>#</span><span>Team</span><span>W–L</span><span>GB</span><span>Str</span></div>
+            <div class="standing-row standing-head"><span>#</span><span>Team</span><span>W-L</span><span>GB</span><span>Str</span></div>
             ${teams.map((t, i) => `
               <div class="standing-row">
                 <span class="standing-rank">${i+1}</span>
                 <span class="standing-team">${esc(t.team?.name || '-')}</span>
-                <span class="standing-record">${t.wins}–${t.losses}</span>
+                <span class="standing-record">${t.wins}-${t.losses}</span>
                 <span class="standing-gb">${esc(t.gamesBack || '-')}</span>
                 <span class="standing-streak">${esc(t.streak?.streakCode || '-')}</span>
               </div>`).join('')}
@@ -8001,7 +8001,7 @@ function renderESPNStandings(data, sport) {
       html += `<div class="standing-row">
         <span class="standing-rank">${i + 1}</span>
         <span class="standing-team">${esc(team)}</span>
-        <span class="standing-record">${w}–${l}${pct ? ` (${pct})` : ''}</span>
+        <span class="standing-record">${w}-${l}${pct ? ` (${pct})` : ''}</span>
       </div>`;
     });
     html += '</div></div>';
@@ -8021,7 +8021,7 @@ function renderOtherStandings(data, sport, src) {
     return `<div class="standing-row">
       <span class="standing-rank">${i+1}</span>
       <span class="standing-team">${esc(name)}</span>
-      <span class="standing-record">${wins}–${losses}${pctFmt}</span>
+      <span class="standing-record">${wins}-${losses}${pctFmt}</span>
     </div>`;
   }).join('');
   area.innerHTML = `<div class="source-badge">Source: ${esc(src)}</div><div class="standings-list">${rows}</div>`;
@@ -8917,7 +8917,7 @@ function isEveningGame(p) {
   try {
     const dt = new Date(gt);
     const utcH = dt.getUTCHours() + dt.getUTCMinutes() / 60;
-    const etH  = (utcH - 4 + 24) % 24; // EDT = UTC-4 (close enough Apr–Nov)
+    const etH  = (utcH - 4 + 24) % 24; // EDT = UTC-4 (close enough Apr-Nov)
     return etH >= 17; // 5pm ET cutoff: day ticket = before 5pm, night ticket = 5pm+
   } catch { return ['nba', 'wnba', 'nhl', 'nfl'].includes(sport); }
 }
@@ -9050,7 +9050,7 @@ function showSecretTicket() {
 
   const wins   = legs.filter(c => (allPicks[c.id]?.result) === 'win').length;
   const losses = legs.filter(c => (allPicks[c.id]?.result) === 'loss').length;
-  const statusLine = (wins || losses) ? `<span class="st-record">${wins}W – ${losses}L</span>` : '';
+  const statusLine = (wins || losses) ? `<span class="st-record">${wins}W - ${losses}L</span>` : '';
 
   const body = legs.length
     ? legs.map((c, i) => makeRow(c, i)).join('')
@@ -10153,7 +10153,7 @@ function renderTicketBlock(title, legs, allPicks, footer = '', ticketDate = '') 
   };
   const wins   = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
   const losses = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'loss').length;
-  const statusLine = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
+  const statusLine = (wins || losses) ? `<span class="sv-tk-status">${wins}W - ${losses}L</span>` : '';
   const rawDate = ticketDate || dateStrLocal(0);
   let dateLabel = '';
   try { dateLabel = new Date(rawDate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' }); } catch {}
@@ -10454,7 +10454,7 @@ function renderTicketsPage() {
     <div class="tp-sport-hdr">🏈 NFL</div>
     ${nflAggCards.length     ? `<div class="tp-sub-hdr">All-Games Combined</div>${grid(nflAggCards)}` : ''}
     ${nflPerGameCards.length ? `<div class="tp-sub-hdr">Per Game</div>${grid(nflPerGameCards)}` : ''}
-    ${!nflHasAny ? `<div class="tp-sport-empty">No NFL picks yet${off===0?' - NFL season runs Sep–Feb':''}</div>` : ''}
+    ${!nflHasAny ? `<div class="tp-sport-empty">No NFL picks yet${off===0?' - NFL season runs Sep-Feb':''}</div>` : ''}
     ${nflHasAny ? '<div class="tp-tip-mini">💡 Consider a round robin on these picks</div>' : ''}
   </div>`;
 
@@ -10581,7 +10581,7 @@ function renderSimpleView() {
     const legs   = ticket.legs;
     const wins   = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
     const losses = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'loss').length;
-    const status = (wins || losses) ? `<span class="sv-tk-status">${wins}W – ${losses}L</span>` : '';
+    const status = (wins || losses) ? `<span class="sv-tk-status">${wins}W - ${losses}L</span>` : '';
     let dateLabel = '';
     try { dateLabel = new Date((ticket.date || today) + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' }); } catch {}
     return `<div class="sv-ticket">
