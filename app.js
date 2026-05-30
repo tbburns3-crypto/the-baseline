@@ -10289,13 +10289,13 @@ function renderSimpleView() {
     for (const g of _wGroups) {
       const legs = getPicksForTicket(g.key, _checkDate, allPicks);
       if (!legs.length) continue;
-      const resolved = legs.filter(l => { const r = allPicks[l.id]?.result ?? l.result; return r === 'win' || r === 'loss'; });
-      if (resolved.length < Math.min(legs.length, 5)) continue; // need most picks resolved before showing
-      const wins = resolved.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
-      if (wins !== resolved.length) continue;
-      const legIds = new Set(legs.map(l => l.id));
+      const wonLegs  = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win');
+      const lostLegs = legs.filter(l => (allPicks[l.id]?.result ?? l.result) === 'loss');
+      if (lostLegs.length > 0) continue; // any loss kills the banner
+      if (wonLegs.length < 5) continue;  // need at least 5 confirmed wins
+      const legIds = new Set(wonLegs.map(l => l.id));
       if (_wWinners.some(w => w.legs.every(l => legIds.has(l.id)))) continue;
-      _wWinners.push({ ...g, legs, wins, winDate: _checkDate });
+      _wWinners.push({ ...g, legs: wonLegs, wins: wonLegs.length, winDate: _checkDate });
     }
   }
   // Win polaroid cards (today or yesterday)
