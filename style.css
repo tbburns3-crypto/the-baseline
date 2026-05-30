@@ -2096,7 +2096,7 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-wc-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .sv-wc-name { font-size: .63rem; color: #b2dfb8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
 .sv-wc-caption { font-size: .56rem; color: #555; text-align: center; margin-top: 7px; font-style: italic; line-height: 1.3; }
-.sv-promo-card { flex: 1; min-width: 120px; background: linear-gradient(160deg, #1a0f00 0%, #120a00 100%); border: 1.5px solid rgba(245,166,35,.5); border-radius: 10px; padding: 16px 14px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 7px; transition: border-color .15s, box-shadow .15s; box-shadow: 0 0 18px rgba(245,166,35,.08); }
+.sv-promo-card { flex: 0 0 190px; min-width: 190px; background: linear-gradient(160deg, #1a0f00 0%, #120a00 100%); border: 1.5px solid rgba(245,166,35,.5); border-radius: 10px; padding: 16px 14px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 7px; transition: border-color .15s, box-shadow .15s; box-shadow: 0 0 18px rgba(245,166,35,.08); }
 .sv-promo-card:hover { border-color: #f5a623; box-shadow: 0 0 28px rgba(245,166,35,.18); }
 .sv-promo-tag { font-size: .5rem; font-weight: 800; letter-spacing: .13em; color: #f5a623; opacity: .8; }
 .sv-promo-hero { display: flex; align-items: baseline; gap: 5px; line-height: 1; }

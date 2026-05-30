@@ -10290,7 +10290,7 @@ function renderSimpleView() {
       const legs = getPicksForTicket(g.key, _checkDate, allPicks);
       if (!legs.length) continue;
       const resolved = legs.filter(l => { const r = allPicks[l.id]?.result ?? l.result; return r === 'win' || r === 'loss'; });
-      if (resolved.length < 2) continue;
+      if (resolved.length < Math.min(legs.length, 5)) continue; // need most picks resolved before showing
       const wins = resolved.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
       if (wins !== resolved.length) continue;
       const legIds = new Set(legs.map(l => l.id));
