@@ -2648,8 +2648,8 @@ function switchSport(sport) {
     picksTab.style.display   = 'none';
   } else if (sport === 'soccer') {
     secTab.textContent = 'Tables'; secTab.dataset.view = 'secondary';
-    secTab.style.display   = '';
-    playersTab.style.display  = '';
+    secTab.style.display      = '';
+    playersTab.style.display  = 'none';
     lineupsTab.style.display  = 'none';
     picksTab.textContent = '⚽ Picks';
     picksTab.style.display    = '';
@@ -3219,6 +3219,8 @@ async function toggleGamePreview(gameId) {
   if (!game) { panel.innerHTML = '<div class="pp-empty" style="padding:12px">No data</div>'; return; }
   if (game.sport === 'mlb') {
     await renderMLBGamePreview(game, panel);
+  } else if (game.sport === 'soccer') {
+    await renderSoccerGamePreview(game, panel);
   } else {
     await renderESPNGamePreview(game, panel);
   }
@@ -5493,6 +5495,128 @@ function renderNBABoxScore(j) {
     }
   }
   return html ? `<div class="gp-section"><div class="gp-section-hdr">🏀 Full Box Score</div>${html}</div>` : '';
+}
+
+async function renderSoccerGamePreview(game, panel) {
+  try {
+    const lid = game.leagueId || 'eng.1';
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lid}/summary?event=${game.id}`);
+    const j   = await res.json();
+
+    const comp   = j.header?.competitions?.[0];
+    const state  = comp?.status?.type?.state || '';
+    const fin    = state === 'post';
+    const live   = state === 'in';
+    const awayC  = comp?.competitors?.find(c => c.homeAway === 'away') || comp?.competitors?.[0];
+    const homeC  = comp?.competitors?.find(c => c.homeAway === 'home') || comp?.competitors?.[1];
+    const awayScore = awayC?.score ?? '';
+    const homeScore = homeC?.score ?? '';
+    const clock     = comp?.status?.displayClock || '';
+    const period    = comp?.status?.period || '';
+
+    // ── Status bar ──
+    const statusStr = fin ? 'Final' : live ? `${clock} · ${period === 2 ? '2nd Half' : '1st Half'}` : (comp?.status?.type?.shortDetail || game.status);
+    const statusBar = `<div class="gp-status-bar">
+      <span class="gp-away-name">${esc(game.awayTeam)}</span>
+      <span class="gp-score-block">${awayScore !== '' ? `<strong>${esc(String(awayScore))}</strong> – <strong>${esc(String(homeScore))}</strong>` : 'vs'}</span>
+      <span class="gp-home-name">${esc(game.homeTeam)}</span>
+    </div>
+    <div class="gp-status-line">${fin ? '<span class="fin-badge">FT</span>' : live ? '<span class="live-badge">LIVE</span>' : ''} ${esc(statusStr)}</div>`;
+
+    // ── Scoring plays (goals & cards) ──
+    const plays = j.scoringPlays || [];
+    let goalsHTML = '';
+    if (plays.length) {
+      const rows = plays.map(p => {
+        const teamName  = p.team?.shortDisplayName || p.team?.name || '';
+        const isHome    = teamName === game.homeTeam || p.team?.id === homeC?.team?.id;
+        const players   = (p.athletesInvolved || []).map(a => a.shortName || a.displayName || '').filter(Boolean).join(', ');
+        const clk       = p.clock?.displayValue || '';
+        const type      = (p.type?.text || '').toLowerCase();
+        const icon      = type.includes('penalty') ? '⚽ (P)' : type.includes('own') ? '⚽ (OG)' : type.includes('yellow') ? '🟨' : type.includes('red') ? '🟥' : '⚽';
+        return `<div class="sg-event-row ${isHome ? 'sg-home' : 'sg-away'}">
+          <span class="sg-clock">${esc(clk)}</span>
+          <span class="sg-icon">${icon}</span>
+          <span class="sg-player">${esc(players)}</span>
+          <span class="sg-team">${esc(isHome ? game.homeTeam : game.awayTeam)}</span>
+        </div>`;
+      }).join('');
+      goalsHTML = `<div class="gp-section"><div class="gp-section-hdr">⚽ Match Events</div>${rows}</div>`;
+    }
+
+    // ── Team stats ──
+    const boxTeams = j.boxscore?.teams || [];
+    const STAT_LABELS = {
+      possessionPct:'Possession', totalShots:'Shots', shotsOnTarget:'On Target',
+      corners:'Corners', foulsCommitted:'Fouls', offsides:'Offsides',
+      yellowCards:'Yellow Cards', redCards:'Red Cards', saves:'Saves'
+    };
+    const statKeys = Object.keys(STAT_LABELS);
+    let statsHTML = '';
+    if (boxTeams.length >= 2) {
+      const awayStats = {}, homeStats = {};
+      for (const bt of boxTeams) {
+        const target = bt.homeAway === 'home' ? homeStats : awayStats;
+        for (const s of (bt.statistics || [])) { target[s.name] = s.displayValue; }
+      }
+      const rows = statKeys
+        .filter(k => awayStats[k] !== undefined || homeStats[k] !== undefined)
+        .map(k => {
+          const a = awayStats[k] ?? '-', h = homeStats[k] ?? '-';
+          return `<div class="sg-stat-row">
+            <span class="sg-stat-val sg-away-val">${esc(String(a))}</span>
+            <span class="sg-stat-label">${esc(STAT_LABELS[k])}</span>
+            <span class="sg-stat-val sg-home-val">${esc(String(h))}</span>
+          </div>`;
+        }).join('');
+      if (rows) {
+        statsHTML = `<div class="gp-section">
+          <div class="gp-section-hdr">📊 Team Stats</div>
+          <div class="sg-stat-header">
+            <span>${esc(game.awayTeam)}</span><span></span><span>${esc(game.homeTeam)}</span>
+          </div>
+          ${rows}
+        </div>`;
+      }
+    }
+
+    // ── Lineups ──
+    const rosters  = j.rosters || [];
+    let lineupHTML = '';
+    if (rosters.length >= 2) {
+      const awayR = rosters.find(r => r.homeAway === 'away') || rosters[0];
+      const homeR = rosters.find(r => r.homeAway === 'home') || rosters[1];
+      const starters = r => (r.roster || []).filter(p => p.starter).slice(0, 11);
+      const fmtPlayer = p => {
+        const name = p.athlete?.shortName || p.athlete?.displayName || '';
+        const pos  = p.athlete?.position?.abbreviation || '';
+        const num  = p.athlete?.jersey || '';
+        const goals = (p.stats || []).find(s => s.name === 'goals' || s.label === 'Goals');
+        const goalBadge = (goals && parseInt(goals.displayValue||'0') > 0) ? ` ⚽` : '';
+        return `<div class="sg-player-row"><span class="sg-jersey">${esc(num)}</span><span class="sg-pos">${esc(pos)}</span><span class="sg-pname">${esc(name)}${goalBadge}</span></div>`;
+      };
+      const awayStarters = starters(awayR);
+      const homeStarters = starters(homeR);
+      if (awayStarters.length || homeStarters.length) {
+        lineupHTML = `<div class="gp-section"><div class="gp-section-hdr">📋 Starting Lineups</div>
+          <div class="sg-lineup-grid">
+            <div class="sg-lineup-col"><div class="sg-lineup-hdr">${esc(game.awayTeam)}</div>${awayStarters.map(fmtPlayer).join('')}</div>
+            <div class="sg-lineup-col"><div class="sg-lineup-hdr">${esc(game.homeTeam)}</div>${homeStarters.map(fmtPlayer).join('')}</div>
+          </div>
+        </div>`;
+      }
+    }
+
+    // ── Pick from our model ──
+    const stored = getPicks()[String(game.id)];
+    const pickLine = stored?.team
+      ? `<div class="gp-section"><div class="gp-pick-line">◉ Pick: <strong>${esc(stored.team)}</strong> to win ${'●'.repeat(stored.conf||1)}${'○'.repeat(3-(stored.conf||1))}</div></div>`
+      : '';
+
+    panel.innerHTML = `<div class="game-preview-inner">${statusBar}${goalsHTML}${statsHTML}${lineupHTML}${pickLine}</div>`;
+  } catch (e) {
+    panel.innerHTML = `<div class="pp-empty" style="padding:12px">Could not load match details</div>`;
+  }
 }
 
 async function renderESPNGamePreview(game, panel) {

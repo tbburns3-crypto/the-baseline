@@ -1326,6 +1326,33 @@ input { font: inherit; }
 .gp-pd-era-lbl { font-size: .6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; }
 .gp-pd-sub { font-size: .72rem; color: var(--text-muted); margin-top: 3px; }
 
+/* ── SOCCER GAME PREVIEW ── */
+.gp-status-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 4px; font-weight: 700; }
+.gp-away-name, .gp-home-name { font-size: .82rem; color: var(--text); flex: 1; }
+.gp-home-name { text-align: right; }
+.gp-score-block { font-size: 1.3rem; color: #e8f5e9; text-align: center; white-space: nowrap; }
+.gp-status-line { text-align: center; font-size: .72rem; color: var(--text-muted); padding: 2px 12px 10px; border-bottom: 1px solid var(--border); }
+.sg-event-row { display: grid; grid-template-columns: 36px 24px 1fr auto; gap: 6px; align-items: center; padding: 4px 8px; font-size: .78rem; }
+.sg-clock { color: var(--accent); font-weight: 700; font-size: .72rem; }
+.sg-icon { font-size: .85rem; }
+.sg-player { color: var(--text); }
+.sg-team { color: var(--text-muted); font-size: .68rem; text-align: right; }
+.sg-stat-row { display: grid; grid-template-columns: 1fr 120px 1fr; gap: 4px; align-items: center; padding: 3px 8px; font-size: .78rem; }
+.sg-stat-header { display: grid; grid-template-columns: 1fr 120px 1fr; font-size: .68rem; font-weight: 700; color: var(--text-muted); padding: 2px 8px 4px; }
+.sg-stat-header span:last-child { text-align: right; }
+.sg-stat-label { text-align: center; color: var(--text-muted); font-size: .72rem; }
+.sg-stat-val { font-weight: 700; color: var(--text); }
+.sg-away-val { text-align: left; }
+.sg-home-val { text-align: right; }
+.sg-lineup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px 8px; }
+.sg-lineup-col { display: flex; flex-direction: column; gap: 2px; }
+.sg-lineup-hdr { font-size: .68rem; font-weight: 800; color: var(--accent); letter-spacing: .04em; margin-bottom: 4px; text-transform: uppercase; }
+.sg-player-row { display: flex; align-items: center; gap: 5px; font-size: .72rem; padding: 1px 0; }
+.sg-jersey { color: var(--text-muted); font-size: .65rem; min-width: 18px; }
+.sg-pos { color: var(--accent); font-size: .63rem; min-width: 22px; }
+.sg-pname { color: var(--text); }
+.gp-pick-line { font-size: .8rem; color: var(--text-muted); padding: 4px 8px; }
+
 /* Sections */
 .gp-section { display: flex; flex-direction: column; gap: 4px; }
 .gp-section-hdr {
