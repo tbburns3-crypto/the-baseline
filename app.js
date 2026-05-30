@@ -1902,16 +1902,24 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   const factors = [];
   let p1Score = 0, p2Score = 0;
 
+  // Round + tier calculated early so seeding weight can use them
+  const round = tennisRound(m);
+  const tier  = tournamentTier(m);
+  const bo5   = isBestOf5(m);
+  const earlyRound = ['r1','r2'].includes(round);
+  const slamLate   = tier === 'slam' && !earlyRound;
+  const seedWt     = slamLate ? 4 : 2;  // seeding matters more in deep slam rounds
+
   // Seeds
   if (s1 && s2) {
-    if (s1 < s2)      { p1Score += 2; factors.push({ win: true, label: 'Seeding', detail: `${l1} [${s1}] vs [${s2}]`, side: 1 }); }
-    else if (s2 < s1) { p2Score += 2; factors.push({ win: true, label: 'Seeding', detail: `${l2} [${s2}] vs [${s1}]`, side: 2 }); }
-    else               {               factors.push({ win: null, label: 'Seeding', detail: 'Equal seeds', side: 0 }); }
+    if (s1 < s2)      { p1Score += seedWt; factors.push({ win: true, label: 'Seeding', detail: `${l1} [${s1}] vs [${s2}]`, side: 1 }); }
+    else if (s2 < s1) { p2Score += seedWt; factors.push({ win: true, label: 'Seeding', detail: `${l2} [${s2}] vs [${s1}]`, side: 2 }); }
+    else               {                    factors.push({ win: null, label: 'Seeding', detail: 'Equal seeds', side: 0 }); }
   } else if (s1) {
-    p1Score += 2;
+    p1Score += seedWt;
     factors.push({ win: true, label: 'Seeding', detail: `${l1} seeded [${s1}], ${l2} unseeded`, side: 1 });
   } else if (s2) {
-    p2Score += 2;
+    p2Score += seedWt;
     factors.push({ win: true, label: 'Seeding', detail: `${l2} seeded [${s2}], ${l1} unseeded`, side: 2 });
   }
 
@@ -2040,11 +2048,6 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   if (vt1 < 0) { p1Score += vt1; factors.push({ win: true, label: 'Volatility', detail: `${l1} known for inconsistency`, side: 2 }); }
   if (vt2 < 0) { p2Score += vt2; factors.push({ win: true, label: 'Volatility', detail: `${l2} known for inconsistency`, side: 1 }); }
 
-  // Round + tier + BO5 weighting (declared here so clay-surface check below can use tier)
-  const round = tennisRound(m);
-  const tier  = tournamentTier(m);
-  const bo5   = isBestOf5(m);
-
   // Clay-surface weakness — grass/hard specialists seeded at clay slams
   const surf2Low = surfLabel.toLowerCase();
   if (surf2Low.includes('clay') && (tier === 'slam' || tier === 'masters')) {
@@ -2054,7 +2057,6 @@ function buildTennisPrediction(m, h2hAll, h2hSurf, aw1, aw2, sw1, sw2, surfLabel
   }
 
   if (!factors.length) return '';
-  const earlyRound = ['r1','r2'].includes(round);
   const lateRound  = ['quarter','semi','final'].includes(round);
 
   // BO5 Grand Slam bonus for the leading player
@@ -3301,9 +3303,9 @@ function smartWP(recs, isHome, sport) {
 // Confidence level based on blended win probability margin
 function wpToConf(winPct) {
   const margin = Math.abs(winPct - 0.5);
-  if (margin >= 0.18) return 2;  // 68%+ win probability
-  if (margin >= 0.10) return 1;  // 60%+ win probability
-  return 0;                       // < 60% - too close to call, excluded from ticket
+  if (margin >= 0.15) return 2;  // 65%+ win probability
+  if (margin >= 0.08) return 1;  // 58%+ win probability
+  return 0;                       // < 58% - too close to call, excluded from ticket
 }
 
 // Rest-days win-probability multiplier. daysRest=1 means B2B (played yesterday).
@@ -4777,7 +4779,7 @@ function buildNBAPicksCard(g, summary) {
           const pid2    = top.athlete.id || top.athlete.displayName.replace(/\W+/g,'');
           const pickKey = `plr_${g.id}_${pid2}_pts`;
           const ppg     = parseFloat(top.displayValue);
-          const ptLine  = !isNaN(ppg) ? (Math.max(0.5, Math.round(ppg - 0.5) + 0.5)).toFixed(1) : null;
+          const ptLine  = !isNaN(ppg) ? (Math.max(0.5, Math.round(ppg - 2.5) + 0.5)).toFixed(1) : null;
           const dir     = propDirection(g.sport || 'nba', ppg, 'points', tAbbr.toUpperCase(), g);
           recordPlayerPick(pickKey, g.sport || 'nba', top.athlete.displayName, 'Points',
             ptLine ? `${dir} ${ptLine} PTS` : (top.displayValue ? `${top.displayValue} PPG` : '-'), matchup, null, g.gameDate || null);
