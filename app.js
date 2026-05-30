@@ -10298,38 +10298,23 @@ function renderSimpleView() {
       _wWinners.push({ ...g, legs, wins, winDate: _checkDate });
     }
   }
-  const hotStreakBanner = (() => {
-    const winCards = _wWinners.map((w, i) => {
-      const rot = i % 2 === 0 ? '-2deg' : '1.5deg';
-      const pickRows = w.legs.slice(0, 7).map(l => {
-        const name = (l.pick || '').split(' ').slice(-1)[0];
-        return `<div class="sv-wc-row"><span class="sv-wc-name">${esc(name)}</span><span class="sv-badge sv-badge-w">W</span></div>`;
-      }).join('');
-      return `<div class="sv-win-card" style="--rot:${rot}" onclick="switchSport('tickets')">
-        <div class="sv-win-card-inner">
-          <div class="sv-wc-sport">${w.icon} ${w.label}</div>
-          <div class="sv-wc-rec">${w.displayMax ? Math.min(w.wins, w.displayMax) : w.wins}W · 0L <span class="sv-wc-date">${new Date((w.winDate||today) + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}</span></div>
-          <div class="sv-wc-picks">${pickRows}</div>
-        </div>
-        <div class="sv-wc-caption">From subscriber Tickets tab</div>
-      </div>`;
-    });
-    // Promo card — shown to non-subscribers only; wire up Stripe promo code when ready
-    const promoCard = _hasFullAccess() ? '' : `<div class="sv-promo-card" onclick="_pendingPromoCode='BASELINE';openUpgradeModal()">
-      <div class="sv-promo-tag">★ NEW SUBSCRIBER DEAL ★</div>
-      <div class="sv-promo-hero"><span class="sv-promo-num">15%</span><span class="sv-promo-offbig">OFF</span></div>
-      <div class="sv-promo-sub">on your first subscription</div>
-      <div class="sv-promo-divider"></div>
-      <div class="sv-promo-codelabel">USE CODE</div>
-      <div class="sv-promo-code">BASELINE</div>
-      <div class="sv-promo-btn">Claim Now</div>
-      <div class="sv-promo-caption">Auto-applied at checkout</div>
+  // Win polaroid cards (today or yesterday)
+  const _winCardHTML = _wWinners.map((w, i) => {
+    const rot = i % 2 === 0 ? '-2deg' : '1.5deg';
+    const pickRows = w.legs.slice(0, 7).map(l => {
+      const name = (l.pick || '').split(' ').slice(-1)[0];
+      return `<div class="sv-wc-row"><span class="sv-wc-name">${esc(name)}</span><span class="sv-badge sv-badge-w">W</span></div>`;
+    }).join('');
+    const winsDisplay = w.displayMax ? Math.min(w.wins, w.displayMax) : w.wins;
+    return `<div class="sv-win-card" style="--rot:${rot}" onclick="switchSport('tickets')">
+      <div class="sv-win-card-inner">
+        <div class="sv-wc-sport">${w.icon} ${w.label}</div>
+        <div class="sv-wc-rec">${winsDisplay}W · 0L <span class="sv-wc-date">${new Date((w.winDate||today) + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}</span></div>
+        <div class="sv-wc-picks">${pickRows}</div>
+      </div>
+      <div class="sv-wc-caption">From subscriber Tickets tab</div>
     </div>`;
-    const allCards = [...winCards, promoCard].filter(Boolean);
-    if (!allCards.length) return '';
-    const hdr = winCards.length ? '<div class="sv-wins-hdr">🔥 Locked In</div>' : '';
-    return `<div class="sv-wins-wrap">${hdr}<div class="sv-wins-strip">${allCards.join('')}</div></div>`;
-  })();
+  }).join('');
 
   const dayHTML   = morn ? makeBlock('🌤 Day Ticket', morn) : '';
   const nightHTML = eve
@@ -10377,22 +10362,36 @@ function renderSimpleView() {
       Round robins are your best friend, especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
     </div>`;
 
-  const snapshotStrip = `
-    <div class="sv-snapshot-wrap">
-      <div class="sv-snapshot-hdr">📸 Recent Tickets</div>
-      <div class="sv-snapshot-strip">
-        <div class="sv-snapshot-card">
-          <img class="sv-snapshot-img" src="win-ticket-may30.png" alt="Winning 6-leg parlay">
-          <div class="sv-snapshot-caption">🏆 We make winners here daily!</div>
-        </div>
-        <div class="sv-snapshot-card">
-          <img class="sv-snapshot-img" src="near-miss-may30.png" alt="11-leg near-miss parlay">
-          <div class="sv-snapshot-caption">🔥 We almost got a big one!</div>
-        </div>
-      </div>
-    </div>`;
+  // Promo card for non-subscribers
+  const _promoCard = _hasFullAccess() ? '' : `<div class="sv-promo-card" onclick="_pendingPromoCode='BASELINE';openUpgradeModal()">
+    <div class="sv-promo-tag">★ NEW SUBSCRIBER DEAL ★</div>
+    <div class="sv-promo-hero"><span class="sv-promo-num">15%</span><span class="sv-promo-offbig">OFF</span></div>
+    <div class="sv-promo-sub">on your first subscription</div>
+    <div class="sv-promo-divider"></div>
+    <div class="sv-promo-codelabel">USE CODE</div>
+    <div class="sv-promo-code">BASELINE</div>
+    <div class="sv-promo-btn">Claim Now</div>
+    <div class="sv-promo-caption">Auto-applied at checkout</div>
+  </div>`;
 
-  el.innerHTML = `${hotStreakBanner}<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${snapshotStrip}${upsellBanner}${lockedSection}`;
+  // One unified strip: win polaroids + FanDuel snapshot photos + promo
+  const combinedStrip = `<div class="sv-wins-wrap">
+    <div class="sv-wins-hdr">🔥 Recent Tickets</div>
+    <div class="sv-wins-strip">
+      ${_winCardHTML}
+      <div class="sv-snapshot-card">
+        <img class="sv-snapshot-img" src="win-ticket-may30.png" alt="Winning 6-leg parlay">
+        <div class="sv-snapshot-caption">🏆 We make winners here daily!</div>
+      </div>
+      <div class="sv-snapshot-card">
+        <img class="sv-snapshot-img" src="near-miss-may30.png" alt="11-leg near-miss parlay">
+        <div class="sv-snapshot-caption">🔥 We almost got a big one!</div>
+      </div>
+      ${_promoCard}
+    </div>
+  </div>`;
+
+  el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${combinedStrip}${upsellBanner}${lockedSection}`;
 }
 
 // BFCache restore: reset checkout buttons that were disabled before navigating to Stripe
