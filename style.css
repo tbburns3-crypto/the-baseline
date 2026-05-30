@@ -1351,7 +1351,8 @@ input { font: inherit; }
 .sg-jersey { color: var(--text-muted); font-size: .65rem; min-width: 18px; }
 .sg-pos { color: var(--accent); font-size: .63rem; min-width: 22px; }
 .sg-pname { color: var(--text); }
-.gp-pick-line { font-size: .8rem; color: var(--text-muted); padding: 4px 8px; }
+.gp-pick-line { font-size: .8rem; color: var(--text-muted); padding: 6px 8px; }
+.sg-prob-labels { display: flex; justify-content: space-between; font-size: .65rem; color: var(--text-muted); padding: 2px 4px 6px; }
 
 /* Sections */
 .gp-section { display: flex; flex-direction: column; gap: 4px; }

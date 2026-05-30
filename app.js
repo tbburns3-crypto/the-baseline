@@ -5498,43 +5498,117 @@ function renderNBABoxScore(j) {
 }
 
 async function renderSoccerGamePreview(game, panel) {
+  // Helper: build the probability/pick section from local game data
+  const buildSoccerPreGameSection = () => {
+    const homeSeason = parseWinPct(game.homeRecs?.total || game.homeRec);
+    const awaySeason = parseWinPct(game.awayRecs?.total || game.awayRec);
+    const homeSplt   = parseWinPct(game.homeRecs?.home  || '');
+    const awaySplt   = parseWinPct(game.awayRecs?.road  || '');
+    const homeL10    = parseWinPct(game.homeRecs?.l10   || '');
+    const awayL10    = parseWinPct(game.awayRecs?.l10   || '');
+    const homeScore  = homeSplt > 0 || homeL10 > 0
+      ? (homeSeason*0.25) + (homeSplt||homeSeason)*0.35 + (homeL10||homeSeason)*0.40 : homeSeason;
+    const awayScore  = awaySplt > 0 || awayL10 > 0
+      ? (awaySeason*0.25) + (awaySplt||awaySeason)*0.35 + (awayL10||awaySeason)*0.40 : awaySeason;
+    const homeAdj    = homeScore * HOME_BOOST['soccer'];
+    const rawTotal   = homeAdj + awayScore;
+    if (!rawTotal) return '';
+
+    const homeNorm = homeAdj / rawTotal;
+    const awayNorm = awayScore / rawTotal;
+    const baseDraw = SOCCER_DRAW_RATE[game.leagueId] ?? 0.27;
+    const margin   = Math.abs(homeNorm - 0.5);
+    const drawPct  = Math.max(0.15, baseDraw + 0.10 * (1 - margin * 2));
+    const homeWinPct  = Math.round(homeNorm * (1 - drawPct) * 100);
+    const awayWinPct  = Math.round(awayNorm * (1 - drawPct) * 100);
+    const drawPctDisp = 100 - homeWinPct - awayWinPct;
+
+    const stored  = getPicks()[String(game.id)];
+    const pickTeam = stored?.team || null;
+    const pickConf = stored?.conf || 1;
+
+    const probBar = `<div class="soccer-prob-bar">
+      <div class="soccer-prob-away" style="width:${awayWinPct}%"><span class="soccer-prob-lbl">${awayWinPct}%</span></div>
+      <div class="soccer-prob-draw" style="width:${drawPctDisp}%"><span class="soccer-prob-lbl">D ${drawPctDisp}%</span></div>
+      <div class="soccer-prob-home" style="width:${homeWinPct}%"><span class="soccer-prob-lbl">${homeWinPct}%</span></div>
+    </div>
+    <div class="sg-prob-labels">
+      <span>${esc(game.awayTeam)}</span><span>Draw</span><span>${esc(game.homeTeam)}</span>
+    </div>`;
+
+    const pickLine = pickTeam
+      ? `<div class="gp-pick-line">◉ Pick: <strong>${esc(pickTeam)}</strong> to win ${'●'.repeat(pickConf)}${'○'.repeat(3-pickConf)}</div>`
+      : `<div class="gp-pick-line" style="color:var(--text-muted)">Too close to call — draw possible</div>`;
+
+    // Form rows
+    const fmtRec  = r => r || '-';
+    const recRows = [];
+    if (game.awayRecs?.l10 || game.homeRecs?.l10)
+      recRows.push(`<div class="sg-stat-row"><span class="sg-stat-val sg-away-val">${fmtRec(game.awayRecs?.l10)}</span><span class="sg-stat-label">Last 10</span><span class="sg-stat-val sg-home-val">${fmtRec(game.homeRecs?.l10)}</span></div>`);
+    if (game.homeRecs?.home || game.awayRecs?.road)
+      recRows.push(`<div class="sg-stat-row"><span class="sg-stat-val sg-away-val">${fmtRec(game.awayRecs?.road)}</span><span class="sg-stat-label">Away/Home</span><span class="sg-stat-val sg-home-val">${fmtRec(game.homeRecs?.home)}</span></div>`);
+    if (game.awayRec || game.homeRec)
+      recRows.push(`<div class="sg-stat-row"><span class="sg-stat-val sg-away-val">${fmtRec(game.awayRec)}</span><span class="sg-stat-label">Season</span><span class="sg-stat-val sg-home-val">${fmtRec(game.homeRec)}</span></div>`);
+
+    const formSection = recRows.length ? `<div class="gp-section">
+      <div class="gp-section-hdr">📊 Form</div>
+      <div class="sg-stat-header"><span>${esc(game.awayTeam)}</span><span></span><span>${esc(game.homeTeam)}</span></div>
+      ${recRows.join('')}
+    </div>` : '';
+
+    const oddsSection = game.odds?.spread
+      ? `<div class="gp-section"><div class="gp-section-hdr">💰 Odds</div><div class="sg-stat-row"><span style="color:var(--text-muted);font-size:.75rem;grid-column:1/-1">${esc(game.odds.spread)}${game.odds.overUnder ? ` · O/U ${game.odds.overUnder}` : ''}</span></div></div>`
+      : '';
+
+    return `<div class="gp-section">${probBar}${pickLine}</div>${formSection}${oddsSection}`;
+  };
+
   try {
     const lid = game.leagueId || 'eng.1';
     const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${lid}/summary?event=${game.id}`);
     const j   = await res.json();
 
-    const comp   = j.header?.competitions?.[0];
-    const state  = comp?.status?.type?.state || '';
-    const fin    = state === 'post';
-    const live   = state === 'in';
-    const awayC  = comp?.competitors?.find(c => c.homeAway === 'away') || comp?.competitors?.[0];
-    const homeC  = comp?.competitors?.find(c => c.homeAway === 'home') || comp?.competitors?.[1];
+    const comp      = j.header?.competitions?.[0];
+    const state     = comp?.status?.type?.state || '';
+    const fin       = state === 'post';
+    const live      = state === 'in';
+    const awayC     = comp?.competitors?.find(c => c.homeAway === 'away') || comp?.competitors?.[0];
+    const homeC     = comp?.competitors?.find(c => c.homeAway === 'home') || comp?.competitors?.[1];
     const awayScore = awayC?.score ?? '';
     const homeScore = homeC?.score ?? '';
     const clock     = comp?.status?.displayClock || '';
     const period    = comp?.status?.period || '';
 
-    // ── Status bar ──
-    const statusStr = fin ? 'Final' : live ? `${clock} · ${period === 2 ? '2nd Half' : '1st Half'}` : (comp?.status?.type?.shortDetail || game.status);
+    const statusStr = fin ? 'Full Time' : live
+      ? `${clock} · ${period >= 2 ? '2nd Half' : '1st Half'}`
+      : (comp?.status?.type?.shortDetail || game.status);
+
     const statusBar = `<div class="gp-status-bar">
       <span class="gp-away-name">${esc(game.awayTeam)}</span>
-      <span class="gp-score-block">${awayScore !== '' ? `<strong>${esc(String(awayScore))}</strong> – <strong>${esc(String(homeScore))}</strong>` : 'vs'}</span>
+      <span class="gp-score-block">${(awayScore !== '' && homeScore !== '') ? `<strong>${esc(String(awayScore))}</strong> – <strong>${esc(String(homeScore))}</strong>` : 'vs'}</span>
       <span class="gp-home-name">${esc(game.homeTeam)}</span>
     </div>
     <div class="gp-status-line">${fin ? '<span class="fin-badge">FT</span>' : live ? '<span class="live-badge">LIVE</span>' : ''} ${esc(statusStr)}</div>`;
 
-    // ── Scoring plays (goals & cards) ──
+    // Pre-game: show full analysis instead of empty panel
+    if (!fin && !live) {
+      const preSection = buildSoccerPreGameSection();
+      const lineupNote = `<div class="gp-section"><div style="color:var(--text-muted);font-size:.72rem;padding:4px 8px">📋 Lineups typically announced 1 hour before kickoff</div></div>`;
+      panel.innerHTML = `<div class="game-preview-inner">${statusBar}${preSection}${lineupNote}</div>`;
+      return;
+    }
+
+    // ── Scoring plays ──
     const plays = j.scoringPlays || [];
     let goalsHTML = '';
     if (plays.length) {
       const rows = plays.map(p => {
-        const teamName  = p.team?.shortDisplayName || p.team?.name || '';
-        const isHome    = teamName === game.homeTeam || p.team?.id === homeC?.team?.id;
-        const players   = (p.athletesInvolved || []).map(a => a.shortName || a.displayName || '').filter(Boolean).join(', ');
-        const clk       = p.clock?.displayValue || '';
-        const type      = (p.type?.text || '').toLowerCase();
-        const icon      = type.includes('penalty') ? '⚽ (P)' : type.includes('own') ? '⚽ (OG)' : type.includes('yellow') ? '🟨' : type.includes('red') ? '🟥' : '⚽';
-        return `<div class="sg-event-row ${isHome ? 'sg-home' : 'sg-away'}">
+        const isHome  = p.team?.id === homeC?.team?.id;
+        const players = (p.athletesInvolved || []).map(a => a.shortName || a.displayName || '').filter(Boolean).join(', ');
+        const clk     = p.clock?.displayValue || '';
+        const type    = (p.type?.text || '').toLowerCase();
+        const icon    = type.includes('penalty') ? '⚽(P)' : type.includes('own') ? '⚽(OG)' : type.includes('yellow') ? '🟨' : type.includes('red') ? '🟥' : '⚽';
+        return `<div class="sg-event-row">
           <span class="sg-clock">${esc(clk)}</span>
           <span class="sg-icon">${icon}</span>
           <span class="sg-player">${esc(players)}</span>
@@ -5546,76 +5620,56 @@ async function renderSoccerGamePreview(game, panel) {
 
     // ── Team stats ──
     const boxTeams = j.boxscore?.teams || [];
-    const STAT_LABELS = {
-      possessionPct:'Possession', totalShots:'Shots', shotsOnTarget:'On Target',
-      corners:'Corners', foulsCommitted:'Fouls', offsides:'Offsides',
-      yellowCards:'Yellow Cards', redCards:'Red Cards', saves:'Saves'
-    };
-    const statKeys = Object.keys(STAT_LABELS);
+    const STAT_LABELS = { possessionPct:'Possession', totalShots:'Shots', shotsOnTarget:'On Target', corners:'Corners', foulsCommitted:'Fouls', offsides:'Offsides', yellowCards:'Yellow Cards', redCards:'Red Cards', saves:'Saves' };
     let statsHTML = '';
     if (boxTeams.length >= 2) {
       const awayStats = {}, homeStats = {};
       for (const bt of boxTeams) {
-        const target = bt.homeAway === 'home' ? homeStats : awayStats;
-        for (const s of (bt.statistics || [])) { target[s.name] = s.displayValue; }
+        const t = bt.homeAway === 'home' ? homeStats : awayStats;
+        for (const s of (bt.statistics || [])) t[s.name] = s.displayValue;
       }
-      const rows = statKeys
+      const rows = Object.keys(STAT_LABELS)
         .filter(k => awayStats[k] !== undefined || homeStats[k] !== undefined)
-        .map(k => {
-          const a = awayStats[k] ?? '-', h = homeStats[k] ?? '-';
-          return `<div class="sg-stat-row">
-            <span class="sg-stat-val sg-away-val">${esc(String(a))}</span>
-            <span class="sg-stat-label">${esc(STAT_LABELS[k])}</span>
-            <span class="sg-stat-val sg-home-val">${esc(String(h))}</span>
-          </div>`;
-        }).join('');
-      if (rows) {
-        statsHTML = `<div class="gp-section">
-          <div class="gp-section-hdr">📊 Team Stats</div>
-          <div class="sg-stat-header">
-            <span>${esc(game.awayTeam)}</span><span></span><span>${esc(game.homeTeam)}</span>
-          </div>
-          ${rows}
-        </div>`;
-      }
+        .map(k => `<div class="sg-stat-row"><span class="sg-stat-val sg-away-val">${esc(awayStats[k]??'-')}</span><span class="sg-stat-label">${esc(STAT_LABELS[k])}</span><span class="sg-stat-val sg-home-val">${esc(homeStats[k]??'-')}</span></div>`)
+        .join('');
+      if (rows) statsHTML = `<div class="gp-section"><div class="gp-section-hdr">📊 Team Stats</div><div class="sg-stat-header"><span>${esc(game.awayTeam)}</span><span></span><span>${esc(game.homeTeam)}</span></div>${rows}</div>`;
     }
 
     // ── Lineups ──
-    const rosters  = j.rosters || [];
+    const rosters = j.rosters || [];
     let lineupHTML = '';
     if (rosters.length >= 2) {
       const awayR = rosters.find(r => r.homeAway === 'away') || rosters[0];
       const homeR = rosters.find(r => r.homeAway === 'home') || rosters[1];
       const starters = r => (r.roster || []).filter(p => p.starter).slice(0, 11);
-      const fmtPlayer = p => {
+      const fmtP = p => {
         const name = p.athlete?.shortName || p.athlete?.displayName || '';
         const pos  = p.athlete?.position?.abbreviation || '';
         const num  = p.athlete?.jersey || '';
-        const goals = (p.stats || []).find(s => s.name === 'goals' || s.label === 'Goals');
-        const goalBadge = (goals && parseInt(goals.displayValue||'0') > 0) ? ` ⚽` : '';
-        return `<div class="sg-player-row"><span class="sg-jersey">${esc(num)}</span><span class="sg-pos">${esc(pos)}</span><span class="sg-pname">${esc(name)}${goalBadge}</span></div>`;
+        const g    = (p.stats || []).find(s => s.name === 'goals');
+        return `<div class="sg-player-row"><span class="sg-jersey">${esc(num)}</span><span class="sg-pos">${esc(pos)}</span><span class="sg-pname">${esc(name)}${g && parseInt(g.displayValue||'0') > 0 ? ' ⚽' : ''}</span></div>`;
       };
-      const awayStarters = starters(awayR);
-      const homeStarters = starters(homeR);
-      if (awayStarters.length || homeStarters.length) {
+      const aS = starters(awayR), hS = starters(homeR);
+      if (aS.length || hS.length) {
         lineupHTML = `<div class="gp-section"><div class="gp-section-hdr">📋 Starting Lineups</div>
           <div class="sg-lineup-grid">
-            <div class="sg-lineup-col"><div class="sg-lineup-hdr">${esc(game.awayTeam)}</div>${awayStarters.map(fmtPlayer).join('')}</div>
-            <div class="sg-lineup-col"><div class="sg-lineup-hdr">${esc(game.homeTeam)}</div>${homeStarters.map(fmtPlayer).join('')}</div>
+            <div class="sg-lineup-col"><div class="sg-lineup-hdr">${esc(game.awayTeam)}</div>${aS.map(fmtP).join('')}</div>
+            <div class="sg-lineup-col"><div class="sg-lineup-hdr">${esc(game.homeTeam)}</div>${hS.map(fmtP).join('')}</div>
           </div>
         </div>`;
       }
+    } else {
+      lineupHTML = `<div class="gp-section"><div style="color:var(--text-muted);font-size:.72rem;padding:4px 8px">📋 Lineups not available</div></div>`;
     }
 
-    // ── Pick from our model ──
-    const stored = getPicks()[String(game.id)];
-    const pickLine = stored?.team
-      ? `<div class="gp-section"><div class="gp-pick-line">◉ Pick: <strong>${esc(stored.team)}</strong> to win ${'●'.repeat(stored.conf||1)}${'○'.repeat(3-(stored.conf||1))}</div></div>`
-      : '';
-
-    panel.innerHTML = `<div class="game-preview-inner">${statusBar}${goalsHTML}${statsHTML}${lineupHTML}${pickLine}</div>`;
+    panel.innerHTML = `<div class="game-preview-inner">${statusBar}${goalsHTML}${statsHTML}${lineupHTML}</div>`;
   } catch (e) {
-    panel.innerHTML = `<div class="pp-empty" style="padding:12px">Could not load match details</div>`;
+    // Fallback to pre-game analysis using local data
+    const preSection = buildSoccerPreGameSection();
+    panel.innerHTML = `<div class="game-preview-inner">
+      <div class="gp-status-bar"><span class="gp-away-name">${esc(game.awayTeam)}</span><span class="gp-score-block">vs</span><span class="gp-home-name">${esc(game.homeTeam)}</span></div>
+      ${preSection || '<div style="padding:12px;color:var(--text-muted)">Match details unavailable</div>'}
+    </div>`;
   }
 }
 
