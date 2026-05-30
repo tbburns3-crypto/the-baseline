@@ -10562,10 +10562,11 @@ function renderSimpleView() {
     const dots   = '●'.repeat(conf) + '○'.repeat(3 - conf);
     const icon   = SPORT_ICONS[leg.sport] || '🏅';
     const match  = (leg.matchup || '').replace(/ @ /g, ' v ');
-    const svDesc = cleanLegDesc(leg);
+    const svDesc     = cleanLegDesc(leg);
+    const displayPick = live.team || live.player || leg.pick;
     const pickLine = svDesc
-      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(svDesc)}</span>`
-      : `<span class="sv-tk-pick">${esc(leg.pick)}</span>`;
+      ? `<span class="sv-tk-pick">${esc(displayPick)}</span><span class="sv-tk-prop">${esc(svDesc)}</span>`
+      : `<span class="sv-tk-pick">${esc(displayPick)}</span>`;
     return `<div class="sv-tk-row${result==='win'?' sv-tk-win':result==='loss'?' sv-tk-loss':''}">
       <span class="sv-tk-num">${i+1}</span>
       <span class="sv-tk-icon">${icon}</span>
