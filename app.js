@@ -10374,10 +10374,29 @@ function renderSimpleView() {
     <div class="sv-promo-caption">Auto-applied at checkout</div>
   </div>`;
 
-  // One unified strip: win polaroids + FanDuel snapshot photos + promo
+  // Hardcoded Women's Grand Slam May 29 card — stays permanently
+  const wtaMay29Card = `<div class="sv-win-card" style="--rot:-2deg" onclick="switchSport('tickets')">
+    <div class="sv-win-card-inner">
+      <div class="sv-wc-sport">🎾 Women's Grand Slam</div>
+      <div class="sv-wc-rec">7W · 0L <span class="sv-wc-date">May 29</span></div>
+      <div class="sv-wc-picks">
+        <div class="sv-wc-row"><span class="sv-wc-name">Osaka</span><span class="sv-badge sv-badge-w">W</span></div>
+        <div class="sv-wc-row"><span class="sv-wc-name">Shnaider</span><span class="sv-badge sv-badge-w">W</span></div>
+        <div class="sv-wc-row"><span class="sv-wc-name">Chwalinska</span><span class="sv-badge sv-badge-w">W</span></div>
+        <div class="sv-wc-row"><span class="sv-wc-name">Anisimova</span><span class="sv-badge sv-badge-w">W</span></div>
+        <div class="sv-wc-row"><span class="sv-wc-name">Kalinskaya</span><span class="sv-badge sv-badge-w">W</span></div>
+        <div class="sv-wc-row"><span class="sv-wc-name">Sabalenka</span><span class="sv-badge sv-badge-w">W</span></div>
+        <div class="sv-wc-row"><span class="sv-wc-name">Keys</span><span class="sv-badge sv-badge-w">W</span></div>
+      </div>
+    </div>
+    <div class="sv-wc-caption">From subscriber Tickets tab</div>
+  </div>`;
+
+  // One unified strip: hardcoded WTA card + dynamic wins + FanDuel snapshots + promo
   const combinedStrip = `<div class="sv-wins-wrap">
     <div class="sv-wins-hdr">🔥 Recent Tickets</div>
     <div class="sv-wins-strip">
+      ${wtaMay29Card}
       ${_winCardHTML}
       <div class="sv-snapshot-card">
         <img class="sv-snapshot-img" src="win-ticket-may30.png" alt="Winning 6-leg parlay">
