@@ -10283,17 +10283,20 @@ function renderSimpleView() {
     { key: 'nhl',                  label: 'NHL',                icon: '🏒' },
   ];
   const _wWinners = [];
-  for (const g of _wGroups) {
-    const legs = getPicksForTicket(g.key, today, allPicks);
-    if (!legs.length) continue;
-    const resolved = legs.filter(l => { const r = allPicks[l.id]?.result ?? l.result; return r === 'win' || r === 'loss'; });
-    if (resolved.length < 2) continue;
-    const wins = resolved.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
-    if (wins !== resolved.length) continue;
-    // skip if all legs already covered by a more specific group
-    const legIds = new Set(legs.map(l => l.id));
-    if (_wWinners.some(w => w.legs.every(l => legIds.has(l.id)))) continue;
-    _wWinners.push({ ...g, legs, wins });
+  // Check today first; fall back to yesterday so polaroid persists while today's matches run
+  for (const _checkDate of [today, dateStrLocal(-1)]) {
+    if (_wWinners.length) break;
+    for (const g of _wGroups) {
+      const legs = getPicksForTicket(g.key, _checkDate, allPicks);
+      if (!legs.length) continue;
+      const resolved = legs.filter(l => { const r = allPicks[l.id]?.result ?? l.result; return r === 'win' || r === 'loss'; });
+      if (resolved.length < 2) continue;
+      const wins = resolved.filter(l => (allPicks[l.id]?.result ?? l.result) === 'win').length;
+      if (wins !== resolved.length) continue;
+      const legIds = new Set(legs.map(l => l.id));
+      if (_wWinners.some(w => w.legs.every(l => legIds.has(l.id)))) continue;
+      _wWinners.push({ ...g, legs, wins, winDate: _checkDate });
+    }
   }
   const hotStreakBanner = (() => {
     const winCards = _wWinners.map((w, i) => {
@@ -10305,7 +10308,7 @@ function renderSimpleView() {
       return `<div class="sv-win-card" style="--rot:${rot}" onclick="switchSport('tickets')">
         <div class="sv-win-card-inner">
           <div class="sv-wc-sport">${w.icon} ${w.label}</div>
-          <div class="sv-wc-rec">${w.displayMax ? Math.min(w.wins, w.displayMax) : w.wins}W · 0L <span class="sv-wc-date">${new Date(today + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}</span></div>
+          <div class="sv-wc-rec">${w.displayMax ? Math.min(w.wins, w.displayMax) : w.wins}W · 0L <span class="sv-wc-date">${new Date((w.winDate||today) + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}</span></div>
           <div class="sv-wc-picks">${pickRows}</div>
         </div>
         <div class="sv-wc-caption">From subscriber Tickets tab</div>
@@ -10374,19 +10377,22 @@ function renderSimpleView() {
       Round robins are your best friend, especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
     </div>`;
 
-  const winnerShowcaseHTML = `
-    <div class="sv-winner-showcase">
-      <div class="sv-ws-banner"><span class="sv-ws-trophy">🏆</span><span class="sv-ws-headline">we make winners here daily!</span></div>
-      <img class="sv-ws-img" src="win-ticket-may30.png" alt="Winning 6-leg parlay — $352.38 on FanDuel">
+  const snapshotStrip = `
+    <div class="sv-snapshot-wrap">
+      <div class="sv-snapshot-hdr">📸 Recent Tickets</div>
+      <div class="sv-snapshot-strip">
+        <div class="sv-snapshot-card">
+          <img class="sv-snapshot-img" src="win-ticket-may30.png" alt="Winning 6-leg parlay">
+          <div class="sv-snapshot-caption">🏆 We make winners here daily!</div>
+        </div>
+        <div class="sv-snapshot-card">
+          <img class="sv-snapshot-img" src="near-miss-may30.png" alt="11-leg near-miss parlay">
+          <div class="sv-snapshot-caption">🔥 We almost got a big one!</div>
+        </div>
+      </div>
     </div>`;
 
-  const nearMissHTML = `
-    <div class="sv-near-miss">
-      <div class="sv-nm-banner"><span class="sv-nm-fire">🔥</span><span class="sv-nm-headline">we almost got a big one!</span></div>
-      <img class="sv-nm-img" src="near-miss-may30.png" alt="11-leg near-miss parlay on FanDuel">
-    </div>`;
-
-  el.innerHTML = `${hotStreakBanner}<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${winnerShowcaseHTML}${nearMissHTML}${upsellBanner}${lockedSection}`;
+  el.innerHTML = `${hotStreakBanner}<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${snapshotStrip}${upsellBanner}${lockedSection}`;
 }
 
 // BFCache restore: reset checkout buttons that were disabled before navigating to Stripe
