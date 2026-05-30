@@ -4871,15 +4871,26 @@ function buildSoccerPicksCard(g) {
   const { fin, live } = gameRowState(g);
   const matchup = `${g.awayTeam} @ ${g.homeTeam}`;
 
-  // Use home/road splits when available for tighter model
-  const homeWP = parseWinPct(g.homeRecs?.home || g.homeRec);
-  const awayWP = parseWinPct(g.awayRecs?.road || g.awayRec);
+  // Multi-factor model: season record (25%) + home/road split (35%) + L10 form (40%)
+  const homeSeason = parseWinPct(g.homeRecs?.total || g.homeRec);
+  const awaySeason = parseWinPct(g.awayRecs?.total || g.awayRec);
+  const homeSplt   = parseWinPct(g.homeRecs?.home  || '');
+  const awaySplt   = parseWinPct(g.awayRecs?.road  || '');
+  const homeL10    = parseWinPct(g.homeRecs?.l10   || '');
+  const awayL10    = parseWinPct(g.awayRecs?.l10   || '');
 
-  const homeAdj = homeWP * HOME_BOOST['soccer'];
-  const rawTotal = homeAdj + awayWP;
+  const homeScore = homeSplt > 0 || homeL10 > 0
+    ? (homeSeason * 0.25) + (homeSplt > 0 ? homeSplt * 0.35 : homeSeason * 0.35) + (homeL10 > 0 ? homeL10 * 0.40 : homeSeason * 0.40)
+    : homeSeason;
+  const awayScore = awaySplt > 0 || awayL10 > 0
+    ? (awaySeason * 0.25) + (awaySplt > 0 ? awaySplt * 0.35 : awaySeason * 0.35) + (awayL10 > 0 ? awayL10 * 0.40 : awaySeason * 0.40)
+    : awaySeason;
+
+  const homeAdj  = homeScore * HOME_BOOST['soccer'];
+  const rawTotal = homeAdj + awayScore;
 
   const statusLabel = fin  ? '<span class="fin-badge">FIN</span>'
-                    : live ? '<span class="live-badge">LIVE</span>'
+                    : live ? `<span class="live-badge">LIVE ${g.time ? esc(g.time) : ''}</span>`
                     : `<span class="pc-time">${esc(g.gameDate ? fmtTimeTZ(g.gameDate) : g.status)}</span>`;
   const oddsLine = g.odds?.spread
     ? `<span class="pc-odds">${esc(g.odds.spread)}${g.odds.overUnder ? ` · O/U ${g.odds.overUnder}` : ''}</span>` : '';
@@ -4889,39 +4900,53 @@ function buildSoccerPicksCard(g) {
       <div class="pc-league-badge">${esc(g.league)}</div>
       <div class="pc-hdr"><span class="pc-teams">${esc(matchup)}</span>${statusLabel}</div>
       ${oddsLine ? `<div class="pc-meta">${oddsLine}</div>` : ''}
+      <div class="pc-meta" style="color:var(--text-muted);font-size:.72rem">No record data available</div>
     </div>`;
   }
 
   const homeNorm = homeAdj / rawTotal;
-  const awayNorm = awayWP  / rawTotal;
+  const awayNorm = awayScore / rawTotal;
   const margin   = Math.abs(homeNorm - 0.5);
 
-  // Draw probability: ~28% baseline, climbs toward 40% when perfectly even
-  const drawPct     = Math.max(0.18, 0.28 + (0.14 * (1 - margin * 2)));
+  // League-specific draw rate
+  const baseDraw = SOCCER_DRAW_RATE[g.leagueId] ?? 0.27;
+  const drawPct  = Math.max(0.15, baseDraw + (0.10 * (1 - margin * 2)));
   const homeWinPct  = Math.round(homeNorm * (1 - drawPct) * 100);
   const awayWinPct  = Math.round(awayNorm * (1 - drawPct) * 100);
   const drawPctDisp = 100 - homeWinPct - awayWinPct;
 
-  // Pick — require clear edge to recommend a team win
+  // Pick — require clear edge; away teams need smaller edge since road wins are harder to predict
   let pickTeam = null, pickConf = 1;
-  if (homeNorm > awayNorm + 0.12) {
+  if (homeNorm > awayNorm + 0.10) {
     pickTeam = g.homeTeam;
-    pickConf = homeNorm > awayNorm + 0.25 ? 3 : homeNorm > awayNorm + 0.18 ? 2 : 1;
-  } else if (awayNorm > homeNorm + 0.08) {
+    pickConf = homeNorm > awayNorm + 0.22 ? 3 : homeNorm > awayNorm + 0.15 ? 2 : 1;
+  } else if (awayNorm > homeNorm + 0.12) {
     pickTeam = g.awayTeam;
-    pickConf = awayNorm > homeNorm + 0.20 ? 3 : awayNorm > homeNorm + 0.13 ? 2 : 1;
+    pickConf = awayNorm > homeNorm + 0.25 ? 3 : awayNorm > homeNorm + 0.17 ? 2 : 1;
   }
 
   if (!fin && !live && pickTeam) {
     recordPick(String(g.id), pickTeam.split(' ').pop(), matchup, 'soccer', pickConf, true);
   }
 
-  const stored = getPicks()[String(g.id)];
+  const stored  = getPicks()[String(g.id)];
   const wlBadge = stored?.result === 'win'  ? '<span class="pick-win-badge">W</span>'
                 : stored?.result === 'loss' ? '<span class="pick-loss-badge">L</span>' : '';
 
-  const recLine = (g.awayRec || g.homeRec)
-    ? `<div class="pc-meta pc-recs">${esc(g.awayTeam)} ${esc(g.awayRec||'?')}  ·  ${esc(g.homeTeam)} ${esc(g.homeRec||'?')}</div>` : '';
+  // Form summary line — show L10 and home/road splits when available
+  const fmtRec = r => r || '–';
+  const formParts = [];
+  if (g.homeRecs?.l10 || g.awayRecs?.l10) {
+    formParts.push(`L10: ${esc(g.awayTeam)} ${fmtRec(g.awayRecs?.l10)} · ${esc(g.homeTeam)} ${fmtRec(g.homeRecs?.l10)}`);
+  } else if (g.awayRec || g.homeRec) {
+    formParts.push(`${esc(g.awayTeam)} ${fmtRec(g.awayRec)} · ${esc(g.homeTeam)} ${fmtRec(g.homeRec)}`);
+  }
+  if (g.homeRecs?.home && g.awayRecs?.road) {
+    formParts.push(`Home: ${fmtRec(g.homeRecs.home)} · Away: ${fmtRec(g.awayRecs.road)}`);
+  }
+  const formLine = formParts.length
+    ? `<div class="pc-meta pc-recs" style="font-size:.7rem">${formParts.join('<span class="pc-meta-sep"> | </span>')}</div>`
+    : '';
 
   const probBar = `<div class="soccer-prob-bar">
     <div class="soccer-prob-away" style="width:${awayWinPct}%" title="${esc(g.awayTeam)} win">
@@ -4937,7 +4962,7 @@ function buildSoccerPicksCard(g) {
 
   const pickLine = pickTeam
     ? `<span class="pc-fav">${esc(pickTeam.split(' ').pop())} to Win ${'●'.repeat(pickConf)}${'○'.repeat(3-pickConf)}</span>`
-    : `<span class="pc-fav pc-fav-even">Draw possible, no strong lean</span>`;
+    : `<span class="pc-fav pc-fav-even">Too close · draw likely</span>`;
 
   return `<div class="picks-card">
     <div class="pc-league-badge">${esc(g.league)}</div>
@@ -4945,7 +4970,7 @@ function buildSoccerPicksCard(g) {
       <span class="pc-teams">${esc(matchup)}</span>
       <span style="display:flex;align-items:center;gap:4px">${statusLabel}${wlBadge}</span>
     </div>
-    ${recLine}
+    ${formLine}
     ${probBar}
     <div class="pc-meta">${pickLine}${oddsLine ? `<span class="pc-meta-sep">·</span>${oddsLine}` : ''}</div>
   </div>`;
@@ -6042,23 +6067,84 @@ function renderMLBLineups(games) {
 
 // ── SOCCER ───────────────────────────────────────────────────
 const SOCCER_LEAGUES = [
-  { id:'fifa.world',       name:'FIFA World Cup 2026', icon:'🌍' },
-  { id:'fifa.friendly.m',  name:'Intl Friendlies',     icon:'🌐' },
-  { id:'uefa.nations',     name:'UEFA Nations League',  icon:'🏆' },
-  { id:'concacaf.nations.league', name:'CONCACAF Nations League', icon:'🌎' },
-  { id:'eng.1',           name:'Premier League',     icon:'🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
-  { id:'esp.1',           name:'La Liga',             icon:'🇪🇸' },
-  { id:'ger.1',           name:'Bundesliga',          icon:'🇩🇪' },
-  { id:'ita.1',           name:'Serie A',             icon:'🇮🇹' },
-  { id:'fra.1',           name:'Ligue 1',             icon:'🇫🇷' },
-  { id:'usa.1',           name:'MLS',                 icon:'🇺🇸' },
-  { id:'uefa.champions',  name:'Champions League',    icon:'⭐' },
-  { id:'uefa.europa',     name:'Europa League',       icon:'🟠' },
-  { id:'uefa.europa_conf',name:'Conference League',   icon:'🔵' },
-  { id:'ned.1',           name:'Eredivisie',          icon:'🇳🇱' },
-  { id:'mex.1',           name:'Liga MX',             icon:'🇲🇽' },
-  { id:'por.1',           name:'Primeira Liga',       icon:'🇵🇹' }
+  { id:'uefa.champions',        name:'Champions League',        icon:'⭐', tier:'cups'    },
+  { id:'uefa.europa',           name:'Europa League',           icon:'🟠', tier:'cups'    },
+  { id:'uefa.europa_conf',      name:'Conference League',       icon:'🔵', tier:'cups'    },
+  { id:'fifa.world',            name:'FIFA World Cup 2026',     icon:'🌍', tier:'intl'    },
+  { id:'uefa.nations',          name:'UEFA Nations League',     icon:'🏆', tier:'intl'    },
+  { id:'concacaf.nations.league',name:'CONCACAF Nations League',icon:'🌎', tier:'intl'    },
+  { id:'eng.1',                 name:'Premier League',          icon:'🏴󠁧󠁢󠁥󠁮󠁧󠁿', tier:'top5'    },
+  { id:'esp.1',                 name:'La Liga',                 icon:'🇪🇸', tier:'top5'    },
+  { id:'ger.1',                 name:'Bundesliga',              icon:'🇩🇪', tier:'top5'    },
+  { id:'ita.1',                 name:'Serie A',                 icon:'🇮🇹', tier:'top5'    },
+  { id:'fra.1',                 name:'Ligue 1',                 icon:'🇫🇷', tier:'top5'    },
+  { id:'ned.1',                 name:'Eredivisie',              icon:'🇳🇱', tier:'other'   },
+  { id:'por.1',                 name:'Primeira Liga',           icon:'🇵🇹', tier:'other'   },
+  { id:'mex.1',                 name:'Liga MX',                 icon:'🇲🇽', tier:'americas'},
+  { id:'usa.1',                 name:'MLS',                     icon:'🇺🇸', tier:'americas'},
+  { id:'fifa.friendly.m',       name:'Intl Friendlies',         icon:'🌐', tier:'intl'    },
 ];
+// League-specific draw rates (used in pick model)
+const SOCCER_DRAW_RATE = {
+  'ita.1':0.32,'esp.1':0.29,'fra.1':0.28,'eng.1':0.25,'ger.1':0.23,
+  'ned.1':0.26,'por.1':0.27,'mex.1':0.25,'usa.1':0.18,
+  'uefa.champions':0.22,'uefa.europa':0.24,'uefa.europa_conf':0.25,
+  'uefa.nations':0.26,'fifa.world':0.24,'concacaf.nations.league':0.23,
+};
+let _soccerFilter = 'all';
+let _soccerAllGames = [];
+
+function renderSoccerScores(games) {
+  _soccerAllGames = games;
+  const area = document.getElementById('other-scores-area');
+  const nav  = otherDateNavHTML();
+
+  // Build filter chips — one per league that has games, in priority order
+  const leaguesWithGames = SOCCER_LEAGUES.filter(l => games.some(g => g.leagueId === l.id));
+  const tierLabels = { cups:'🏆 Euro Cups', top5:'🌍 Top 5', americas:'🌎 Americas', intl:'🌐 Intl', other:'⚽ Other' };
+  const tierOrder  = ['cups','top5','americas','intl','other'];
+  const tierChips  = tierOrder
+    .filter(t => leaguesWithGames.some(l => l.tier === t))
+    .map(t => `<button class="chip${_soccerFilter===t?' active':''}" onclick="setSoccerFilter('${t}')">${tierLabels[t]}</button>`)
+    .join('');
+  const allChip = `<button class="chip${_soccerFilter==='all'?' active':''}" onclick="setSoccerFilter('all')">All</button>`;
+  const filterBar = leaguesWithGames.length > 1
+    ? `<div id="soccer-filter-chips" class="filter-chips-row" style="margin:8px 0 4px">${allChip}${tierChips}</div>`
+    : '';
+
+  // Filter games
+  const filtered = _soccerFilter === 'all' ? games
+    : games.filter(g => { const lg = SOCCER_LEAGUES.find(l => l.id === g.leagueId); return lg?.tier === _soccerFilter; });
+
+  if (!filtered.length) {
+    area.innerHTML = `${nav}${filterBar}<div class="empty-state">No matches for this filter today.</div>`;
+    return;
+  }
+
+  _otherGamesMap.clear();
+  for (const g of games) _otherGamesMap.set(String(g.id), g);
+
+  // Group by league in priority order
+  const groups = new Map();
+  for (const lg of SOCCER_LEAGUES) {
+    const lgGames = filtered.filter(g => g.leagueId === lg.id);
+    if (lgGames.length) groups.set(`${lg.icon} ${lg.name}`, lgGames);
+  }
+
+  let html = nav + `<div class="source-badge">Source: ESPN</div>${filterBar}`;
+  for (const [leagueLabel, leagueGames] of groups) {
+    html += `<div class="league-group">
+      <div class="league-header">${esc(leagueLabel)}</div>
+      <div class="other-games-list">${leagueGames.map(g => buildOtherRow(g)).join('')}</div>
+    </div>`;
+  }
+  area.innerHTML = html;
+}
+
+function setSoccerFilter(f) {
+  _soccerFilter = f;
+  renderSoccerScores(_soccerAllGames);
+}
 
 async function loadSoccerScores() {
   const seq = _loadSeq;
@@ -6123,7 +6209,7 @@ async function loadSoccerScores() {
       setConn('connected', 'Soccer - no matches today');
       return;
     }
-    renderOtherScores(allGames, 'soccer', 'ESPN');
+    renderSoccerScores(allGames);
     const t = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone: getUserTZ() });
     setConn('connected', `Soccer - updated ${t} · refreshes every 30s`);
   } catch (err) {
@@ -6135,34 +6221,75 @@ async function loadSoccerScores() {
 async function loadSoccerTables() {
   showLoading('other-standings-area', 'Loading league tables…');
   try {
-    const leagues = SOCCER_LEAGUES.filter(l => ['fifa.world','uefa.nations','concacaf.nations.league','eng.1','esp.1','ger.1','ita.1','fra.1','usa.1'].includes(l.id));
-    const results = await Promise.allSettled(
-      leagues.map(l =>
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${l.id}/standings`).then(r => r.json())
-      )
+    const TABLE_IDS = ['uefa.champions','uefa.europa','eng.1','esp.1','ger.1','ita.1','fra.1','ned.1','por.1','mex.1','usa.1','uefa.nations','concacaf.nations.league','fifa.world'];
+    const leagues   = SOCCER_LEAGUES.filter(l => TABLE_IDS.includes(l.id));
+    const results   = await Promise.allSettled(
+      leagues.map(l => fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${l.id}/standings`).then(r => r.json()))
     );
+    // CL/EL qualification spots by league
+    const CL_SPOTS  = { 'eng.1':4,'esp.1':4,'ger.1':4,'ita.1':4,'fra.1':3,'ned.1':2,'por.1':2 };
+    const EL_SPOTS  = { 'eng.1':5,'esp.1':5,'ger.1':5,'ita.1':5,'fra.1':4 };
+    const REL_SPOTS = { 'eng.1':3,'esp.1':3,'ger.1':3,'ita.1':3,'fra.1':3,'ned.1':3,'por.1':3,'mex.1':2,'usa.1':0 };
+
     const area = document.getElementById('other-standings-area');
-    let html = '<div class="source-badge">Source: ESPN</div>';
+    let html = `<div class="source-badge">Source: ESPN</div>
+      <div class="soccer-table-legend">
+        <span class="stl-cl">■ CL</span>
+        <span class="stl-el">■ EL/Qual</span>
+        <span class="stl-rel">■ Relegation</span>
+      </div>`;
+
     for (let i = 0; i < leagues.length; i++) {
       if (results[i].status !== 'fulfilled') continue;
-      const data = results[i].value;
-      const lg   = leagues[i];
+      const data    = results[i].value;
+      const lg      = leagues[i];
       const entries = data.standings?.entries || data.children?.[0]?.standings?.entries || [];
       if (!entries.length) continue;
-      html += `<div class="league-group"><div class="league-header">${lg.icon} ${esc(lg.name)}</div><div class="standings-list">`;
+
+      const clSpots  = CL_SPOTS[lg.id]  || 0;
+      const elSpots  = EL_SPOTS[lg.id]  || 0;
+      const relSpots = REL_SPOTS[lg.id] ?? 3;
+      const total    = entries.length;
+
+      html += `<div class="league-group">
+        <div class="league-header">${lg.icon} ${esc(lg.name)}</div>
+        <div class="soccer-table-hdr">
+          <span class="st-rank">#</span>
+          <span class="st-team">Team</span>
+          <span class="st-gp">GP</span>
+          <span class="st-wdl">W-D-L</span>
+          <span class="st-gd">GD</span>
+          <span class="st-pts">Pts</span>
+        </div>
+        <div class="standings-list">`;
+
       entries.forEach((e, idx) => {
+        const pos  = idx + 1;
         const team = e.team?.shortDisplayName || e.team?.name || '-';
         const stats = {};
-        (e.stats || []).forEach(s => { stats[s.name] = s.displayValue; });
-        const pts = stats.points || stats.pts || '-';
-        const w   = stats.wins   || stats.W   || '-';
-        const d   = stats.ties   || stats.D   || stats.draws || '-';
-        const l2  = stats.losses || stats.L   || '-';
-        html += `<div class="standing-row">
-          <span class="standing-rank">${idx+1}</span>
-          <span class="standing-team">${esc(team)}</span>
-          <span class="standing-record">${w}-${d}-${l2}</span>
-          <span class="standing-pts">${pts} pts</span>
+        (e.stats || []).forEach(s => { stats[s.name] = s.displayValue ?? s.value ?? '-'; });
+        const pts = stats.points   || stats.pts    || '-';
+        const w   = stats.wins     || stats.W      || '-';
+        const d   = stats.ties     || stats.D      || stats.draws || '-';
+        const l2  = stats.losses   || stats.L      || '-';
+        const gp  = stats.gamesPlayed || stats.GP  || '-';
+        const gf  = stats.pointsFor  || stats.GF   || '';
+        const ga  = stats.pointsAgainst || stats.GA || '';
+        const gdNum = (gf !== '' && ga !== '') ? (parseInt(gf)||0) - (parseInt(ga)||0) : null;
+        const gd  = gdNum !== null ? (gdNum > 0 ? `+${gdNum}` : String(gdNum)) : '-';
+
+        let rowCls = '';
+        if (clSpots  && pos <= clSpots)                    rowCls = 'st-row-cl';
+        else if (elSpots && pos <= clSpots + elSpots)       rowCls = 'st-row-el';
+        else if (relSpots && pos > total - relSpots)        rowCls = 'st-row-rel';
+
+        html += `<div class="standing-row st-full ${rowCls}">
+          <span class="st-rank">${pos}</span>
+          <span class="st-team">${esc(team)}</span>
+          <span class="st-gp">${esc(String(gp))}</span>
+          <span class="st-wdl">${esc(w)}-${esc(d)}-${esc(l2)}</span>
+          <span class="st-gd" style="color:${gdNum>0?'#4caf50':gdNum<0?'#f44336':'inherit'}">${esc(gd)}</span>
+          <span class="st-pts"><strong>${esc(String(pts))}</strong></span>
         </div>`;
       });
       html += '</div></div>';
@@ -9549,6 +9676,12 @@ function getPicksForTicket(type, date, allPicks) {
           return toGame([id, p]);
         });
     }
+    case 'soccer':
+      return entries
+        .filter(([, p]) => p.sport === 'soccer' && (p.conf||0) >= 2)
+        .sort(sortConf)
+        .slice(0, 8)
+        .map(toGame);
     default: return [];
   }
 }
@@ -10110,6 +10243,15 @@ function renderTicketsPage() {
     ${wnbaHasAny ? '<div class="tp-tip-mini">💡 Consider a round robin on these picks</div>' : ''}
   </div>`;
 
+  // ── Soccer ──
+  const soccerLegs    = getPicksForTicket('soccer', date, allPicks);
+  const soccerHasAny  = soccerLegs.length > 0;
+  const soccerHTML = `<div class="tp-sport-section">
+    <div class="tp-sport-hdr">⚽ Soccer</div>
+    ${soccerHasAny ? grid([renderTicketBlock('⚽ Best Bets', soccerLegs, allPicks)]) : `<div class="tp-sport-empty">No soccer picks yet — need conf ●● or higher · visit Soccer tab${off===0?'':''}</div>`}
+    ${soccerHasAny ? '<div class="tp-tip-mini">💡 Soccer draws kill parlays — use round robins or single-game bets for better protection</div>' : ''}
+  </div>`;
+
   // ── NHL ──
   const nhlLegs         = getPicksForTicket('nhl', date, allPicks);
   const nhlPerGame      = getSportPerGameTickets(date, allPicks, 'nhl');
@@ -10144,7 +10286,7 @@ function renderTicketsPage() {
     ${off === 0 && !_svPreloadDone ? '<div class="tp-loading">⏳ Loading picks from all sports…</div>' : ''}
     ${todayPicksHTML}
     ${ystTicketHTML}
-    ${mlbHTML}${tennisHTML}${golfHTML}${nbaHTML}${wnbaHTML}${nhlHTML}${nflHTML}
+    ${mlbHTML}${tennisHTML}${golfHTML}${nbaHTML}${wnbaHTML}${soccerHTML}${nhlHTML}${nflHTML}
     <div class="sv-pro-tip" style="margin-top:16px">
       <span class="sv-pro-tip-label">💡 Pro Tip</span>
       Round robins are your best friend, especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.

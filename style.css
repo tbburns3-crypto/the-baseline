@@ -1557,6 +1557,26 @@ input { font: inherit; }
 /* ── SOCCER STANDING POINTS ── */
 .standing-pts { color: var(--accent); font-weight: 700; font-size: .82rem; margin-left: auto; }
 
+/* ── SOCCER TABLE (full columns) ── */
+.soccer-table-hdr { display: grid; grid-template-columns: 28px 1fr 36px 72px 42px 42px; gap: 4px; padding: 4px 6px 2px; font-size: .65rem; font-weight: 700; color: var(--text-muted); letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+.standing-row.st-full { grid-template-columns: 28px 1fr 36px 72px 42px 42px; gap: 4px; }
+.st-rank { color: var(--text-muted); font-weight: 700; font-size: .78rem; min-width: 20px; }
+.st-team { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-gp   { color: var(--text-muted); font-size: .78rem; text-align: center; }
+.st-wdl  { color: var(--accent); font-size: .78rem; white-space: nowrap; }
+.st-gd   { font-size: .78rem; text-align: right; font-weight: 600; }
+.st-pts  { font-size: .82rem; text-align: right; }
+.st-row-cl  { border-left: 3px solid #1565c0; }
+.st-row-el  { border-left: 3px solid #e65100; }
+.st-row-rel { border-left: 3px solid #c62828; }
+.soccer-table-legend { display: flex; gap: 14px; padding: 4px 8px 8px; font-size: .65rem; font-weight: 700; letter-spacing: .04em; }
+.stl-cl  { color: #5c9cf5; }
+.stl-el  { color: #ff8a50; }
+.stl-rel { color: #ef9a9a; }
+
+/* ── SOCCER FILTER CHIPS ── */
+.filter-chips-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
+
 /* ── NBA FULL BOX SCORE ── */
 .nba-block { margin-bottom: 10px; }
 .nba-block-hdr { display: flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(255,255,255,.04); border-bottom: 1px solid var(--border); }
