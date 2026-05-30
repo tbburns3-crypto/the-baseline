@@ -10273,7 +10273,7 @@ function renderSimpleView() {
 
   // ── Winning ticket spotlight ──
   const _wGroups = [
-    { key: 'tennis_slam_wta',      label: "Women's Grand Slam", icon: '🎾' },
+    { key: 'tennis_slam_wta',      label: "Women's Grand Slam", icon: '🎾', cap: 7 },
     { key: 'tennis_slam_atp',      label: "Men's Grand Slam",   icon: '🎾' },
     { key: 'tennis_non_slam_main', label: 'Tennis Main Draw',   icon: '🎾' },
     { key: 'tennis_all',           label: 'Tennis',             icon: '🎾' },
@@ -10284,7 +10284,8 @@ function renderSimpleView() {
   ];
   const _wWinners = [];
   for (const g of _wGroups) {
-    const legs = getPicksForTicket(g.key, today, allPicks);
+    let legs = getPicksForTicket(g.key, today, allPicks);
+    if (g.cap) legs = legs.slice(0, g.cap);
     if (!legs.length) continue;
     const resolved = legs.filter(l => { const r = allPicks[l.id]?.result ?? l.result; return r === 'win' || r === 'loss'; });
     if (resolved.length < 2) continue;
@@ -10374,7 +10375,19 @@ function renderSimpleView() {
       Round robins are your best friend, especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
     </div>`;
 
-  el.innerHTML = `${hotStreakBanner}<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${upsellBanner}${lockedSection}`;
+  const winnerShowcaseHTML = `
+    <div class="sv-winner-showcase">
+      <div class="sv-ws-banner"><span class="sv-ws-trophy">🏆</span><span class="sv-ws-headline">we make winners here daily!</span></div>
+      <img class="sv-ws-img" src="win-ticket-may30.png" alt="Winning 6-leg parlay — $352.38 on FanDuel">
+    </div>`;
+
+  const nearMissHTML = `
+    <div class="sv-near-miss">
+      <div class="sv-nm-banner"><span class="sv-nm-fire">🔥</span><span class="sv-nm-headline">we almost got a big one!</span></div>
+      <img class="sv-nm-img" src="near-miss-may30.png" alt="11-leg near-miss parlay on FanDuel">
+    </div>`;
+
+  el.innerHTML = `${hotStreakBanner}${winnerShowcaseHTML}${nearMissHTML}<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${upsellBanner}${lockedSection}`;
 }
 
 // BFCache restore: reset checkout buttons that were disabled before navigating to Stripe

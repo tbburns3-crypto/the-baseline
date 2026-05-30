@@ -2109,6 +2109,19 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-promo-btn { background: #f5a623; color: #000; border-radius: 5px; padding: 7px 0; font-size: .7rem; font-weight: 900; letter-spacing: .05em; width: 85%; }
 .sv-promo-caption { font-size: .52rem; color: #6a5030; font-style: italic; }
 
+/* ── WINNER SHOWCASE ── */
+.sv-winner-showcase { margin: 0 0 14px; border-radius: 12px; overflow: hidden; background: linear-gradient(160deg, #0a200f, #071509); border: 1.5px solid rgba(0,230,118,.6); box-shadow: 0 0 24px rgba(0,230,118,.15); }
+.sv-ws-banner { background: linear-gradient(90deg, #00a550, #00c46a, #00a550); padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
+.sv-ws-trophy { font-size: 1.4rem; line-height: 1; }
+.sv-ws-headline { font-size: .85rem; font-weight: 900; color: #000; letter-spacing: .04em; text-transform: uppercase; }
+.sv-ws-img { display: block; width: 100%; max-width: 420px; margin: 0 auto; padding: 10px 12px 12px; box-sizing: border-box; border-radius: 6px; }
+
+.sv-near-miss { margin: 0 0 14px; border-radius: 12px; overflow: hidden; background: linear-gradient(160deg, #1a1000, #120c00); border: 1.5px solid rgba(245,166,35,.5); box-shadow: 0 0 18px rgba(245,166,35,.1); }
+.sv-nm-banner { background: linear-gradient(90deg, #c07d00, #e69800, #c07d00); padding: 9px 16px; display: flex; align-items: center; gap: 10px; }
+.sv-nm-fire { font-size: 1.25rem; line-height: 1; }
+.sv-nm-headline { font-size: .82rem; font-weight: 900; color: #000; letter-spacing: .03em; text-transform: uppercase; }
+.sv-nm-img { display: block; width: 100%; max-width: 420px; margin: 0 auto; padding: 10px 12px 12px; box-sizing: border-box; }
+
 /* ── UPSELL BANNER ── */
 .sv-upsell-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: linear-gradient(135deg, #0d2414, #152e1c); border: 1px solid rgba(0,230,118,.45); border-radius: 12px; padding: 18px 20px; margin-top: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
 .sv-upsell-banner:hover { border-color: var(--accent); background: linear-gradient(135deg, #102a18, #1a3820); }
