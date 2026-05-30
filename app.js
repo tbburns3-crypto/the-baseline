@@ -6816,9 +6816,9 @@ function buildGolfGroupPickCard(group, round, isLive, tourKey, eventId, isFinal 
   const gap  = winner.score - (scored[1]?.score || 0);
   const conf = gap >= 3 ? 3 : gap >= 1 ? 2 : 1;
 
-  // Record pick only before group tees off — never change once play has started.
+  // Record pick only before group tees off AND only if not already stored — locks on first write.
   const matchup = players.map(p => (p.athlete?.shortName||'-').split(' ').pop()).join(' v ');
-  if (!isFinal && !groupStarted) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
+  if (!isFinal && !groupStarted && !existingPick) recordPick(pickId, pickName.split(' ').pop(), matchup, 'golf', conf);
 
   // Display: if group has started, show the stored pre-round pick at the top
   const storedLastName = (existingPick?.team || '').toLowerCase();
@@ -10273,7 +10273,7 @@ function renderSimpleView() {
 
   // ── Winning ticket spotlight ──
   const _wGroups = [
-    { key: 'tennis_slam_wta',      label: "Women's Grand Slam", icon: '🎾', cap: 7 },
+    { key: 'tennis_slam_wta',      label: "Women's Grand Slam", icon: '🎾', displayMax: 7 },
     { key: 'tennis_slam_atp',      label: "Men's Grand Slam",   icon: '🎾' },
     { key: 'tennis_non_slam_main', label: 'Tennis Main Draw',   icon: '🎾' },
     { key: 'tennis_all',           label: 'Tennis',             icon: '🎾' },
@@ -10284,8 +10284,7 @@ function renderSimpleView() {
   ];
   const _wWinners = [];
   for (const g of _wGroups) {
-    let legs = getPicksForTicket(g.key, today, allPicks);
-    if (g.cap) legs = legs.slice(0, g.cap);
+    const legs = getPicksForTicket(g.key, today, allPicks);
     if (!legs.length) continue;
     const resolved = legs.filter(l => { const r = allPicks[l.id]?.result ?? l.result; return r === 'win' || r === 'loss'; });
     if (resolved.length < 2) continue;
@@ -10306,7 +10305,7 @@ function renderSimpleView() {
       return `<div class="sv-win-card" style="--rot:${rot}" onclick="switchSport('tickets')">
         <div class="sv-win-card-inner">
           <div class="sv-wc-sport">${w.icon} ${w.label}</div>
-          <div class="sv-wc-rec">${w.wins}W · 0L <span class="sv-wc-date">${new Date(today + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}</span></div>
+          <div class="sv-wc-rec">${w.displayMax ? Math.min(w.wins, w.displayMax) : w.wins}W · 0L <span class="sv-wc-date">${new Date(today + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}</span></div>
           <div class="sv-wc-picks">${pickRows}</div>
         </div>
         <div class="sv-wc-caption">From subscriber Tickets tab</div>
@@ -10387,7 +10386,7 @@ function renderSimpleView() {
       <img class="sv-nm-img" src="near-miss-may30.png" alt="11-leg near-miss parlay on FanDuel">
     </div>`;
 
-  el.innerHTML = `${hotStreakBanner}${winnerShowcaseHTML}${nearMissHTML}<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${upsellBanner}${lockedSection}`;
+  el.innerHTML = `${hotStreakBanner}<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${winnerShowcaseHTML}${nearMissHTML}${upsellBanner}${lockedSection}`;
 }
 
 // BFCache restore: reset checkout buttons that were disabled before navigating to Stripe
