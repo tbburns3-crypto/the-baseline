@@ -10362,16 +10362,12 @@ function renderSimpleView() {
       Round robins are your best friend, especially on golf and high-odds picks. Instead of one big parlay, a round robin splits your picks into multiple smaller combos, so one miss doesn't wipe everything out.
     </div>`;
 
-  // Promo card for non-subscribers
-  const _promoCard = _hasFullAccess() ? '' : `<div class="sv-promo-card" onclick="_pendingPromoCode='BASELINE';openUpgradeModal()">
-    <div class="sv-promo-tag">★ NEW SUBSCRIBER DEAL ★</div>
-    <div class="sv-promo-hero"><span class="sv-promo-num">15%</span><span class="sv-promo-offbig">OFF</span></div>
-    <div class="sv-promo-sub">on your first subscription</div>
-    <div class="sv-promo-divider"></div>
-    <div class="sv-promo-codelabel">USE CODE</div>
-    <div class="sv-promo-code">BASELINE</div>
-    <div class="sv-promo-btn">Claim Now</div>
-    <div class="sv-promo-caption">Auto-applied at checkout</div>
+  // Thin promo bar at top for non-subscribers
+  const _promoBar = _hasFullAccess() ? '' : `<div class="sv-promo-bar" onclick="_pendingPromoCode='BASELINE';openUpgradeModal()">
+    <span class="sv-pb-tag">★ NEW SUBSCRIBER DEAL ★</span>
+    <span class="sv-pb-text">15% OFF your first subscription</span>
+    <span class="sv-pb-code">Code: <strong>BASELINE</strong></span>
+    <button class="sv-pb-btn" onclick="event.stopPropagation();_pendingPromoCode='BASELINE';openUpgradeModal()">Claim Now →</button>
   </div>`;
 
   // Hardcoded Women's Grand Slam May 29 card — stays permanently
@@ -10392,7 +10388,7 @@ function renderSimpleView() {
     <div class="sv-wc-caption">From subscriber Tickets tab</div>
   </div>`;
 
-  // One unified strip: hardcoded WTA card + dynamic wins + FanDuel snapshots + promo
+  // One unified strip: hardcoded WTA card + dynamic wins + FanDuel snapshots
   const combinedStrip = `<div class="sv-wins-wrap">
     <div class="sv-wins-hdr">🔥 Recent Tickets</div>
     <div class="sv-wins-strip">
@@ -10406,11 +10402,10 @@ function renderSimpleView() {
         <img class="sv-snapshot-img" src="near-miss-may30.png" alt="11-leg near-miss parlay">
         <div class="sv-snapshot-caption">🔥 We almost got a big one!</div>
       </div>
-      ${_promoCard}
     </div>
   </div>`;
 
-  el.innerHTML = `<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${combinedStrip}${upsellBanner}${lockedSection}`;
+  el.innerHTML = `${_promoBar}<div class="sv-tickets-grid">${dayHTML}${nightHTML}</div>${combinedStrip}${upsellBanner}${lockedSection}`;
 }
 
 // BFCache restore: reset checkout buttons that were disabled before navigating to Stripe

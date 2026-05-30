@@ -2116,6 +2116,14 @@ body.simple-mode #app-layout { display: none !important; }
 .sv-snapshot-img { display: block; width: 100%; border-radius: 1px; }
 .sv-snapshot-caption { position: absolute; bottom: 5px; left: 0; right: 0; text-align: center; font-size: .6rem; font-weight: 700; color: #333; letter-spacing: .02em; line-height: 1.3; padding: 0 5px; }
 
+/* ── PROMO TOP BAR ── */
+.sv-promo-bar { display: flex; align-items: center; justify-content: center; gap: 10px; background: linear-gradient(90deg, #1a0f00, #2a1800, #1a0f00); border: 1px solid rgba(245,166,35,.35); border-radius: 8px; padding: 7px 14px; margin-bottom: 12px; cursor: pointer; flex-wrap: wrap; }
+.sv-promo-bar:hover { border-color: rgba(245,166,35,.6); }
+.sv-pb-tag { font-size: .55rem; font-weight: 800; letter-spacing: .1em; color: #f5a623; }
+.sv-pb-text { font-size: .7rem; color: #c8a96e; }
+.sv-pb-code strong { color: #f5c842; letter-spacing: .06em; }
+.sv-pb-btn { background: #f5a623; color: #000; border: none; border-radius: 5px; padding: 4px 10px; font-size: .68rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
+
 /* ── UPSELL BANNER ── */
 .sv-upsell-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: linear-gradient(135deg, #0d2414, #152e1c); border: 1px solid rgba(0,230,118,.45); border-radius: 12px; padding: 18px 20px; margin-top: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
 .sv-upsell-banner:hover { border-color: var(--accent); background: linear-gradient(135deg, #102a18, #1a3820); }
