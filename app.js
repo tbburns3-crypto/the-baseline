@@ -129,6 +129,14 @@ function recordPick(gameId, pickedTeam, matchup = '', sport = '', conf = 0, forc
   }
   // force = true lets a nuanced pick overwrite a simple W-L seed, but never overwrite a resolved result
   if (existing && (!force || existing.result !== null)) return;
+  // Never overwrite a tennis pick that is already committed to today's locked morning/evening ticket.
+  // This prevents buildTennisPrediction from flipping a ticket pick after the ticket is built.
+  if (force && existing && sport === 'tennis') {
+    const _morn = getMorningTicket();
+    const _eve  = getEveningTicket();
+    const _legs = (_morn?.legs || []).concat(_eve?.legs || []);
+    if (_legs.some(l => l.id === gameId)) return;
+  }
   const entry = { team: pickedTeam, date: dateOverride || dateStrLocal(), result: existing?.result ?? null, matchup, sport, conf };
   if (tier) entry.tier = tier;
   if (meta && Object.keys(meta).length) Object.assign(entry, meta);
@@ -10562,11 +10570,10 @@ function renderSimpleView() {
     const dots   = '●'.repeat(conf) + '○'.repeat(3 - conf);
     const icon   = SPORT_ICONS[leg.sport] || '🏅';
     const match  = (leg.matchup || '').replace(/ @ /g, ' v ');
-    const svDesc     = cleanLegDesc(leg);
-    const displayPick = live.team || live.player || leg.pick;
+    const svDesc = cleanLegDesc(leg);
     const pickLine = svDesc
-      ? `<span class="sv-tk-pick">${esc(displayPick)}</span><span class="sv-tk-prop">${esc(svDesc)}</span>`
-      : `<span class="sv-tk-pick">${esc(displayPick)}</span>`;
+      ? `<span class="sv-tk-pick">${esc(leg.pick)}</span><span class="sv-tk-prop">${esc(svDesc)}</span>`
+      : `<span class="sv-tk-pick">${esc(leg.pick)}</span>`;
     return `<div class="sv-tk-row${result==='win'?' sv-tk-win':result==='loss'?' sv-tk-loss':''}">
       <span class="sv-tk-num">${i+1}</span>
       <span class="sv-tk-icon">${icon}</span>
